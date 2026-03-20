@@ -34,6 +34,7 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'kpi',                  label: 'KPI',                   defaultWidth: 175, minWidth: 110 },
   { key: 'target',               label: 'Target',                defaultWidth: 160, minWidth: 110 },
   { key: 'achievement',          label: 'Achievement',           defaultWidth: 160, minWidth: 110 },
+  { key: 'trafficLight',         label: 'Status',                defaultWidth: 110, minWidth: 90 },
   { key: 'estimatedValueImpact', label: 'Value Impact',          defaultWidth: 190, minWidth: 120 },
   { key: 'industryBenchmark',    label: 'Industry Benchmark',    defaultWidth: 235, minWidth: 150 },
   { key: 'governance',           label: 'Governance',            defaultWidth: 190, minWidth: 130 },
@@ -369,6 +370,47 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <EditableCell processId={process.id} field="achievement" initialValue={process.achievement} multiline />
           </td>
         );
+      case 'trafficLight': {
+        const tl = (process as any).trafficLight as string ?? '';
+        const options = [
+          { value: 'green',  bg: 'bg-green-500',  ring: 'ring-green-400',  glow: '0 0 8px rgba(34,197,94,0.7)',  label: 'On Track' },
+          { value: 'orange', bg: 'bg-amber-400',  ring: 'ring-amber-300',  glow: '0 0 8px rgba(251,191,36,0.7)', label: 'At Risk' },
+          { value: 'red',    bg: 'bg-red-500',    ring: 'ring-red-400',    glow: '0 0 8px rgba(239,68,68,0.7)',  label: 'Off Track' },
+        ];
+        return (
+          <td key="trafficLight" className="align-middle p-0" style={{ width: widths['trafficLight'] }}>
+            <div className="flex items-center justify-center gap-2 py-2 px-2">
+              {options.map(opt => (
+                <button
+                  key={opt.value}
+                  title={opt.label}
+                  onClick={() => updateProcess({
+                    id: process.id,
+                    data: { trafficLight: tl === opt.value ? '' : opt.value },
+                  })}
+                  className={cn(
+                    "w-5 h-5 rounded-full transition-all duration-150 flex-shrink-0 border-2",
+                    opt.bg,
+                    tl === opt.value
+                      ? `ring-2 ring-offset-1 ring-offset-background ${opt.ring} scale-110 border-transparent`
+                      : "border-transparent opacity-30 hover:opacity-70 hover:scale-105"
+                  )}
+                  style={tl === opt.value ? { boxShadow: opt.glow } : undefined}
+                />
+              ))}
+              {tl && (
+                <button
+                  title="Clear status"
+                  onClick={() => updateProcess({ id: process.id, data: { trafficLight: '' } })}
+                  className="text-muted-foreground/40 hover:text-muted-foreground transition-colors ml-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </td>
+        );
+      }
       case 'estimatedValueImpact':
         return (
           <td key="estimatedValueImpact" className="overflow-hidden p-0" style={{ width: widths['estimatedValueImpact'] }}>

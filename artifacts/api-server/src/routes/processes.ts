@@ -52,6 +52,7 @@ router.get("/processes/export", async (req, res) => {
       "KPI": p.kpi,
       "Target": p.target,
       "Achievement": p.achievement,
+      "Status": p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '',
       "Estimated Value Impact": p.estimatedValueImpact,
       "Industry Benchmark": p.industryBenchmark,
       "Include": p.included ? "Yes" : "No",
@@ -62,7 +63,7 @@ router.get("/processes/export", async (req, res) => {
     ws["!cols"] = [
       { wch: 5 }, { wch: 25 }, { wch: 22 }, { wch: 45 }, { wch: 25 },
       { wch: 40 }, { wch: 35 }, { wch: 35 }, { wch: 30 }, { wch: 35 },
-      { wch: 20 }, { wch: 20 }, { wch: 35 }, { wch: 45 }, { wch: 8 },
+      { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 35 }, { wch: 45 }, { wch: 8 },
     ];
     XLSX.utils.book_append_sheet(wb, ws, "Processes");
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
@@ -310,6 +311,7 @@ router.put("/processes/:id", async (req, res) => {
     if (body.aiAgentActive !== undefined) updateData.aiAgentActive = body.aiAgentActive as boolean;
     if (body.target !== undefined) updateData.target = body.target as string;
     if (body.achievement !== undefined) updateData.achievement = body.achievement as string;
+    if (body.trafficLight !== undefined) updateData.trafficLight = body.trafficLight as string;
 
     const [updated] = await db.update(processesTable).set(updateData).where(eq(processesTable.id, id)).returning();
 
