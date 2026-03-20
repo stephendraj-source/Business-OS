@@ -217,17 +217,20 @@ export function Chatbot() {
 
   return (
     <>
-      {/* Floating button */}
+      {/* Floating button — always on top */}
       <button
         onClick={() => setOpen(v => !v)}
         className={cn(
-          "fixed z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
-          open ? "bg-card border border-border" : "bg-primary hover:bg-primary/90"
+          "fixed z-[60] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
+          open ? "bg-destructive/90 hover:bg-destructive" : "bg-primary hover:bg-primary/90"
         )}
         style={{ bottom: 24, right: 24 }}
-        title="AI Assistant"
+        title={open ? "Close AI Assistant" : "Open AI Assistant"}
       >
-        {open ? <X className="w-5 h-5 text-foreground" /> : <Sparkles className="w-6 h-6 text-primary-foreground" />}
+        {open
+          ? <X className="w-6 h-6 text-white" />
+          : <Sparkles className="w-6 h-6 text-primary-foreground" />
+        }
       </button>
 
       {/* Draggable chat panel */}
