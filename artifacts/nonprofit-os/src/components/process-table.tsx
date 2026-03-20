@@ -207,6 +207,13 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [dragOverSide, setDragOverSide] = useState<'before' | 'after'>('before');
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ inserted: number; updated: number; total: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -301,7 +308,8 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
 
   const filteredProcesses = useMemo(() => {
     if (!processes) return [];
-    return processes.filter(p => {
+    const TL_ORD: Record<string, number> = { green: 3, orange: 2, red: 1 };
+    const filtered = processes.filter(p => {
       if (mode === 'portfolio' && !p.included) return false;
       const matchesSearch = !search ||
         (p.processName ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -309,8 +317,34 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         p.purpose.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
-    }).sort((a, b) => a.number - b.number);
-  }, [processes, search, selectedCategory, mode]);
+    });
+    if (!sortKey) return filtered.sort((a, b) => a.number - b.number);
+    const m = sortDir === 'asc' ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      let av: string | number = 0, bv: string | number = 0;
+      switch (sortKey) {
+        case '#':                    av = a.number;                          bv = b.number; break;
+        case 'category':             av = a.category ?? '';                  bv = b.category ?? ''; break;
+        case 'processName':          av = a.processName ?? '';               bv = b.processName ?? ''; break;
+        case 'processDescription':   av = a.processDescription ?? '';        bv = b.processDescription ?? ''; break;
+        case 'aiAgent':              av = a.aiAgent ?? '';                   bv = b.aiAgent ?? ''; break;
+        case 'aiAgentActive':        av = (a as any).aiAgentActive ? 1 : 0; bv = (b as any).aiAgentActive ? 1 : 0; break;
+        case 'purpose':              av = a.purpose ?? '';                   bv = b.purpose ?? ''; break;
+        case 'inputs':               av = a.inputs ?? '';                    bv = b.inputs ?? ''; break;
+        case 'outputs':              av = a.outputs ?? '';                   bv = b.outputs ?? ''; break;
+        case 'humanInTheLoop':       av = a.humanInTheLoop ?? '';            bv = b.humanInTheLoop ?? ''; break;
+        case 'kpi':                  av = a.kpi ?? '';                       bv = b.kpi ?? ''; break;
+        case 'target':               av = a.target ?? '';                    bv = b.target ?? ''; break;
+        case 'achievement':          av = a.achievement ?? '';               bv = b.achievement ?? ''; break;
+        case 'trafficLight':         av = TL_ORD[(a as any).trafficLight] ?? 0; bv = TL_ORD[(b as any).trafficLight] ?? 0; break;
+        case 'estimatedValueImpact': av = a.estimatedValueImpact ?? '';      bv = b.estimatedValueImpact ?? ''; break;
+        case 'industryBenchmark':    av = a.industryBenchmark ?? '';         bv = b.industryBenchmark ?? ''; break;
+        default: return a.number - b.number;
+      }
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * m;
+      return String(av).localeCompare(String(bv)) * m;
+    });
+  }, [processes, search, selectedCategory, mode, sortKey, sortDir]);
 
   const handleIncludeToggle = (process: Process) => {
     updateProcess({ id: process.id, data: { included: !process.included } });
@@ -525,41 +559,28 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         );
       case 'trafficLight': {
         const tl = (process as any).trafficLight as string ?? '';
-        const options = [
-          { value: 'green',  bg: 'bg-green-500',  ring: 'ring-green-400',  glow: '0 0 8px rgba(34,197,94,0.7)',  label: 'On Track' },
-          { value: 'orange', bg: 'bg-amber-400',  ring: 'ring-amber-300',  glow: '0 0 8px rgba(251,191,36,0.7)', label: 'At Risk' },
-          { value: 'red',    bg: 'bg-red-500',    ring: 'ring-red-400',    glow: '0 0 8px rgba(239,68,68,0.7)',  label: 'Off Track' },
-        ];
+        const CYCLE = ['', 'green', 'orange', 'red'] as const;
+        const colorMap: Record<string, { bg: string; glow: string; label: string }> = {
+          green:  { bg: 'bg-green-500', glow: '0 0 8px rgba(34,197,94,0.7)',  label: 'On Track' },
+          orange: { bg: 'bg-amber-400', glow: '0 0 8px rgba(251,191,36,0.7)', label: 'At Risk' },
+          red:    { bg: 'bg-red-500',   glow: '0 0 8px rgba(239,68,68,0.7)',  label: 'Off Track' },
+        };
+        const next = CYCLE[(CYCLE.indexOf(tl as any) + 1) % CYCLE.length];
+        const meta = tl ? colorMap[tl] : null;
         return (
           <td key="trafficLight" className="align-middle p-0" style={{ width: widths['trafficLight'] }}>
-            <div className="flex items-center justify-center gap-2 py-2 px-2">
-              {options.map(opt => (
-                <button
-                  key={opt.value}
-                  title={opt.label}
-                  onClick={() => updateProcess({
-                    id: process.id,
-                    data: { trafficLight: tl === opt.value ? '' : opt.value },
-                  })}
-                  className={cn(
-                    "w-5 h-5 rounded-full transition-all duration-150 flex-shrink-0 border-2",
-                    opt.bg,
-                    tl === opt.value
-                      ? `ring-2 ring-offset-1 ring-offset-background ${opt.ring} scale-110 border-transparent`
-                      : "border-transparent opacity-30 hover:opacity-70 hover:scale-105"
-                  )}
-                  style={tl === opt.value ? { boxShadow: opt.glow } : undefined}
-                />
-              ))}
-              {tl && (
-                <button
-                  title="Clear status"
-                  onClick={() => updateProcess({ id: process.id, data: { trafficLight: '' } })}
-                  className="text-muted-foreground/40 hover:text-muted-foreground transition-colors ml-0.5"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+            <div className="flex items-center justify-center py-2 px-2">
+              <button
+                title={meta ? `${meta.label} — click to change` : 'Click to set status'}
+                onClick={() => updateProcess({ id: process.id, data: { trafficLight: next } })}
+                className={cn(
+                  "w-5 h-5 rounded-full transition-all duration-200 flex-shrink-0",
+                  meta
+                    ? `${meta.bg} border-2 border-transparent hover:scale-110`
+                    : "border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/60 hover:scale-105",
+                )}
+                style={meta ? { boxShadow: meta.glow } : undefined}
+              />
             </div>
           </td>
         );
@@ -755,17 +776,22 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
               {allVisibleCols.map((col) => {
                 const isReorderable = !col.fixed;
                 const isDragOver = dragOverKey === col.key;
+                const isSortable = col.key !== 'include' && col.key !== 'actions';
+                const isActiveSort = sortKey === col.key;
                 return (
                   <th
                     key={col.key}
                     title={col.label || undefined}
                     className={cn(
-                      "relative select-none overflow-hidden text-ellipsis whitespace-nowrap",
+                      "relative select-none overflow-hidden text-ellipsis whitespace-nowrap transition-colors",
                       isReorderable && "cursor-grab active:cursor-grabbing",
+                      isSortable && "hover:text-foreground",
+                      isActiveSort ? "text-primary" : "",
                       col.key === 'include' && "text-center"
                     )}
                     style={{ width: widths[col.key] ?? col.defaultWidth }}
                     draggable={isReorderable}
+                    onClick={isSortable ? () => toggleSort(col.key) : undefined}
                     onDragStart={isReorderable ? () => onDragStart(col.key) : undefined}
                     onDragOver={isReorderable ? (e) => onDragOver(e, col.key) : undefined}
                     onDrop={isReorderable ? (e) => onDrop(e, col.key) : undefined}
@@ -811,11 +837,16 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                         </span>
                       </div>
                     ) : (
-                      <span className="flex items-center gap-1 pr-3">
+                      <span className="flex items-center gap-1 pr-3 pointer-events-none">
                         {isReorderable && (
                           <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
                         )}
                         <span className="truncate">{col.label}</span>
+                        {isSortable && col.label && (
+                          <span className={cn("text-[9px] leading-none shrink-0", isActiveSort ? "text-primary" : "text-muted-foreground/30")}>
+                            {isActiveSort ? (sortDir === 'asc' ? '↑' : '↓') : '⇅'}
+                          </span>
+                        )}
                       </span>
                     )}
 
