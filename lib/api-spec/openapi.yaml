@@ -1,15 +1,16 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Nonprofit Operating System API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: processes
+    description: Nonprofit process operations
 paths:
   /healthz:
     get:
@@ -24,6 +25,93 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /processes:
+    get:
+      operationId: listProcesses
+      tags: [processes]
+      summary: List all processes
+      description: Returns all nonprofit processes
+      responses:
+        "200":
+          description: List of processes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Process"
+
+  /processes/{id}:
+    get:
+      operationId: getProcess
+      tags: [processes]
+      summary: Get a process by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Process found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Process"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    put:
+      operationId: updateProcess
+      tags: [processes]
+      summary: Update a process
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProcessBody"
+      responses:
+        "200":
+          description: Updated process
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Process"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [processes]
+      summary: List distinct categories
+      responses:
+        "200":
+          description: List of category names
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +122,70 @@ components:
       required:
         - status
 
+    Process:
+      type: object
+      properties:
+        id:
+          type: integer
+        number:
+          type: integer
+        category:
+          type: string
+        processName:
+          type: string
+        aiAgent:
+          type: string
+        purpose:
+          type: string
+        inputs:
+          type: string
+        outputs:
+          type: string
+        humanInTheLoop:
+          type: string
+        kpi:
+          type: string
+        estimatedValueImpact:
+          type: string
+      required:
+        - id
+        - number
+        - category
+        - processName
+        - aiAgent
+        - purpose
+        - inputs
+        - outputs
+        - humanInTheLoop
+        - kpi
+        - estimatedValueImpact
+
+    UpdateProcessBody:
+      type: object
+      properties:
+        category:
+          type: string
+        processName:
+          type: string
+        aiAgent:
+          type: string
+        purpose:
+          type: string
+        inputs:
+          type: string
+        outputs:
+          type: string
+        humanInTheLoop:
+          type: string
+        kpi:
+          type: string
+        estimatedValueImpact:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
