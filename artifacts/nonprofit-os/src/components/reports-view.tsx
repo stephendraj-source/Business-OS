@@ -156,6 +156,154 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
   );
 }
 
+// ─── Detail panels ─────────────────────────────────────────────────────────────
+
+function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: () => void }) {
+  const pct = completeness(process);
+  const filled = TRACKABLE_FIELDS.filter(f => process[f] && String(process[f]).trim()).length;
+
+  const fieldRows: { label: string; value: string }[] = [
+    { label: 'Description',           value: process.processDescription },
+    { label: 'Purpose',               value: process.purpose },
+    { label: 'AI Agent',              value: process.aiAgent },
+    { label: 'Inputs',                value: process.inputs },
+    { label: 'Outputs',               value: process.outputs },
+    { label: 'Human-in-the-Loop',     value: process.humanInTheLoop },
+    { label: 'KPI',                   value: process.kpi },
+    { label: 'Target',                value: process.target },
+    { label: 'Achievement',           value: process.achievement },
+    { label: 'Estimated Value Impact',value: process.estimatedValueImpact },
+    { label: 'Industry Benchmark',    value: process.industryBenchmark },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="w-[500px] h-full bg-card border-l border-border shadow-2xl overflow-y-auto flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-border sticky top-0 bg-card z-10">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">
+                {processId(process.number)}
+              </span>
+              {process.included && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 font-semibold">Portfolio</span>
+              )}
+              <StatusBadge pct={pct} />
+            </div>
+            <h3 className="text-base font-semibold text-foreground leading-snug">
+              {process.processName || <span className="italic text-muted-foreground">Unnamed process</span>}
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{process.category}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-3 p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Completeness bar */}
+        <div className="px-5 py-3 border-b border-border/50 bg-secondary/20">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-xs text-muted-foreground">Data Completeness</span>
+            <span className="text-xs font-medium">{filled}/{TRACKABLE_FIELDS.length} fields · {pct}%</span>
+          </div>
+          <CompletenessBar pct={pct} />
+        </div>
+
+        {/* Fields */}
+        <div className="flex-1 p-5 space-y-3">
+          {fieldRows.map(({ label, value }) => (
+            <div key={label}>
+              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">{label}</div>
+              <div className={cn(
+                "text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50 min-h-[38px] whitespace-pre-wrap break-words leading-relaxed",
+                !value && "italic text-muted-foreground/40"
+              )}>
+                {value || '—'}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GroupDetailPanel({ title, subtitle, processes, onClose }: {
+  title: string;
+  subtitle?: string;
+  processes: Process[];
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/40 backdrop-blur-sm" />
+      <div
+        className="w-[460px] h-full bg-card border-l border-border shadow-2xl overflow-y-auto flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between p-5 border-b border-border sticky top-0 bg-card z-10">
+          <div className="min-w-0 flex-1">
+            {subtitle && (
+              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">{subtitle}</div>
+            )}
+            <h3 className="text-base font-semibold text-foreground">{title}</h3>
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className="text-xs text-muted-foreground">{processes.length} processes</span>
+              <span className="text-xs text-green-400">{processes.filter(p => p.included).length} in portfolio</span>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-3 p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Process list */}
+        <div className="flex-1 divide-y divide-border/40">
+          {processes.map(p => {
+            const pct = completeness(p);
+            return (
+              <div key={p.id} className="px-5 py-3.5">
+                <div className="flex items-start justify-between gap-2 mb-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                      <span className="font-mono text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary font-semibold shrink-0">
+                        {processId(p.number)}
+                      </span>
+                      {p.included && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-green-500/15 text-green-400 font-semibold shrink-0">Portfolio</span>
+                      )}
+                    </div>
+                    <div className="text-sm font-medium text-foreground">
+                      {p.processName || <em className="text-muted-foreground">Unnamed</em>}
+                    </div>
+                    {p.processDescription && (
+                      <div className="text-xs text-muted-foreground truncate mt-0.5">{p.processDescription}</div>
+                    )}
+                  </div>
+                  <StatusBadge pct={pct} />
+                </div>
+                <CompletenessBar pct={pct} />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function loadFieldConfig(): Record<ReportId, string[]> {
   try {
     const stored = localStorage.getItem(LS_KEY);
@@ -178,6 +326,9 @@ export function ReportsView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showFieldPanel, setShowFieldPanel] = useState(false);
   const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
+
+  const [detailProcess, setDetailProcess] = useState<Process | null>(null);
+  const [detailGroup, setDetailGroup] = useState<{ title: string; subtitle?: string; processes: Process[] } | null>(null);
 
   const dragIndexRef = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -454,12 +605,12 @@ export function ReportsView() {
 
             {/* Report content */}
             <div className="flex-1 overflow-auto p-5">
-              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}                   activeFields={activeFields} />}
-              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]}     categoryFilter={categoryFilter} activeFields={activeFields} />}
-              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]}     categoryFilter={categoryFilter} activeFields={activeFields} />}
-              {activeReport === 'kpi'       && <KpiReport       processes={filtered}                   activeFields={activeFields} />}
-              {activeReport === 'value'     && <ValueReport     processes={filtered}                   activeFields={activeFields} />}
-              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}                   activeFields={activeFields} />}
+              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
+              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} />}
+              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} />}
+              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
+              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
+              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
             </div>
           </div>
 
@@ -560,6 +711,19 @@ export function ReportsView() {
           )}
         </div>
       </div>
+
+      {/* Detail panels */}
+      {detailProcess && (
+        <ProcessDetailPanel process={detailProcess} onClose={() => setDetailProcess(null)} />
+      )}
+      {detailGroup && (
+        <GroupDetailPanel
+          title={detailGroup.title}
+          subtitle={detailGroup.subtitle}
+          processes={detailGroup.processes}
+          onClose={() => setDetailGroup(null)}
+        />
+      )}
     </div>
   );
 }
@@ -579,7 +743,7 @@ function renderCoverageCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function CoverageReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+function CoverageReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
   const avgCompleteness = processes.length ? Math.round(processes.reduce((s, p) => s + completeness(p), 0) / processes.length) : 0;
   const complete = processes.filter(p => completeness(p) >= 80).length;
   const partial  = processes.filter(p => completeness(p) >= 50 && completeness(p) < 80).length;
@@ -606,7 +770,11 @@ function CoverageReport({ processes, activeFields }: { processes: Process[]; act
         <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'completeness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
-            <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+            <tr
+              key={p.id}
+              className="hover:bg-secondary/30 transition-colors cursor-pointer"
+              onClick={() => onRowClick?.(p)}
+            >
               {fieldDefs.map(f => <Td key={f.key} className={f.key === 'completeness' ? 'w-48' : undefined}>{renderCoverageCell(p, f.key)}</Td>)}
             </tr>
           ))}
@@ -630,7 +798,7 @@ function renderCategoryCell(cat: string, ps: Process[], field: string): React.Re
   }
 }
 
-function CategoryReport({ processes, categoryFilter, activeFields }: { processes: Process[]; categoryFilter: string; activeFields: string[] }) {
+function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void }) {
   const grouped = useMemo(() => {
     const map: Record<string, Process[]> = {};
     processes.forEach(p => { if (!map[p.category]) map[p.category] = []; map[p.category].push(p); });
@@ -646,7 +814,11 @@ function CategoryReport({ processes, categoryFilter, activeFields }: { processes
       <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
       <tbody>
         {grouped.map(([cat, ps]) => (
-          <tr key={cat} className="hover:bg-secondary/20 transition-colors">
+          <tr
+            key={cat}
+            className="hover:bg-secondary/30 transition-colors cursor-pointer"
+            onClick={() => onGroupClick?.(cat, 'Category', ps)}
+          >
             {fieldDefs.map(f => <Td key={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined}>{renderCategoryCell(cat, ps, f.key)}</Td>)}
           </tr>
         ))}
@@ -665,7 +837,7 @@ function renderAgentCell(agent: string, ps: Process[], field: string): React.Rea
   }
 }
 
-function AiAgentReport({ processes, categoryFilter, activeFields }: { processes: Process[]; categoryFilter: string; activeFields: string[] }) {
+function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void }) {
   const agentMap = useMemo(() => {
     const filt = categoryFilter === 'all' ? processes : processes.filter(p => p.category === categoryFilter);
     const map: Record<string, Process[]> = {};
@@ -699,7 +871,11 @@ function AiAgentReport({ processes, categoryFilter, activeFields }: { processes:
         <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {agentMap.map(([agent, ps]) => (
-            <tr key={agent} className="hover:bg-secondary/20 transition-colors">
+            <tr
+              key={agent}
+              className="hover:bg-secondary/30 transition-colors cursor-pointer"
+              onClick={() => onGroupClick?.(agent, 'AI Agent', ps)}
+            >
               {fieldDefs.map(f => <Td key={f.key}>{renderAgentCell(agent, ps, f.key)}</Td>)}
             </tr>
           ))}
@@ -722,7 +898,7 @@ function renderKpiCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function KpiReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+function KpiReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
   const withKpi         = processes.filter(p => p.kpi?.trim()).length;
   const withTarget      = processes.filter(p => p.target?.trim()).length;
   const withAchievement = processes.filter(p => p.achievement?.trim()).length;
@@ -751,7 +927,11 @@ function KpiReport({ processes, activeFields }: { processes: Process[]; activeFi
         <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
-            <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+            <tr
+              key={p.id}
+              className="hover:bg-secondary/30 transition-colors cursor-pointer"
+              onClick={() => onRowClick?.(p)}
+            >
               {fieldDefs.map(f => <Td key={f.key}>{renderKpiCell(p, f.key)}</Td>)}
             </tr>
           ))}
@@ -773,7 +953,7 @@ function renderValueCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function ValueReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+function ValueReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
   const withValue     = processes.filter(p => p.estimatedValueImpact?.trim()).length;
   const withBenchmark = processes.filter(p => p.industryBenchmark?.trim()).length;
   const fieldDefs = FIELD_DEFS.value.filter(f => activeFields.includes(f.key));
@@ -797,7 +977,11 @@ function ValueReport({ processes, activeFields }: { processes: Process[]; active
         <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
-            <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+            <tr
+              key={p.id}
+              className="hover:bg-secondary/30 transition-colors cursor-pointer"
+              onClick={() => onRowClick?.(p)}
+            >
               {fieldDefs.map(f => <Td key={f.key}>{renderValueCell(p, f.key)}</Td>)}
             </tr>
           ))}
@@ -824,7 +1008,7 @@ function renderPortfolioCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function PortfolioReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+function PortfolioReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
   const included = processes.filter(p => p.included).length;
   const fieldDefs = FIELD_DEFS.portfolio.filter(f => activeFields.includes(f.key));
 
@@ -846,7 +1030,11 @@ function PortfolioReport({ processes, activeFields }: { processes: Process[]; ac
         <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
-            <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+            <tr
+              key={p.id}
+              className="hover:bg-secondary/30 transition-colors cursor-pointer"
+              onClick={() => onRowClick?.(p)}
+            >
               {fieldDefs.map(f => <Td key={f.key}>{renderPortfolioCell(p, f.key)}</Td>)}
             </tr>
           ))}
