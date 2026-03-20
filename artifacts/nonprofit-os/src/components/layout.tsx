@@ -34,8 +34,8 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
             <div className="space-y-1">
               <NavItem icon={<TableProperties />} label="Process Catalogue" active={activeView === 'table'} onClick={() => onViewChange('table')} />
               <NavItem icon={<Network />} label="Process Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
-              <NavItem icon={<Map />} label="Portfolio Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
               <NavItem icon={<Briefcase />} label="Portfolio Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
+              <NavItem icon={<Map />} label="Portfolio Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
             </div>
           </div>
 
