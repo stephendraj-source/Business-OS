@@ -144,6 +144,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const resizing = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const dragKey = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [dragOverSide, setDragOverSide] = useState<'before' | 'after'>('before');
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ inserted: number; updated: number; total: number } | null>(null);
@@ -213,15 +214,23 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const onDragStart = (key: string) => { dragKey.current = key; };
   const onDragOver = (e: React.DragEvent, key: string) => {
     e.preventDefault();
-    if (dragKey.current && dragKey.current !== key) setDragOverKey(key);
+    if (!dragKey.current || dragKey.current === key) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const side: 'before' | 'after' = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+    setDragOverKey(key);
+    setDragOverSide(side);
   };
-  const onDrop = (targetKey: string) => {
+  const onDrop = (e: React.DragEvent, targetKey: string) => {
+    e.preventDefault();
     const fromKey = dragKey.current;
-    if (!fromKey || fromKey === targetKey) { setDragOverKey(null); return; }
+    const side = dragOverSide;
+    if (!fromKey || fromKey === targetKey) { dragKey.current = null; setDragOverKey(null); return; }
     setColOrder(prev => {
       const next = prev.filter(k => k !== fromKey);
       const toIdx = next.indexOf(targetKey);
-      next.splice(toIdx, 0, fromKey);
+      // Insert before or after the target based on which half mouse was in
+      const insertAt = side === 'after' ? toIdx + 1 : toIdx;
+      next.splice(insertAt, 0, fromKey);
       return next;
     });
     dragKey.current = null;
@@ -683,16 +692,25 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                     className={cn(
                       "relative select-none overflow-hidden text-ellipsis whitespace-nowrap",
                       isReorderable && "cursor-grab active:cursor-grabbing",
-                      isDragOver && "bg-primary/10",
                       col.key === 'include' && "text-center"
                     )}
                     style={{ width: widths[col.key] ?? col.defaultWidth }}
                     draggable={isReorderable}
                     onDragStart={isReorderable ? () => onDragStart(col.key) : undefined}
                     onDragOver={isReorderable ? (e) => onDragOver(e, col.key) : undefined}
-                    onDrop={isReorderable ? () => onDrop(col.key) : undefined}
+                    onDrop={isReorderable ? (e) => onDrop(e, col.key) : undefined}
                     onDragEnd={isReorderable ? onDragEnd : undefined}
+                    onDragLeave={isReorderable ? (e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverKey(null);
+                    } : undefined}
                   >
+                    {/* Drop insertion line indicator */}
+                    {isDragOver && (
+                      <div
+                        className="absolute inset-y-0 w-0.5 bg-primary z-20 pointer-events-none shadow-[0_0_6px_2px_hsl(var(--primary)/0.5)]"
+                        style={{ [dragOverSide === 'before' ? 'left' : 'right']: 0 }}
+                      />
+                    )}
                     {col.key === 'include' ? (
                       <div className="flex flex-col items-center justify-center gap-1 py-0.5">
                         <span
