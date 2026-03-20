@@ -147,6 +147,8 @@ components:
           type: string
         estimatedValueImpact:
           type: string
+        industryBenchmark:
+          type: string
       required:
         - id
         - number
@@ -159,6 +161,7 @@ components:
         - humanInTheLoop
         - kpi
         - estimatedValueImpact
+        - industryBenchmark
 
     UpdateProcessBody:
       type: object
@@ -180,6 +183,8 @@ components:
         kpi:
           type: string
         estimatedValueImpact:
+          type: string
+        industryBenchmark:
           type: string
 
     ErrorResponse:

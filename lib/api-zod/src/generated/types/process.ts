@@ -18,4 +18,5 @@ export interface Process {
   humanInTheLoop: string;
   kpi: string;
   estimatedValueImpact: string;
+  industryBenchmark: string;
 }

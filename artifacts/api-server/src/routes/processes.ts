@@ -56,6 +56,7 @@ router.put("/processes/:id", async (req, res) => {
       humanInTheLoop,
       kpi,
       estimatedValueImpact,
+      industryBenchmark,
     } = req.body as Record<string, string>;
 
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
@@ -69,6 +70,8 @@ router.put("/processes/:id", async (req, res) => {
     if (kpi !== undefined) updateData.kpi = kpi;
     if (estimatedValueImpact !== undefined)
       updateData.estimatedValueImpact = estimatedValueImpact;
+    if (industryBenchmark !== undefined)
+      updateData.industryBenchmark = industryBenchmark;
 
     const [updated] = await db
       .update(processesTable)

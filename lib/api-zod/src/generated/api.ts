@@ -31,6 +31,7 @@ export const ListProcessesResponseItem = zod.object({
   humanInTheLoop: zod.string(),
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
+  industryBenchmark: zod.string(),
 });
 export const ListProcessesResponse = zod.array(ListProcessesResponseItem);
 
@@ -53,6 +54,7 @@ export const GetProcessResponse = zod.object({
   humanInTheLoop: zod.string(),
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
+  industryBenchmark: zod.string(),
 });
 
 /**
@@ -72,6 +74,7 @@ export const UpdateProcessBody = zod.object({
   humanInTheLoop: zod.string().optional(),
   kpi: zod.string().optional(),
   estimatedValueImpact: zod.string().optional(),
+  industryBenchmark: zod.string().optional(),
 });
 
 export const UpdateProcessResponse = zod.object({
@@ -86,6 +89,7 @@ export const UpdateProcessResponse = zod.object({
   humanInTheLoop: zod.string(),
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
+  industryBenchmark: zod.string(),
 });
 
 /**

@@ -16,4 +16,5 @@ export interface UpdateProcessBody {
   humanInTheLoop?: string;
   kpi?: string;
   estimatedValueImpact?: string;
+  industryBenchmark?: string;
 }

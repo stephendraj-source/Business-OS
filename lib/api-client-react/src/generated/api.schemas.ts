@@ -21,6 +21,7 @@ export interface Process {
   humanInTheLoop: string;
   kpi: string;
   estimatedValueImpact: string;
+  industryBenchmark: string;
 }
 
 export interface UpdateProcessBody {
@@ -33,6 +34,7 @@ export interface UpdateProcessBody {
   humanInTheLoop?: string;
   kpi?: string;
   estimatedValueImpact?: string;
+  industryBenchmark?: string;
 }
 
 export interface ErrorResponse {
