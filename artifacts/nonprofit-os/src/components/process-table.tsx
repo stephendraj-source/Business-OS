@@ -26,6 +26,7 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'processName',          label: 'Process Name',          defaultWidth: 175, minWidth: 110 },
   { key: 'processDescription',   label: 'Process Description',   defaultWidth: 260, minWidth: 140 },
   { key: 'aiAgent',              label: 'AI Agent',              defaultWidth: 175, minWidth: 110 },
+  { key: 'aiAgentActive',        label: 'AI Agent Active',       defaultWidth: 120, minWidth: 100 },
   { key: 'purpose',              label: 'Purpose',               defaultWidth: 215, minWidth: 130 },
   { key: 'inputs',               label: 'Inputs',                defaultWidth: 200, minWidth: 130 },
   { key: 'outputs',              label: 'Outputs',               defaultWidth: 200, minWidth: 130 },
@@ -302,6 +303,28 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         return (
           <td key="aiAgent" className="overflow-hidden p-0" style={{ width: widths['aiAgent'] }}>
             <EditableCell processId={process.id} field="aiAgent" initialValue={process.aiAgent} />
+          </td>
+        );
+      case 'aiAgentActive':
+        return (
+          <td key="aiAgentActive" className="align-middle p-0 text-center" style={{ width: widths['aiAgentActive'] }}>
+            <label className="flex items-center justify-center h-full w-full cursor-pointer py-3 gap-1.5">
+              <span
+                onClick={() => updateProcess({ id: process.id, data: { aiAgentActive: !process.aiAgentActive } })}
+                className={cn(
+                  "flex items-center justify-center w-5 h-5 rounded border-2 transition-all duration-150 shrink-0",
+                  process.aiAgentActive
+                    ? "bg-primary border-primary shadow-[0_0_8px_rgba(99,102,241,0.5)]"
+                    : "bg-transparent border-border hover:border-primary/60"
+                )}
+              >
+                {process.aiAgentActive && (
+                  <svg viewBox="0 0 10 8" className="w-3 h-3 text-white fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                    <polyline points="1,4 3.5,6.5 9,1" />
+                  </svg>
+                )}
+              </span>
+            </label>
           </td>
         );
       case 'purpose':

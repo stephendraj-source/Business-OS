@@ -307,6 +307,7 @@ router.put("/processes/:id", async (req, res) => {
     if (body.estimatedValueImpact !== undefined) updateData.estimatedValueImpact = body.estimatedValueImpact as string;
     if (body.industryBenchmark !== undefined) updateData.industryBenchmark = body.industryBenchmark as string;
     if (body.included !== undefined) updateData.included = body.included as boolean;
+    if (body.aiAgentActive !== undefined) updateData.aiAgentActive = body.aiAgentActive as boolean;
     if (body.target !== undefined) updateData.target = body.target as string;
     if (body.achievement !== undefined) updateData.achievement = body.achievement as string;
 

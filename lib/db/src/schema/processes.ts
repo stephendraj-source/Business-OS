@@ -9,6 +9,7 @@ export const processesTable = pgTable("processes", {
   processDescription: text("process_name").notNull(),
   processName: text("process_short_name").notNull().default(""),
   aiAgent: text("ai_agent").notNull().default(""),
+  aiAgentActive: boolean("ai_agent_active").notNull().default(false),
   purpose: text("purpose").notNull().default(""),
   inputs: text("inputs").notNull().default(""),
   outputs: text("outputs").notNull().default(""),
