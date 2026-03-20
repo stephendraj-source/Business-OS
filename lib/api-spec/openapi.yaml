@@ -17,7 +17,6 @@ paths:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -31,7 +30,6 @@ paths:
       operationId: listProcesses
       tags: [processes]
       summary: List all processes
-      description: Returns all nonprofit processes
       responses:
         "200":
           description: List of processes
@@ -97,6 +95,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+    delete:
+      operationId: deleteProcess
+      tags: [processes]
+      summary: Delete a process
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /categories:
     get:
       operationId: listCategories
@@ -131,6 +153,8 @@ components:
           type: integer
         category:
           type: string
+        processDescription:
+          type: string
         processName:
           type: string
         aiAgent:
@@ -149,10 +173,17 @@ components:
           type: string
         industryBenchmark:
           type: string
+        included:
+          type: boolean
+        target:
+          type: string
+        achievement:
+          type: string
       required:
         - id
         - number
         - category
+        - processDescription
         - processName
         - aiAgent
         - purpose
@@ -162,11 +193,16 @@ components:
         - kpi
         - estimatedValueImpact
         - industryBenchmark
+        - included
+        - target
+        - achievement
 
     UpdateProcessBody:
       type: object
       properties:
         category:
+          type: string
+        processDescription:
           type: string
         processName:
           type: string
@@ -186,6 +222,20 @@ components:
           type: string
         industryBenchmark:
           type: string
+        included:
+          type: boolean
+        target:
+          type: string
+        achievement:
+          type: string
+
+    DeleteResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
 
     ErrorResponse:
       type: object

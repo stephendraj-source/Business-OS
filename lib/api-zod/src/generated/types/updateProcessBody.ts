@@ -8,6 +8,7 @@
 
 export interface UpdateProcessBody {
   category?: string;
+  processDescription?: string;
   processName?: string;
   aiAgent?: string;
   purpose?: string;
@@ -17,4 +18,7 @@ export interface UpdateProcessBody {
   kpi?: string;
   estimatedValueImpact?: string;
   industryBenchmark?: string;
+  included?: boolean;
+  target?: string;
+  achievement?: string;
 }

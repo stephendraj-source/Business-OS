@@ -10,6 +10,7 @@ export interface Process {
   id: number;
   number: number;
   category: string;
+  processDescription: string;
   processName: string;
   aiAgent: string;
   purpose: string;
@@ -19,4 +20,7 @@ export interface Process {
   kpi: string;
   estimatedValueImpact: string;
   industryBenchmark: string;
+  included: boolean;
+  target: string;
+  achievement: string;
 }

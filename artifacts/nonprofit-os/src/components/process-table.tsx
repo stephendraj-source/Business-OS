@@ -1,8 +1,9 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { EditableCell } from './editable-cell';
-import { useProcessesData, useCategoriesData } from '@/hooks/use-app-data';
-import { Search, Loader2 } from 'lucide-react';
+import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow } from '@/hooks/use-app-data';
+import { Search, Loader2, Trash2, GripVertical } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
+import type { Process } from '@workspace/api-client-react';
 
 interface ColumnDef {
   key: string;
@@ -12,75 +13,136 @@ interface ColumnDef {
   fixed?: boolean;
 }
 
-const COLUMNS: ColumnDef[] = [
-  { key: '#',                  label: '#',                    defaultWidth: 52,  minWidth: 40,  fixed: true },
-  { key: 'category',           label: 'Category',             defaultWidth: 190, minWidth: 120 },
-  { key: 'processName',        label: 'Process Name',         defaultWidth: 240, minWidth: 140 },
-  { key: 'aiAgent',            label: 'AI Agent',             defaultWidth: 180, minWidth: 120 },
-  { key: 'purpose',            label: 'Purpose',              defaultWidth: 220, minWidth: 140 },
-  { key: 'inputs',             label: 'Inputs',               defaultWidth: 210, minWidth: 140 },
-  { key: 'outputs',            label: 'Outputs',              defaultWidth: 210, minWidth: 140 },
-  { key: 'humanInTheLoop',     label: 'Human-in-the-Loop',   defaultWidth: 180, minWidth: 120 },
-  { key: 'kpi',                label: 'KPI',                  defaultWidth: 180, minWidth: 120 },
-  { key: 'estimatedValueImpact', label: 'Value Impact',      defaultWidth: 200, minWidth: 130 },
-  { key: 'industryBenchmark',  label: 'Industry Benchmark',   defaultWidth: 240, minWidth: 160 },
+const FIXED_START: ColumnDef[] = [
+  { key: 'include', label: 'Include', defaultWidth: 72, minWidth: 60, fixed: true },
+  { key: '#',       label: '#',       defaultWidth: 52, minWidth: 40, fixed: true },
 ];
 
-function useColumnResize(columns: ColumnDef[]) {
-  const [widths, setWidths] = useState<number[]>(() => columns.map(c => c.defaultWidth));
-  const resizing = useRef<{ colIndex: number; startX: number; startWidth: number } | null>(null);
+const REORDERABLE: ColumnDef[] = [
+  { key: 'category',             label: 'Category',             defaultWidth: 185, minWidth: 110 },
+  { key: 'processName',          label: 'Process Name',          defaultWidth: 175, minWidth: 110 },
+  { key: 'processDescription',   label: 'Process Description',   defaultWidth: 260, minWidth: 140 },
+  { key: 'aiAgent',              label: 'AI Agent',              defaultWidth: 175, minWidth: 110 },
+  { key: 'purpose',              label: 'Purpose',               defaultWidth: 215, minWidth: 130 },
+  { key: 'inputs',               label: 'Inputs',                defaultWidth: 200, minWidth: 130 },
+  { key: 'outputs',              label: 'Outputs',               defaultWidth: 200, minWidth: 130 },
+  { key: 'humanInTheLoop',       label: 'Human-in-the-Loop',    defaultWidth: 175, minWidth: 110 },
+  { key: 'kpi',                  label: 'KPI',                   defaultWidth: 175, minWidth: 110 },
+  { key: 'target',               label: 'Target',                defaultWidth: 160, minWidth: 110 },
+  { key: 'achievement',          label: 'Achievement',           defaultWidth: 160, minWidth: 110 },
+  { key: 'estimatedValueImpact', label: 'Value Impact',          defaultWidth: 190, minWidth: 120 },
+  { key: 'industryBenchmark',    label: 'Industry Benchmark',    defaultWidth: 235, minWidth: 150 },
+];
 
-  const onMouseDown = useCallback((colIndex: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    resizing.current = { colIndex, startX: e.clientX, startWidth: widths[colIndex] };
+const FIXED_END: ColumnDef[] = [
+  { key: 'actions', label: '', defaultWidth: 52, minWidth: 48, fixed: true },
+];
 
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!resizing.current) return;
-      const { colIndex, startX, startWidth } = resizing.current;
-      const delta = ev.clientX - startX;
-      const newWidth = Math.max(columns[colIndex].minWidth, startWidth + delta);
-      setWidths(prev => {
-        const next = [...prev];
-        next[colIndex] = newWidth;
-        return next;
-      });
-    };
+const ALL_COLS = [...FIXED_START, ...REORDERABLE, ...FIXED_END];
 
-    const onMouseUp = () => {
-      resizing.current = null;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
-  }, [widths, columns]);
-
-  return { widths, onMouseDown };
+function initWidths() {
+  return Object.fromEntries(ALL_COLS.map(c => [c.key, c.defaultWidth]));
 }
 
-export function ProcessTable() {
+interface TableProps {
+  mode?: 'matrix' | 'portfolio';
+}
+
+export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const { data: processes, isLoading, error } = useProcessesData();
   const { data: categories } = useCategoriesData();
+  const { mutate: updateProcess } = useOptimisticUpdateProcess();
+  const { mutate: deleteProcess } = useDeleteProcessRow();
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
-  const { widths, onMouseDown } = useColumnResize(COLUMNS);
+
+  const [widths, setWidths] = useState<Record<string, number>>(initWidths);
+  const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
+
+  const resizing = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
+  const dragKey = useRef<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  const orderedReorderable = useMemo(() =>
+    colOrder.map(k => REORDERABLE.find(c => c.key === k)!).filter(Boolean),
+    [colOrder]
+  );
+  const allVisibleCols = [...FIXED_START, ...orderedReorderable, ...FIXED_END];
+  const totalWidth = allVisibleCols.reduce((s, c) => s + (widths[c.key] ?? c.defaultWidth), 0);
+
+  const startResize = useCallback((key: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startWidth = widths[key];
+    resizing.current = { key, startX: e.clientX, startWidth };
+
+    const onMove = (ev: MouseEvent) => {
+      if (!resizing.current) return;
+      const { key, startX, startWidth } = resizing.current;
+      const colDef = ALL_COLS.find(c => c.key === key)!;
+      const newW = Math.max(colDef.minWidth, startWidth + (ev.clientX - startX));
+      setWidths(prev => ({ ...prev, [key]: newW }));
+    };
+    const onUp = () => {
+      resizing.current = null;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [widths]);
+
+  const onDragStart = (key: string) => { dragKey.current = key; };
+  const onDragOver = (e: React.DragEvent, key: string) => {
+    e.preventDefault();
+    if (dragKey.current && dragKey.current !== key) setDragOverKey(key);
+  };
+  const onDrop = (targetKey: string) => {
+    const fromKey = dragKey.current;
+    if (!fromKey || fromKey === targetKey) { setDragOverKey(null); return; }
+    setColOrder(prev => {
+      const next = prev.filter(k => k !== fromKey);
+      const toIdx = next.indexOf(targetKey);
+      next.splice(toIdx, 0, fromKey);
+      return next;
+    });
+    dragKey.current = null;
+    setDragOverKey(null);
+  };
+  const onDragEnd = () => { dragKey.current = null; setDragOverKey(null); };
 
   const filteredProcesses = useMemo(() => {
     if (!processes) return [];
     return processes.filter(p => {
-      const matchesSearch =
-        p.processName.toLowerCase().includes(search.toLowerCase()) ||
+      if (mode === 'portfolio' && !p.included) return false;
+      const matchesSearch = !search ||
+        (p.processName ?? '').toLowerCase().includes(search.toLowerCase()) ||
+        p.processDescription.toLowerCase().includes(search.toLowerCase()) ||
         p.purpose.toLowerCase().includes(search.toLowerCase());
       const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
     }).sort((a, b) => a.number - b.number);
-  }, [processes, search, selectedCategory]);
+  }, [processes, search, selectedCategory, mode]);
+
+  const handleIncludeToggle = (process: Process) => {
+    updateProcess({ id: process.id, data: { included: !process.included } });
+  };
+
+  const handleDelete = (id: number) => {
+    if (confirmDelete === id) {
+      deleteProcess({ id });
+      setConfirmDelete(null);
+    } else {
+      setConfirmDelete(id);
+      setTimeout(() => setConfirmDelete(null), 2500);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -99,22 +161,148 @@ export function ProcessTable() {
     );
   }
 
-  const totalWidth = widths.reduce((a, b) => a + b, 0);
+  const title = mode === 'portfolio' ? 'Portfolio' : 'Process Matrix';
+  const subtitle = mode === 'portfolio'
+    ? 'Showing only included processes. Drag column headers to reorder.'
+    : 'Inline editing enabled — click any cell to update. Drag column headers to reorder, borders to resize.';
+
+  function renderCell(process: Process, colKey: string) {
+    switch (colKey) {
+      case 'include':
+        return (
+          <td key="include" className="align-middle p-0 text-center" style={{ width: widths['include'] }}>
+            <label className="flex items-center justify-center h-full w-full cursor-pointer py-3">
+              <input
+                type="checkbox"
+                checked={process.included}
+                onChange={() => handleIncludeToggle(process)}
+                className="w-4 h-4 rounded accent-primary cursor-pointer"
+              />
+            </label>
+          </td>
+        );
+      case '#':
+        return (
+          <td key="#" className="align-middle p-3 text-center text-muted-foreground font-mono text-xs overflow-hidden" style={{ width: widths['#'] }}>
+            {process.number}
+          </td>
+        );
+      case 'category':
+        return (
+          <td key="category" className="align-middle p-3 overflow-hidden" style={{ width: widths['category'] }}>
+            <span className={cn(
+              "px-2.5 py-1 rounded-full text-[11px] font-semibold border inline-block whitespace-nowrap max-w-full overflow-hidden text-ellipsis",
+              getCategoryColorClass(process.category)
+            )}>
+              {process.category}
+            </span>
+          </td>
+        );
+      case 'processName':
+        return (
+          <td key="processName" className="overflow-hidden p-0" style={{ width: widths['processName'] }}>
+            <EditableCell processId={process.id} field="processName" initialValue={process.processName} />
+          </td>
+        );
+      case 'processDescription':
+        return (
+          <td key="processDescription" className="overflow-hidden p-0" style={{ width: widths['processDescription'] }}>
+            <EditableCell processId={process.id} field="processDescription" initialValue={process.processDescription} multiline />
+          </td>
+        );
+      case 'aiAgent':
+        return (
+          <td key="aiAgent" className="overflow-hidden p-0" style={{ width: widths['aiAgent'] }}>
+            <EditableCell processId={process.id} field="aiAgent" initialValue={process.aiAgent} />
+          </td>
+        );
+      case 'purpose':
+        return (
+          <td key="purpose" className="overflow-hidden p-0" style={{ width: widths['purpose'] }}>
+            <EditableCell processId={process.id} field="purpose" initialValue={process.purpose} multiline />
+          </td>
+        );
+      case 'inputs':
+        return (
+          <td key="inputs" className="overflow-hidden p-0" style={{ width: widths['inputs'] }}>
+            <EditableCell processId={process.id} field="inputs" initialValue={process.inputs} multiline />
+          </td>
+        );
+      case 'outputs':
+        return (
+          <td key="outputs" className="overflow-hidden p-0" style={{ width: widths['outputs'] }}>
+            <EditableCell processId={process.id} field="outputs" initialValue={process.outputs} multiline />
+          </td>
+        );
+      case 'humanInTheLoop':
+        return (
+          <td key="humanInTheLoop" className="overflow-hidden p-0" style={{ width: widths['humanInTheLoop'] }}>
+            <EditableCell processId={process.id} field="humanInTheLoop" initialValue={process.humanInTheLoop} multiline />
+          </td>
+        );
+      case 'kpi':
+        return (
+          <td key="kpi" className="overflow-hidden p-0" style={{ width: widths['kpi'] }}>
+            <EditableCell processId={process.id} field="kpi" initialValue={process.kpi} multiline />
+          </td>
+        );
+      case 'target':
+        return (
+          <td key="target" className="overflow-hidden p-0" style={{ width: widths['target'] }}>
+            <EditableCell processId={process.id} field="target" initialValue={process.target} multiline />
+          </td>
+        );
+      case 'achievement':
+        return (
+          <td key="achievement" className="overflow-hidden p-0" style={{ width: widths['achievement'] }}>
+            <EditableCell processId={process.id} field="achievement" initialValue={process.achievement} multiline />
+          </td>
+        );
+      case 'estimatedValueImpact':
+        return (
+          <td key="estimatedValueImpact" className="overflow-hidden p-0" style={{ width: widths['estimatedValueImpact'] }}>
+            <EditableCell processId={process.id} field="estimatedValueImpact" initialValue={process.estimatedValueImpact} multiline />
+          </td>
+        );
+      case 'industryBenchmark':
+        return (
+          <td key="industryBenchmark" className="overflow-hidden p-0" style={{ width: widths['industryBenchmark'] }}>
+            <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline />
+          </td>
+        );
+      case 'actions':
+        return (
+          <td key="actions" className="align-middle p-2 text-center" style={{ width: widths['actions'] }}>
+            <button
+              onClick={() => handleDelete(process.id)}
+              title={confirmDelete === process.id ? 'Click again to confirm' : 'Delete row'}
+              className={cn(
+                "p-1.5 rounded-lg transition-all",
+                confirmDelete === process.id
+                  ? "bg-destructive text-destructive-foreground animate-pulse"
+                  : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              )}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </td>
+        );
+      default:
+        return null;
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-background relative overflow-hidden">
 
       {/* Toolbar */}
-      <div className="flex-none p-4 md:p-6 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card z-20">
+      <div className="flex-none p-4 md:p-5 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card z-20">
         <div>
-          <h2 className="text-xl font-display font-bold text-foreground">Process Matrix</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Inline editing enabled — click any cell to update. Drag column borders to resize.
-          </p>
+          <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
         </div>
-
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-60">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               placeholder="Search processes..."
@@ -123,7 +311,6 @@ export function ProcessTable() {
               className="w-full pl-9 pr-4 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
             />
           </div>
-
           <select
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}
@@ -137,92 +324,73 @@ export function ProcessTable() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table - horizontally scrollable */}
       <div className="flex-1 overflow-auto bg-card">
         <table
           className="spreadsheet-table border-collapse"
-          style={{ width: totalWidth, tableLayout: 'fixed' }}
+          style={{ width: totalWidth, tableLayout: 'fixed', minWidth: '100%' }}
         >
           <colgroup>
-            {widths.map((w, i) => <col key={i} style={{ width: w }} />)}
+            {allVisibleCols.map(c => (
+              <col key={c.key} style={{ width: widths[c.key] ?? c.defaultWidth }} />
+            ))}
           </colgroup>
 
           <thead>
             <tr>
-              {COLUMNS.map((col, i) => (
-                <th
-                  key={col.key}
-                  className="relative select-none overflow-hidden text-ellipsis whitespace-nowrap"
-                  style={{ width: widths[i], minWidth: col.minWidth }}
-                >
-                  <span className="block truncate pr-3">{col.label}</span>
-
-                  {/* Resize handle */}
-                  <div
-                    onMouseDown={e => onMouseDown(i, e)}
-                    className="absolute top-0 right-0 h-full w-2 cursor-col-resize z-10 group flex items-center justify-center"
-                    title="Drag to resize"
+              {allVisibleCols.map((col) => {
+                const isReorderable = !col.fixed;
+                const isDragOver = dragOverKey === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={cn(
+                      "relative select-none overflow-hidden text-ellipsis whitespace-nowrap",
+                      isReorderable && "cursor-grab active:cursor-grabbing",
+                      isDragOver && "bg-primary/10"
+                    )}
+                    style={{ width: widths[col.key] ?? col.defaultWidth }}
+                    draggable={isReorderable}
+                    onDragStart={isReorderable ? () => onDragStart(col.key) : undefined}
+                    onDragOver={isReorderable ? (e) => onDragOver(e, col.key) : undefined}
+                    onDrop={isReorderable ? () => onDrop(col.key) : undefined}
+                    onDragEnd={isReorderable ? onDragEnd : undefined}
                   >
-                    <div className="w-px h-4/5 bg-border group-hover:bg-primary/60 transition-colors" />
-                  </div>
-                </th>
-              ))}
+                    <span className="flex items-center gap-1 pr-3">
+                      {isReorderable && (
+                        <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                      )}
+                      <span className="truncate">{col.label}</span>
+                    </span>
+
+                    {/* Resize handle */}
+                    {col.key !== 'actions' && (
+                      <div
+                        onMouseDown={(e) => startResize(col.key, e)}
+                        className="absolute top-0 right-0 h-full w-2 cursor-col-resize z-10 group flex items-center justify-center"
+                      >
+                        <div className="w-px h-4/5 bg-border group-hover:bg-primary/60 transition-colors" />
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
 
           <tbody>
             {filteredProcesses.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length} className="p-8 text-center text-muted-foreground bg-background">
-                  No processes found matching your criteria.
+                <td colSpan={allVisibleCols.length} className="p-8 text-center text-muted-foreground bg-background">
+                  {mode === 'portfolio'
+                    ? 'No included processes. Check the "Include" checkbox in the Process Matrix to add processes here.'
+                    : 'No processes found matching your criteria.'}
                 </td>
               </tr>
             ) : (
               filteredProcesses.map(process => (
-                <tr key={process.id}>
-                  {/* # */}
-                  <td className="align-middle p-3 text-center text-muted-foreground font-mono text-xs overflow-hidden">
-                    {process.number}
-                  </td>
-
-                  {/* Category badge */}
-                  <td className="align-middle p-3 overflow-hidden">
-                    <span className={cn(
-                      "px-2.5 py-1 rounded-full text-[11px] font-semibold border inline-block whitespace-nowrap max-w-full overflow-hidden text-ellipsis",
-                      getCategoryColorClass(process.category)
-                    )}>
-                      {process.category}
-                    </span>
-                  </td>
-
-                  {/* Editable columns */}
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="processName" initialValue={process.processName} />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="aiAgent" initialValue={process.aiAgent} />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="purpose" initialValue={process.purpose} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="inputs" initialValue={process.inputs} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="outputs" initialValue={process.outputs} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="humanInTheLoop" initialValue={process.humanInTheLoop} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="kpi" initialValue={process.kpi} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="estimatedValueImpact" initialValue={process.estimatedValueImpact} multiline />
-                  </td>
-                  <td className="overflow-hidden p-0">
-                    <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline />
-                  </td>
+                <tr key={process.id} className={cn(process.included && mode === 'matrix' && "bg-primary/[0.03]")}>
+                  {allVisibleCols.map(col => renderCell(process, col.key))}
                 </tr>
               ))
             )}
@@ -231,8 +399,11 @@ export function ProcessTable() {
       </div>
 
       {/* Footer */}
-      <div className="flex-none p-3 border-t border-border bg-sidebar flex justify-between items-center text-xs text-muted-foreground">
-        <span>Showing {filteredProcesses.length} of {processes?.length || 0} processes</span>
+      <div className="flex-none px-4 py-2 border-t border-border bg-sidebar flex justify-between items-center text-xs text-muted-foreground">
+        <span>
+          Showing {filteredProcesses.length} of {mode === 'portfolio' ? (processes?.filter(p => p.included).length || 0) : (processes?.length || 0)} processes
+          {mode === 'portfolio' && ` · ${processes?.filter(p => p.included).length || 0} included total`}
+        </span>
         <span className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           System Online

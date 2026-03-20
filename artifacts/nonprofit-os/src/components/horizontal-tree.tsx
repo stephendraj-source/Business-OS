@@ -104,7 +104,7 @@ export function HorizontalTree() {
                         <h4 className={cn(
                           "font-medium text-sm leading-snug",
                           isActive ? "text-primary-foreground" : "text-foreground"
-                        )}>{process.processName}</h4>
+                        )}>{process.processName || process.processDescription}</h4>
                       </div>
                       <ChevronRight className={cn(
                         "w-4 h-4 shrink-0 mt-1 transition-transform",
@@ -143,8 +143,11 @@ export function HorizontalTree() {
                     <span className="text-sm font-mono text-muted-foreground">ID: {selectedProcess.number}</span>
                 </div>
                 <h1 className="text-3xl font-display font-bold text-foreground leading-tight">
-                  {selectedProcess.processName}
+                  {selectedProcess.processName || selectedProcess.processDescription}
                 </h1>
+                {selectedProcess.processName && (
+                  <p className="text-base text-muted-foreground mt-2 leading-relaxed">{selectedProcess.processDescription}</p>
+                )}
               </div>
 
               {/* Grid Content */}

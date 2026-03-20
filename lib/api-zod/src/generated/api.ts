@@ -8,7 +8,6 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -16,13 +15,13 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Returns all nonprofit processes
  * @summary List all processes
  */
 export const ListProcessesResponseItem = zod.object({
   id: zod.number(),
   number: zod.number(),
   category: zod.string(),
+  processDescription: zod.string(),
   processName: zod.string(),
   aiAgent: zod.string(),
   purpose: zod.string(),
@@ -32,6 +31,9 @@ export const ListProcessesResponseItem = zod.object({
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
   industryBenchmark: zod.string(),
+  included: zod.boolean(),
+  target: zod.string(),
+  achievement: zod.string(),
 });
 export const ListProcessesResponse = zod.array(ListProcessesResponseItem);
 
@@ -46,6 +48,7 @@ export const GetProcessResponse = zod.object({
   id: zod.number(),
   number: zod.number(),
   category: zod.string(),
+  processDescription: zod.string(),
   processName: zod.string(),
   aiAgent: zod.string(),
   purpose: zod.string(),
@@ -55,6 +58,9 @@ export const GetProcessResponse = zod.object({
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
   industryBenchmark: zod.string(),
+  included: zod.boolean(),
+  target: zod.string(),
+  achievement: zod.string(),
 });
 
 /**
@@ -66,6 +72,7 @@ export const UpdateProcessParams = zod.object({
 
 export const UpdateProcessBody = zod.object({
   category: zod.string().optional(),
+  processDescription: zod.string().optional(),
   processName: zod.string().optional(),
   aiAgent: zod.string().optional(),
   purpose: zod.string().optional(),
@@ -75,12 +82,16 @@ export const UpdateProcessBody = zod.object({
   kpi: zod.string().optional(),
   estimatedValueImpact: zod.string().optional(),
   industryBenchmark: zod.string().optional(),
+  included: zod.boolean().optional(),
+  target: zod.string().optional(),
+  achievement: zod.string().optional(),
 });
 
 export const UpdateProcessResponse = zod.object({
   id: zod.number(),
   number: zod.number(),
   category: zod.string(),
+  processDescription: zod.string(),
   processName: zod.string(),
   aiAgent: zod.string(),
   purpose: zod.string(),
@@ -90,6 +101,20 @@ export const UpdateProcessResponse = zod.object({
   kpi: zod.string(),
   estimatedValueImpact: zod.string(),
   industryBenchmark: zod.string(),
+  included: zod.boolean(),
+  target: zod.string(),
+  achievement: zod.string(),
+});
+
+/**
+ * @summary Delete a process
+ */
+export const DeleteProcessParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const DeleteProcessResponse = zod.object({
+  success: zod.boolean(),
 });
 
 /**

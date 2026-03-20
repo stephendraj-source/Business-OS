@@ -46,32 +46,23 @@ router.put("/processes/:id", async (req, res) => {
       res.status(400).json({ error: "Invalid id" });
       return;
     }
-    const {
-      category,
-      processName,
-      aiAgent,
-      purpose,
-      inputs,
-      outputs,
-      humanInTheLoop,
-      kpi,
-      estimatedValueImpact,
-      industryBenchmark,
-    } = req.body as Record<string, string>;
+    const body = req.body as Record<string, string | boolean>;
 
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
-    if (category !== undefined) updateData.category = category;
-    if (processName !== undefined) updateData.processName = processName;
-    if (aiAgent !== undefined) updateData.aiAgent = aiAgent;
-    if (purpose !== undefined) updateData.purpose = purpose;
-    if (inputs !== undefined) updateData.inputs = inputs;
-    if (outputs !== undefined) updateData.outputs = outputs;
-    if (humanInTheLoop !== undefined) updateData.humanInTheLoop = humanInTheLoop;
-    if (kpi !== undefined) updateData.kpi = kpi;
-    if (estimatedValueImpact !== undefined)
-      updateData.estimatedValueImpact = estimatedValueImpact;
-    if (industryBenchmark !== undefined)
-      updateData.industryBenchmark = industryBenchmark;
+    if (body.category !== undefined) updateData.category = body.category as string;
+    if (body.processDescription !== undefined) updateData.processDescription = body.processDescription as string;
+    if (body.processName !== undefined) updateData.processName = body.processName as string;
+    if (body.aiAgent !== undefined) updateData.aiAgent = body.aiAgent as string;
+    if (body.purpose !== undefined) updateData.purpose = body.purpose as string;
+    if (body.inputs !== undefined) updateData.inputs = body.inputs as string;
+    if (body.outputs !== undefined) updateData.outputs = body.outputs as string;
+    if (body.humanInTheLoop !== undefined) updateData.humanInTheLoop = body.humanInTheLoop as string;
+    if (body.kpi !== undefined) updateData.kpi = body.kpi as string;
+    if (body.estimatedValueImpact !== undefined) updateData.estimatedValueImpact = body.estimatedValueImpact as string;
+    if (body.industryBenchmark !== undefined) updateData.industryBenchmark = body.industryBenchmark as string;
+    if (body.included !== undefined) updateData.included = body.included as boolean;
+    if (body.target !== undefined) updateData.target = body.target as string;
+    if (body.achievement !== undefined) updateData.achievement = body.achievement as string;
 
     const [updated] = await db
       .update(processesTable)
@@ -86,6 +77,28 @@ router.put("/processes/:id", async (req, res) => {
     res.json(updated);
   } catch (err) {
     req.log.error(err, "Failed to update process");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/processes/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      res.status(400).json({ error: "Invalid id" });
+      return;
+    }
+    const [deleted] = await db
+      .delete(processesTable)
+      .where(eq(processesTable.id, id))
+      .returning();
+    if (!deleted) {
+      res.status(404).json({ error: "Process not found" });
+      return;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error(err, "Failed to delete process");
     res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  DeleteResponse,
   ErrorResponse,
   HealthStatus,
   Process,
@@ -33,7 +34,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -109,7 +109,6 @@ export function useHealthCheck<
 }
 
 /**
- * Returns all nonprofit processes
  * @summary List all processes
  */
 export const getListProcessesUrl = () => {
@@ -356,6 +355,90 @@ export const useUpdateProcess = <
   TContext
 > => {
   return useMutation(getUpdateProcessMutationOptions(options));
+};
+
+/**
+ * @summary Delete a process
+ */
+export const getDeleteProcessUrl = (id: number) => {
+  return `/api/processes/${id}`;
+};
+
+export const deleteProcess = async (
+  id: number,
+  options?: RequestInit,
+): Promise<DeleteResponse> => {
+  return customFetch<DeleteResponse>(getDeleteProcessUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProcessMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProcess>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProcess>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteProcess"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProcess>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteProcess(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProcessMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProcess>>
+>;
+
+export type DeleteProcessMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Delete a process
+ */
+export const useDeleteProcess = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProcess>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProcess>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteProcessMutationOptions(options));
 };
 
 /**
