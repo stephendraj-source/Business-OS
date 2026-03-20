@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Message {
@@ -19,8 +19,8 @@ interface Conversation {
 
 interface Position { x: number; y: number }
 
-const PANEL_W = 420;
-const PANEL_H = 600;
+const PANEL_W = 440;
+const PANEL_H = 620;
 const MARGIN = 24;
 
 function defaultPosition(): Position {
@@ -52,7 +52,9 @@ export function Chatbot() {
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
-  const [showConvList, setShowConvList] = useState(false);
+  const [streamingPrompt, setStreamingPrompt] = useState('');
+  // History panel is always shown by default
+  const [showConvList, setShowConvList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -66,7 +68,6 @@ export function Chatbot() {
 
   useEffect(() => {
     if (!isDragging) return;
-
     const onMove = (e: MouseEvent) => {
       if (!dragStartRef.current) return;
       const dx = e.clientX - dragStartRef.current.mouseX;
@@ -75,21 +76,12 @@ export function Chatbot() {
       const newY = Math.max(0, Math.min(window.innerHeight - PANEL_H, dragStartRef.current.panelY + dy));
       setPos({ x: newX, y: newY });
     };
-
-    const onUp = () => {
-      setIsDragging(false);
-      dragStartRef.current = null;
-    };
-
+    const onUp = () => { setIsDragging(false); dragStartRef.current = null; };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-    return () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, [isDragging]);
 
-  // Keep panel on screen when window resizes
   useEffect(() => {
     const onResize = () => {
       setPos(prev => ({
@@ -156,6 +148,7 @@ export function Chatbot() {
     setInput('');
     setStreaming(true);
     setStreamingContent('');
+    setStreamingPrompt(content);
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', content, createdAt: new Date().toISOString() }]);
 
     try {
@@ -193,8 +186,10 @@ export function Chatbot() {
 
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: fullContent, createdAt: new Date().toISOString() }]);
       setStreamingContent('');
+      setStreamingPrompt('');
     } catch {
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', createdAt: new Date().toISOString() }]);
+      setStreamingPrompt('');
     } finally {
       setStreaming(false);
       inputRef.current?.focus();
@@ -206,18 +201,27 @@ export function Chatbot() {
   };
 
   const startNewChat = () => {
-    setActiveConvId(null); setMessages([]); setStreamingContent('');
+    setActiveConvId(null); setMessages([]); setStreamingContent(''); setStreamingPrompt('');
     setShowConvList(false); setInput('');
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
-  // Floating trigger button — always anchored bottom-right
-  const btnRight = window.innerWidth - pos.x - PANEL_W;
-  const btnBottom = window.innerHeight - pos.y - PANEL_H;
+  // Group messages into prompt→response exchanges for display
+  const exchanges = useMemo(() => {
+    const result: Array<{ user: Message; assistant?: Message }> = [];
+    for (let i = 0; i < messages.length; i++) {
+      if (messages[i].role === 'user') {
+        const next = messages[i + 1];
+        result.push({ user: messages[i], assistant: next?.role === 'assistant' ? next : undefined });
+        if (next?.role === 'assistant') i++;
+      }
+    }
+    return result;
+  }, [messages]);
 
   return (
     <>
-      {/* Floating button — always on top */}
+      {/* Floating trigger button */}
       <button
         onClick={() => setOpen(v => !v)}
         className={cn(
@@ -252,7 +256,7 @@ export function Chatbot() {
           <div
             onMouseDown={onHeaderMouseDown}
             className={cn(
-              "flex items-center justify-between px-4 py-3 border-b border-border bg-card",
+              "flex items-center justify-between px-4 py-3 border-b border-border bg-card flex-none",
               isDragging ? "cursor-grabbing" : "cursor-grab"
             )}
           >
@@ -270,7 +274,7 @@ export function Chatbot() {
               <button
                 onClick={() => setShowConvList(v => !v)}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                title="Conversation history"
+                title={showConvList ? "Hide conversation history" : "Show conversation history"}
               >
                 <ChevronDown className={cn("w-4 h-4 transition-transform", showConvList && "rotate-180")} />
               </button>
@@ -291,42 +295,50 @@ export function Chatbot() {
             </div>
           </div>
 
-          {/* Conversation list */}
+          {/* Conversation history — always shown by default, collapsible */}
           {showConvList && (
-            <div className="border-b border-border bg-sidebar max-h-44 overflow-y-auto">
-              {conversations.length === 0 ? (
-                <p className="text-xs text-muted-foreground p-3 text-center">No conversations yet</p>
-              ) : conversations.map(conv => (
-                <div
-                  key={conv.id}
-                  onClick={() => loadConversation(conv.id)}
-                  className={cn(
-                    "flex items-center justify-between px-3 py-2.5 cursor-pointer group hover:bg-secondary/50 transition-colors",
-                    activeConvId === conv.id && "bg-primary/10"
-                  )}
-                >
-                  <span className={cn("text-xs truncate flex-1", activeConvId === conv.id ? "text-primary font-medium" : "text-foreground/80")}>
-                    {conv.title}
-                  </span>
-                  <button
-                    onClick={(e) => deleteConversation(conv.id, e)}
-                    className="shrink-0 ml-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+            <div className="border-b border-border bg-sidebar flex-none">
+              <div className="px-3 py-2 border-b border-border/50 flex items-center justify-between">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-wider">CONVERSATION HISTORY</p>
+                <span className="text-[10px] text-muted-foreground/40">{conversations.length} chat{conversations.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="overflow-y-auto" style={{ maxHeight: '120px' }}>
+                {conversations.length === 0 ? (
+                  <p className="text-xs text-muted-foreground p-3 text-center italic">No previous conversations</p>
+                ) : conversations.map(conv => (
+                  <div
+                    key={conv.id}
+                    onClick={() => loadConversation(conv.id)}
+                    className={cn(
+                      "flex items-center justify-between px-3 py-2 cursor-pointer group hover:bg-secondary/50 transition-colors",
+                      activeConvId === conv.id && "bg-primary/10"
+                    )}
                   >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
+                    <span className={cn("text-xs truncate flex-1", activeConvId === conv.id ? "text-primary font-medium" : "text-foreground/80")}>
+                      {conv.title}
+                    </span>
+                    <button
+                      onClick={(e) => deleteConversation(conv.id, e)}
+                      className="shrink-0 ml-2 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-destructive/20 text-muted-foreground hover:text-destructive transition-all"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.length === 0 && !streaming && (
+          {/* Messages — exchanges displayed as prompt → response pairs */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-5 min-h-0">
+
+            {/* Empty state */}
+            {exchanges.length === 0 && !streaming && (
               <div className="space-y-4">
-                <div className="text-center text-muted-foreground text-xs pt-4">
+                <div className="text-center text-muted-foreground text-xs pt-2">
                   <Sparkles className="w-8 h-8 mx-auto mb-2 text-primary/40" />
                   <p className="font-medium text-foreground text-sm">Ask me anything</p>
-                  <p className="mt-1">I have context on all 101 processes, KPIs, targets, benchmarks, and can query Salesforce data (read-only).</p>
+                  <p className="mt-1">I have context on all processes, KPIs, targets, benchmarks, and can query Salesforce data (read-only).</p>
                 </div>
                 <div className="space-y-2">
                   <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold">Suggestions</p>
@@ -343,55 +355,61 @@ export function Chatbot() {
               </div>
             )}
 
-            {messages.map(msg => (
-              <div key={msg.id} className={cn("flex gap-2", msg.role === 'user' ? "justify-end" : "justify-start")}>
-                {msg.role === 'assistant' && (
-                  <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                    <Bot className="w-4 h-4 text-primary" />
+            {/* Render each prompt → response exchange */}
+            {exchanges.map(({ user, assistant }, idx) => {
+              const isCurrentlyStreaming = streaming && idx === exchanges.length - 1 && !assistant;
+              return (
+                <div key={user.id} className="space-y-2">
+                  {/* Original prompt — always shown before the result */}
+                  <div className="flex items-start gap-2">
+                    <div className="w-6 h-6 rounded-md bg-secondary flex items-center justify-center shrink-0 mt-0.5">
+                      <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[10px] font-semibold text-muted-foreground/60 tracking-wider mb-0.5">YOUR PROMPT</div>
+                      <div className="text-xs text-foreground/80 bg-secondary/40 rounded-lg px-3 py-2 border border-border/40 whitespace-pre-wrap break-words">
+                        {user.content}
+                      </div>
+                    </div>
                   </div>
-                )}
-                <div className={cn(
-                  "max-w-[85%] rounded-xl px-3 py-2 text-sm",
-                  msg.role === 'user'
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "bg-secondary text-foreground rounded-bl-sm"
-                )}>
-                  {msg.role === 'assistant' ? (
-                    <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-pre:my-1 prose-blockquote:my-1">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                  )}
-                </div>
-              </div>
-            ))}
 
-            {streaming && (
-              <div className="flex gap-2 justify-start">
-                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                  <Bot className="w-4 h-4 text-primary" />
-                </div>
-                <div className="max-w-[85%] bg-secondary rounded-xl rounded-bl-sm px-3 py-2 text-sm">
-                  {streamingContent ? (
-                    <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 py-1">
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  {/* AI response — either completed or streaming in-progress */}
+                  {(assistant || isCurrentlyStreaming) && (
+                    <div className="flex items-start gap-2 pl-2">
+                      <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                        <Bot className={cn("w-3.5 h-3.5 text-primary", isCurrentlyStreaming && "animate-pulse")} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-semibold text-primary/60 tracking-wider mb-0.5">AI RESPONSE</div>
+                        <div className="bg-secondary text-foreground rounded-xl px-3 py-2.5 text-sm">
+                          {assistant ? (
+                            <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-pre:my-1 prose-blockquote:my-1">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{assistant.content}</ReactMarkdown>
+                            </div>
+                          ) : streamingContent ? (
+                            <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 py-1">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
-              </div>
-            )}
+              );
+            })}
+
             <div ref={messagesEndRef} />
           </div>
 
           {/* Input */}
-          <div className="border-t border-border p-3 bg-card">
+          <div className="border-t border-border p-3 bg-card flex-none">
             <div className="flex gap-2 items-end">
               <textarea
                 ref={inputRef}
