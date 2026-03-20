@@ -38,6 +38,26 @@ export const ListProcessesResponseItem = zod.object({
 export const ListProcessesResponse = zod.array(ListProcessesResponseItem);
 
 /**
+ * @summary Create a new process
+ */
+export const CreateProcessBody = zod.object({
+  category: zod.string(),
+  processDescription: zod.string(),
+  processName: zod.string().optional(),
+  aiAgent: zod.string().optional(),
+  purpose: zod.string().optional(),
+  inputs: zod.string().optional(),
+  outputs: zod.string().optional(),
+  humanInTheLoop: zod.string().optional(),
+  kpi: zod.string().optional(),
+  estimatedValueImpact: zod.string().optional(),
+  industryBenchmark: zod.string().optional(),
+  included: zod.boolean().optional(),
+  target: zod.string().optional(),
+  achievement: zod.string().optional(),
+});
+
+/**
  * @summary Get a process by ID
  */
 export const GetProcessParams = zod.object({
@@ -118,6 +138,32 @@ export const DeleteProcessResponse = zod.object({
 });
 
 /**
+ * @summary Use AI to populate blank fields for a process
+ */
+export const AiPopulateProcessParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AiPopulateProcessResponse = zod.object({
+  id: zod.number(),
+  number: zod.number(),
+  category: zod.string(),
+  processDescription: zod.string(),
+  processName: zod.string(),
+  aiAgent: zod.string(),
+  purpose: zod.string(),
+  inputs: zod.string(),
+  outputs: zod.string(),
+  humanInTheLoop: zod.string(),
+  kpi: zod.string(),
+  estimatedValueImpact: zod.string(),
+  industryBenchmark: zod.string(),
+  included: zod.boolean(),
+  target: zod.string(),
+  achievement: zod.string(),
+});
+
+/**
  * @summary List distinct categories
  */
 export const ListCategoriesResponseItem = zod.string();
@@ -134,6 +180,45 @@ export const ImportProcessesResponse = zod.object({
   inserted: zod.number(),
   updated: zod.number(),
   total: zod.number(),
+});
+
+/**
+ * @summary List audit log entries
+ */
+export const listAuditLogsQueryLimitDefault = 200;
+
+export const ListAuditLogsQueryParams = zod.object({
+  limit: zod.coerce.number().default(listAuditLogsQueryLimitDefault),
+});
+
+export const ListAuditLogsResponseItem = zod.object({
+  id: zod.number(),
+  timestamp: zod.date(),
+  action: zod.string(),
+  entityType: zod.string(),
+  entityId: zod.string().nullish(),
+  entityName: zod.string().nullish(),
+  fieldChanged: zod.string().nullish(),
+  oldValue: zod.string().nullish(),
+  newValue: zod.string().nullish(),
+  user: zod.string(),
+  description: zod.string().nullish(),
+});
+export const ListAuditLogsResponse = zod.array(ListAuditLogsResponseItem);
+
+/**
+ * @summary Create an audit log entry
+ */
+export const CreateAuditLogBody = zod.object({
+  action: zod.string(),
+  entityType: zod.string(),
+  entityId: zod.string().optional(),
+  entityName: zod.string().optional(),
+  fieldChanged: zod.string().optional(),
+  oldValue: zod.string().optional(),
+  newValue: zod.string().optional(),
+  user: zod.string().optional(),
+  description: zod.string().optional(),
 });
 
 /**

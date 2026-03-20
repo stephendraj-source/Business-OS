@@ -3,8 +3,12 @@ import {
   useListProcesses, 
   useUpdateProcess,
   useDeleteProcess,
+  useCreateProcess,
+  useAiPopulateProcess,
+  useListAuditLogs,
   useListCategories,
-  getListProcessesQueryKey
+  getListProcessesQueryKey,
+  getListAuditLogsQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -14,6 +18,10 @@ export function useProcessesData() {
 
 export function useCategoriesData() {
   return useListCategories();
+}
+
+export function useAuditLogsData(limit = 200) {
+  return useListAuditLogs({ limit });
 }
 
 export function useOptimisticUpdateProcess() {
@@ -46,6 +54,51 @@ export function useOptimisticUpdateProcess() {
       },
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: getListProcessesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAuditLogsQueryKey() });
+      },
+    }
+  });
+}
+
+export function useCreateProcessMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useCreateProcess({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProcessesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAuditLogsQueryKey() });
+        toast({ title: "Process created" });
+      },
+      onError: (err) => {
+        toast({
+          title: "Failed to create process",
+          description: (err as any).message || "An unexpected error occurred",
+          variant: "destructive",
+        });
+      },
+    }
+  });
+}
+
+export function useAiPopulateProcessMutation() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useAiPopulateProcess({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListProcessesQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListAuditLogsQueryKey() });
+        toast({ title: "AI fields populated successfully" });
+      },
+      onError: (err) => {
+        toast({
+          title: "AI populate failed",
+          description: (err as any).message || "An unexpected error occurred",
+          variant: "destructive",
+        });
       },
     }
   });
@@ -79,6 +132,7 @@ export function useDeleteProcessRow() {
       },
       onSuccess: () => {
         toast({ title: "Process deleted" });
+        queryClient.invalidateQueries({ queryKey: getListAuditLogsQueryKey() });
       },
       onSettled: () => {
         queryClient.invalidateQueries({ queryKey: getListProcessesQueryKey() });

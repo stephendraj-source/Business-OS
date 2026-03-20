@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { EditableCell } from './editable-cell';
-import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2 } from 'lucide-react';
+import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
 
@@ -53,9 +53,12 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const { data: categories } = useCategoriesData();
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
   const { mutate: deleteProcess } = useDeleteProcessRow();
+  const { mutate: createProcess, isPending: isCreating } = useCreateProcessMutation();
+  const { mutate: aiPopulate, isPending: isAiPopulating } = useAiPopulateProcessMutation();
 
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
@@ -205,7 +208,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     );
   }
 
-  const title = mode === 'portfolio' ? 'Portfolio' : 'Process Matrix';
+  const title = mode === 'portfolio' ? 'Portfolio Catalogue' : 'Process Catalogue';
   const subtitle = mode === 'portfolio'
     ? 'Showing only included processes. Drag column headers to reorder.'
     : 'Inline editing enabled — click any cell to update. Drag column headers to reorder, borders to resize.';
@@ -376,6 +379,15 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           </select>
 
           <div className="flex items-center gap-1.5">
+            {mode === 'matrix' && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Process
+              </button>
+            )}
             <button
               onClick={handleExport}
               title="Export to Excel"
@@ -526,6 +538,172 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           System Online
         </span>
+      </div>
+
+      {/* Add Process Modal */}
+      {showAddModal && (
+        <AddProcessModal
+          categories={categories ?? []}
+          onClose={() => setShowAddModal(false)}
+          onCreateAndPopulate={(body, useAi) => {
+            createProcess({ data: body }, {
+              onSuccess: (created) => {
+                if (useAi) {
+                  aiPopulate({ id: created.id }, { onSettled: () => setShowAddModal(false) });
+                } else {
+                  setShowAddModal(false);
+                }
+              },
+            });
+          }}
+          isCreating={isCreating}
+          isPopulating={isAiPopulating}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Add Process Modal ─────────────────────────────────────────────────────────
+
+function AddProcessModal({
+  categories,
+  onClose,
+  onCreateAndPopulate,
+  isCreating,
+  isPopulating,
+}: {
+  categories: string[];
+  onClose: () => void;
+  onCreateAndPopulate: (body: Record<string, string>, useAi: boolean) => void;
+  isCreating: boolean;
+  isPopulating: boolean;
+}) {
+  const [category, setCategory] = useState(categories[0] ?? '');
+  const [processName, setProcessName] = useState('');
+  const [processDescription, setProcessDescription] = useState('');
+  const [useAi, setUseAi] = useState(true);
+  const isBusy = isCreating || isPopulating;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!category || !processDescription.trim()) return;
+    onCreateAndPopulate({ category, processName, processDescription }, useAi);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-2 font-semibold text-foreground">
+            <Plus className="w-4 h-4 text-primary" />
+            Add New Process
+          </div>
+          <button onClick={onClose} disabled={isBusy} className="p-1 rounded-lg hover:bg-secondary text-muted-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Category *</label>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              required
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+            >
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Process Name (short)</label>
+            <input
+              type="text"
+              value={processName}
+              onChange={e => setProcessName(e.target.value)}
+              placeholder="e.g. Donor Retention"
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Process Description *</label>
+            <textarea
+              value={processDescription}
+              onChange={e => setProcessDescription(e.target.value)}
+              required
+              rows={3}
+              placeholder="Describe what this process does…"
+              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+
+          {/* AI Auto-Fill Toggle */}
+          <button
+            type="button"
+            onClick={() => setUseAi(v => !v)}
+            className={cn(
+              "w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-all",
+              useAi
+                ? "border-primary/50 bg-primary/5"
+                : "border-border bg-secondary/30 opacity-70"
+            )}
+          >
+            <div className={cn(
+              "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
+              useAi ? "bg-primary/20" : "bg-secondary"
+            )}>
+              <Sparkles className={cn("w-4 h-4", useAi ? "text-primary" : "text-muted-foreground")} />
+            </div>
+            <div>
+              <div className={cn("text-sm font-semibold", useAi ? "text-foreground" : "text-muted-foreground")}>
+                AI Auto-Fill
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {useAi
+                  ? "Claude will auto-populate all blank fields after creation"
+                  : "Create with manual data only"}
+              </div>
+            </div>
+            <div className={cn(
+              "ml-auto w-4 h-4 rounded-full border-2 shrink-0 transition-colors",
+              useAi ? "bg-primary border-primary" : "border-muted-foreground/40"
+            )} />
+          </button>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isBusy}
+              className="flex-1 px-4 py-2.5 border border-border bg-secondary/50 hover:bg-secondary text-foreground rounded-xl text-sm font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isBusy || !processDescription.trim()}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {isBusy ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {isCreating ? 'Creating…' : 'AI Filling…'}
+                </>
+              ) : (
+                <>
+                  {useAi ? <Cpu className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  {useAi ? 'Create & AI Fill' : 'Create Process'}
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

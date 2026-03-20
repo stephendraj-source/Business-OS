@@ -13,6 +13,8 @@ tags:
     description: Nonprofit process operations
   - name: anthropic
     description: Anthropic AI chat operations
+  - name: audit
+    description: Audit log operations
 paths:
   /healthz:
     get:
@@ -41,6 +43,29 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Process"
+    post:
+      operationId: createProcess
+      tags: [processes]
+      summary: Create a new process
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProcessBody"
+      responses:
+        "201":
+          description: Created process
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Process"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /processes/export:
     get:
@@ -132,6 +157,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /processes/{id}/ai-populate:
+    post:
+      operationId: aiPopulateProcess
+      tags: [processes]
+      summary: Use AI to populate blank fields for a process
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: AI-populated process
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Process"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /categories:
     get:
       operationId: listCategories
@@ -175,6 +225,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit log entries
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 200
+      responses:
+        "200":
+          description: List of audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLog"
+    post:
+      operationId: createAuditLog
+      tags: [audit]
+      summary: Create an audit log entry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAuditLogBody"
+      responses:
+        "201":
+          description: Created audit log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLog"
 
   /anthropic/conversations:
     get:
@@ -357,6 +446,41 @@ components:
         - target
         - achievement
 
+    CreateProcessBody:
+      type: object
+      properties:
+        category:
+          type: string
+        processDescription:
+          type: string
+        processName:
+          type: string
+        aiAgent:
+          type: string
+        purpose:
+          type: string
+        inputs:
+          type: string
+        outputs:
+          type: string
+        humanInTheLoop:
+          type: string
+        kpi:
+          type: string
+        estimatedValueImpact:
+          type: string
+        industryBenchmark:
+          type: string
+        included:
+          type: boolean
+        target:
+          type: string
+        achievement:
+          type: string
+      required:
+        - category
+        - processDescription
+
     UpdateProcessBody:
       type: object
       properties:
@@ -418,6 +542,70 @@ components:
           type: string
       required:
         - error
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+          nullable: true
+        entityName:
+          type: string
+          nullable: true
+        fieldChanged:
+          type: string
+          nullable: true
+        oldValue:
+          type: string
+          nullable: true
+        newValue:
+          type: string
+          nullable: true
+        user:
+          type: string
+        description:
+          type: string
+          nullable: true
+      required:
+        - id
+        - timestamp
+        - action
+        - entityType
+        - user
+
+    CreateAuditLogBody:
+      type: object
+      properties:
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        entityName:
+          type: string
+        fieldChanged:
+          type: string
+        oldValue:
+          type: string
+        newValue:
+          type: string
+        user:
+          type: string
+        description:
+          type: string
+      required:
+        - action
+        - entityType
 
     AnthropicConversation:
       type: object

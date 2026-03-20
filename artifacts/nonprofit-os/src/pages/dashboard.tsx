@@ -5,9 +5,12 @@ import { HorizontalTree } from '@/components/horizontal-tree';
 import { ProcessMap } from '@/components/process-map';
 import { Connectors } from '@/components/connectors';
 import { Chatbot } from '@/components/chatbot';
+import { AuditLogsView } from '@/components/audit-logs-view';
+import { DashboardsView } from '@/components/dashboards-view';
+import { SettingsView } from '@/components/settings-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'audit-logs' | 'settings';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -45,6 +48,21 @@ export default function Dashboard() {
         {activeView === 'connectors' && (
           <motion.div key="connectors" {...fadeSlide} className="w-full h-full">
             <Connectors />
+          </motion.div>
+        )}
+        {activeView === 'dashboards' && (
+          <motion.div key="dashboards" {...fadeSlide} className="w-full h-full">
+            <DashboardsView />
+          </motion.div>
+        )}
+        {activeView === 'audit-logs' && (
+          <motion.div key="audit-logs" {...fadeSlide} className="w-full h-full">
+            <AuditLogsView />
+          </motion.div>
+        )}
+        {activeView === 'settings' && (
+          <motion.div key="settings" {...fadeSlide} className="w-full h-full">
+            <SettingsView />
           </motion.div>
         )}
       </AnimatePresence>

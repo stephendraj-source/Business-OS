@@ -28,6 +28,23 @@ export interface Process {
   achievement: string;
 }
 
+export interface CreateProcessBody {
+  category: string;
+  processDescription: string;
+  processName?: string;
+  aiAgent?: string;
+  purpose?: string;
+  inputs?: string;
+  outputs?: string;
+  humanInTheLoop?: string;
+  kpi?: string;
+  estimatedValueImpact?: string;
+  industryBenchmark?: string;
+  included?: boolean;
+  target?: string;
+  achievement?: string;
+}
+
 export interface UpdateProcessBody {
   category?: string;
   processDescription?: string;
@@ -57,6 +74,32 @@ export interface ImportResult {
 
 export interface ErrorResponse {
   error: string;
+}
+
+export interface AuditLog {
+  id: number;
+  timestamp: string;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  entityName?: string | null;
+  fieldChanged?: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  user: string;
+  description?: string | null;
+}
+
+export interface CreateAuditLogBody {
+  action: string;
+  entityType: string;
+  entityId?: string;
+  entityName?: string;
+  fieldChanged?: string;
+  oldValue?: string;
+  newValue?: string;
+  user?: string;
+  description?: string;
 }
 
 export interface AnthropicConversation {
@@ -94,4 +137,8 @@ export interface AnthropicError {
 
 export type ImportProcessesBody = {
   file?: Blob;
+};
+
+export type ListAuditLogsParams = {
+  limit?: number;
 };

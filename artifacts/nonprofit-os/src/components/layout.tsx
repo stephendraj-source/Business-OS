@@ -1,7 +1,7 @@
 import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'audit-logs' | 'settings';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,10 +30,10 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
           <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Core Views</div>
             <div className="space-y-1">
-              <NavItem icon={<TableProperties />} label="Process Matrix" active={activeView === 'table'} onClick={() => onViewChange('table')} />
-              <NavItem icon={<Network />} label="Architecture Tree" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
-              <NavItem icon={<Map />} label="Process Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
-              <NavItem icon={<Briefcase />} label="Portfolio" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
+              <NavItem icon={<TableProperties />} label="Process Catalogue" active={activeView === 'table'} onClick={() => onViewChange('table')} />
+              <NavItem icon={<Network />} label="Process Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
+              <NavItem icon={<Map />} label="Portfolio Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
+              <NavItem icon={<Briefcase />} label="Portfolio Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
             </div>
           </div>
 
@@ -47,9 +47,9 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
           <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">System</div>
             <div className="space-y-1">
-              <NavItem icon={<LayoutDashboard />} label="Dashboards" disabled />
-              <NavItem icon={<Bell />} label="Alerts & Logs" disabled />
-              <NavItem icon={<Settings />} label="Settings" disabled />
+              <NavItem icon={<LayoutDashboard />} label="Dashboards" active={activeView === 'dashboards'} onClick={() => onViewChange('dashboards')} />
+              <NavItem icon={<Bell />} label="Audit &amp; Logs" active={activeView === 'audit-logs'} onClick={() => onViewChange('audit-logs')} />
+              <NavItem icon={<Settings />} label="Settings" active={activeView === 'settings'} onClick={() => onViewChange('settings')} />
             </div>
           </div>
 
@@ -102,7 +102,6 @@ function NavItem({ icon, label, active, onClick, disabled }: {
         {icon}
       </span>
       {label}
-      {disabled && <span className="ml-auto text-[10px] bg-sidebar-border px-1.5 py-0.5 rounded text-sidebar-foreground/40">WIP</span>}
     </button>
   );
 }

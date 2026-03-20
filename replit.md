@@ -4,6 +4,16 @@
 
 Nonprofit Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
 
+## Navigation (sidebar names)
+- **Process Catalogue** (was "Process Matrix") — editable process table
+- **Process Map** (was "Architecture Tree") — horizontal tree diagram
+- **Portfolio Map** (was "Process Map") — drill-down category/process info card view
+- **Portfolio Catalogue** (was "Portfolio") — filtered process table for included processes
+- **Connectors** — Salesforce and integration config
+- **Dashboards** — configurable widget dashboard (stored in localStorage)
+- **Audit & Logs** — full audit trail of all create/update/delete/import/export/AI actions
+- **Settings** — colour theme selector (5 themes, persisted in localStorage)
+
 ## Stack
 
 - **Monorepo tool**: pnpm workspaces
