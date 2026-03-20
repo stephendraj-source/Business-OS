@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
 import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye } from 'lucide-react';
@@ -256,6 +257,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [govStandards, setGovStandards] = useState<GovStandard[]>([]);
   const [govMap, setGovMap] = useState<GovMap>({});
   const [govPopoverFor, setGovPopoverFor] = useState<number | null>(null);
+  const [govPopoverPos, setGovPopoverPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const [editingNumberFor, setEditingNumberFor] = useState<number | null>(null);
   const [editingNumberValue, setEditingNumberValue] = useState('');
@@ -725,7 +727,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         const assignedStandards = govStandards.filter(g => assigned.includes(g.id));
         const isOpen = govPopoverFor === process.id;
         return (
-          <td key="governance" className="align-middle p-2 overflow-hidden relative" style={{ width: widths['governance'] }}>
+          <td key="governance" className="align-middle p-2 overflow-hidden" style={{ width: widths['governance'] }}>
             <div className="flex flex-wrap gap-1 items-center">
               {assignedStandards.map(g => (
                 <span key={g.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">
@@ -734,45 +736,66 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                 </span>
               ))}
               <button
-                onClick={() => setGovPopoverFor(isOpen ? null : process.id)}
+                onClick={(e) => {
+                  if (isOpen) {
+                    setGovPopoverFor(null);
+                  } else {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setGovPopoverPos({ top: rect.bottom + 4, left: rect.left });
+                    setGovPopoverFor(process.id);
+                  }
+                }}
                 title="Assign governance standards"
                 className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" />
               </button>
             </div>
-            {isOpen && (
-              <div
-                className="absolute z-50 top-full left-0 mt-1 w-56 rounded-xl border border-border bg-card shadow-xl shadow-black/30 py-2"
-                onClick={e => e.stopPropagation()}
-              >
-                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                  Assign Standards
+            {isOpen && createPortal(
+              <>
+                {/* Backdrop to close on outside click */}
+                <div
+                  className="fixed inset-0 z-[90]"
+                  onClick={() => setGovPopoverFor(null)}
+                />
+                <div
+                  className="fixed z-[91] w-56 rounded-xl border border-border bg-card shadow-xl shadow-black/30 py-2"
+                  style={{ top: govPopoverPos.top, left: govPopoverPos.left }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                    Assign Standards
+                  </div>
+                  {govStandards.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">No standards available</div>
+                  ) : (
+                    govStandards.map(g => {
+                      const checked = assigned.includes(g.id);
+                      return (
+                        <label
+                          key={g.id}
+                          className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 cursor-pointer transition-colors"
+                          onClick={() => toggleGovAssignment(process.id, g.id)}
+                        >
+                          <span className={cn(
+                            "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all",
+                            checked ? "bg-primary border-primary" : "border-border"
+                          )}>
+                            {checked && <CheckCircle2 className="w-2.5 h-2.5 text-primary-foreground" />}
+                          </span>
+                          <span className="text-xs text-foreground flex-1">{g.complianceName}</span>
+                        </label>
+                      );
+                    })
+                  )}
+                  <div className="border-t border-border mt-1 pt-1 px-3">
+                    <button onClick={() => setGovPopoverFor(null)} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                      Close
+                    </button>
+                  </div>
                 </div>
-                {govStandards.length === 0 ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">No standards available</div>
-                ) : (
-                  govStandards.map(g => {
-                    const checked = assigned.includes(g.id);
-                    return (
-                      <label key={g.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 cursor-pointer transition-colors">
-                        <span className={cn(
-                          "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all",
-                          checked ? "bg-primary border-primary" : "border-border"
-                        )}>
-                          {checked && <CheckCircle2 className="w-2.5 h-2.5 text-primary-foreground" />}
-                        </span>
-                        <span onClick={() => toggleGovAssignment(process.id, g.id)} className="text-xs text-foreground flex-1">{g.complianceName}</span>
-                      </label>
-                    );
-                  })
-                )}
-                <div className="border-t border-border mt-1 pt-1 px-3">
-                  <button onClick={() => setGovPopoverFor(null)} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                    Close
-                  </button>
-                </div>
-              </div>
+              </>,
+              document.body
             )}
           </td>
         );
