@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
 
@@ -41,7 +41,7 @@ const REORDERABLE: ColumnDef[] = [
 ];
 
 const FIXED_END: ColumnDef[] = [
-  { key: 'actions', label: '', defaultWidth: 52, minWidth: 48, fixed: true },
+  { key: 'actions', label: '', defaultWidth: 84, minWidth: 72, fixed: true },
 ];
 
 const ALL_COLS = [...FIXED_START, ...REORDERABLE, ...FIXED_END];
@@ -52,6 +52,66 @@ function initWidths() {
 
 interface TableProps {
   mode?: 'matrix' | 'portfolio';
+}
+
+function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: () => void }) {
+  const pid = `PRO-${String(process.number).padStart(3, '0')}`;
+  const tlMap: Record<string, { dot: string; label: string; text: string }> = {
+    green:  { dot: 'bg-green-500',  label: 'On Track',  text: 'text-green-400' },
+    orange: { dot: 'bg-amber-400',  label: 'At Risk',   text: 'text-amber-400' },
+    red:    { dot: 'bg-red-500',    label: 'Off Track', text: 'text-red-400' },
+  };
+  const tl = (process as any).trafficLight as string | undefined;
+  const tlMeta = tl ? tlMap[tl] : null;
+
+  const fields: { label: string; value: React.ReactNode }[] = [
+    { label: 'Process ID',         value: <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{pid}</span> },
+    { label: 'Category',           value: process.category },
+    { label: 'Process Name',       value: <span className="font-medium">{process.processName}</span> },
+    { label: 'Description',        value: process.processDescription || <em className="opacity-40">—</em> },
+    { label: 'AI Agent',           value: process.aiAgent || <em className="opacity-40">—</em> },
+    { label: 'Purpose',            value: process.purpose || <em className="opacity-40">—</em> },
+    { label: 'Inputs',             value: process.inputs || <em className="opacity-40">—</em> },
+    { label: 'Outputs',            value: process.outputs || <em className="opacity-40">—</em> },
+    { label: 'Human in the Loop',  value: process.humanInTheLoop || <em className="opacity-40">—</em> },
+    { label: 'KPI',                value: process.kpi || <em className="opacity-40">—</em> },
+    { label: 'Target',             value: process.target || <em className="opacity-40">—</em> },
+    { label: 'Achievement',        value: process.achievement || <em className="opacity-40">—</em> },
+    { label: 'Est. Value Impact',  value: process.estimatedValueImpact || <em className="opacity-40">—</em> },
+    { label: 'Industry Benchmark', value: process.industryBenchmark || <em className="opacity-40">—</em> },
+    {
+      label: 'Traffic Light',
+      value: tlMeta
+        ? <span className={cn("inline-flex items-center gap-1.5 text-xs font-semibold", tlMeta.text)}><span className={cn("w-2.5 h-2.5 rounded-full", tlMeta.dot)} />{tlMeta.label}</span>
+        : <em className="opacity-40">—</em>,
+    },
+    { label: 'In Portfolio', value: process.included ? <span className="text-xs text-green-400 font-semibold">Yes</span> : <span className="text-xs text-muted-foreground">No</span> },
+  ];
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full z-50 w-[420px] max-w-full bg-card border-l border-border shadow-2xl flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-none">
+          <div>
+            <div className="text-xs font-mono text-primary mb-0.5">{pid}</div>
+            <h3 className="font-semibold text-foreground text-base leading-tight">{process.processName}</h3>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {fields.map(f => (
+            <div key={f.label} className="grid grid-cols-[9rem_1fr] gap-2 items-start">
+              <span className="text-xs text-muted-foreground pt-0.5">{f.label}</span>
+              <span className="text-sm text-foreground break-words">{f.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
 }
 
 export function ProcessTable({ mode = 'matrix' }: TableProps) {
@@ -65,6 +125,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [search, setSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [detailProcess, setDetailProcess] = useState<Process | null>(null);
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
@@ -575,18 +636,27 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'actions':
         return (
           <td key="actions" className="align-middle p-2 text-center" style={{ width: widths['actions'] }}>
-            <button
-              onClick={() => handleDelete(process.id)}
-              title={confirmDelete === process.id ? 'Click again to confirm' : 'Delete row'}
-              className={cn(
-                "p-1.5 rounded-lg transition-all",
-                confirmDelete === process.id
-                  ? "bg-destructive text-destructive-foreground animate-pulse"
-                  : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              )}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center justify-center gap-1">
+              <button
+                onClick={() => setDetailProcess(process)}
+                title="View details"
+                className="p-1.5 rounded-lg transition-all text-muted-foreground hover:text-primary hover:bg-primary/10"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => handleDelete(process.id)}
+                title={confirmDelete === process.id ? 'Click again to confirm' : 'Delete row'}
+                className={cn(
+                  "p-1.5 rounded-lg transition-all",
+                  confirmDelete === process.id
+                    ? "bg-destructive text-destructive-foreground animate-pulse"
+                    : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                )}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </td>
         );
       default:
@@ -795,6 +865,11 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           System Online
         </span>
       </div>
+
+      {/* Process Detail Panel */}
+      {detailProcess && (
+        <ProcessDetailPanel process={detailProcess} onClose={() => setDetailProcess(null)} />
+      )}
 
       {/* Add Process Modal */}
       {showAddModal && (

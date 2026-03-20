@@ -25,6 +25,7 @@ type Process = {
   included: boolean;
   target: string;
   achievement: string;
+  trafficLight?: string;
 };
 
 const REPORT_TYPES = [
@@ -49,6 +50,7 @@ const FIELD_DEFS: Record<ReportId, FieldDef[]> = {
     { key: 'fieldsFilled',label: 'Fields Filled' },
     { key: 'completeness',label: 'Completeness' },
     { key: 'status',      label: 'Status' },
+    { key: 'trafficLight',label: 'Traffic Light' },
   ],
   category: [
     { key: 'category',        label: 'Category' },
@@ -71,6 +73,7 @@ const FIELD_DEFS: Record<ReportId, FieldDef[]> = {
     { key: 'kpi',         label: 'KPI' },
     { key: 'target',      label: 'Target' },
     { key: 'achievement', label: 'Achievement' },
+    { key: 'trafficLight',label: 'Traffic Light' },
   ],
   value: [
     { key: 'processId',   label: 'Process ID' },
@@ -131,6 +134,23 @@ function StatusBadge({ pct }: { pct: number }) {
   if (pct >= 80) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 font-semibold">Complete</span>;
   if (pct >= 50) return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/15 text-amber-400 font-semibold">Partial</span>;
   return <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-400/15 text-red-400 font-semibold">Sparse</span>;
+}
+
+function TrafficLightBadge({ value }: { value?: string }) {
+  if (!value) return <span className="text-muted-foreground/40 text-xs italic">—</span>;
+  const map: Record<string, { dot: string; label: string; bg: string; text: string }> = {
+    green:  { dot: 'bg-green-500',  label: 'On Track',  bg: 'bg-green-500/15',  text: 'text-green-400' },
+    orange: { dot: 'bg-amber-400',  label: 'At Risk',   bg: 'bg-amber-400/15',  text: 'text-amber-400' },
+    red:    { dot: 'bg-red-500',    label: 'Off Track', bg: 'bg-red-500/15',    text: 'text-red-400' },
+  };
+  const m = map[value];
+  if (!m) return <span className="text-muted-foreground/40 text-xs italic">—</span>;
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 text-[10px] px-1.5 py-0.5 rounded font-semibold", m.bg, m.text)}>
+      <span className={cn("w-2 h-2 rounded-full inline-block shrink-0", m.dot)} />
+      {m.label}
+    </span>
+  );
 }
 
 function TableWrapper({ children }: { children: React.ReactNode }) {
@@ -418,6 +438,7 @@ export function ReportsView() {
           else if (key === 'fieldsFilled') row['Fields Filled'] = `${filled}/${TRACKABLE_FIELDS.length}`;
           else if (key === 'completeness') row['Completeness (%)'] = pct;
           else if (key === 'status') row['Status'] = pct >= 80 ? 'Complete' : pct >= 50 ? 'Partial' : 'Sparse';
+          else if (key === 'trafficLight') row['Traffic Light'] = p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '';
         }
         return row;
       });
@@ -461,6 +482,7 @@ export function ReportsView() {
           else if (key === 'kpi') row['KPI'] = p.kpi;
           else if (key === 'target') row['Target'] = p.target;
           else if (key === 'achievement') row['Achievement'] = p.achievement;
+          else if (key === 'trafficLight') row['Traffic Light'] = p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '';
         }
         return row;
       });
@@ -737,9 +759,10 @@ function renderCoverageCell(p: Process, field: string): React.ReactNode {
     case 'processName': return <span className="font-medium">{p.processName}</span>;
     case 'description': return <span className="text-xs text-muted-foreground max-w-xs truncate block">{p.processDescription || <em className="opacity-40">—</em>}</span>;
     case 'fieldsFilled':return <span className="text-xs text-muted-foreground">{filled}/{TRACKABLE_FIELDS.length}</span>;
-    case 'completeness':return <CompletenessBar pct={pct} />;
-    case 'status':      return <StatusBadge pct={pct} />;
-    default:            return null;
+    case 'completeness':  return <CompletenessBar pct={pct} />;
+    case 'status':        return <StatusBadge pct={pct} />;
+    case 'trafficLight':  return <TrafficLightBadge value={p.trafficLight} />;
+    default:              return null;
   }
 }
 
@@ -891,10 +914,11 @@ function renderKpiCell(p: Process, field: string): React.ReactNode {
     case 'processId':   return <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
     case 'processName': return <span className="font-medium">{p.processName}</span>;
     case 'category':    return <span className="text-xs text-muted-foreground">{p.category}</span>;
-    case 'kpi':         return <span className="text-xs">{p.kpi || dash}</span>;
-    case 'target':      return <span className="text-xs">{p.target || dash}</span>;
-    case 'achievement': return <span className="text-xs">{p.achievement || dash}</span>;
-    default:            return null;
+    case 'kpi':          return <span className="text-xs">{p.kpi || dash}</span>;
+    case 'target':       return <span className="text-xs">{p.target || dash}</span>;
+    case 'achievement':  return <span className="text-xs">{p.achievement || dash}</span>;
+    case 'trafficLight': return <TrafficLightBadge value={p.trafficLight} />;
+    default:             return null;
   }
 }
 

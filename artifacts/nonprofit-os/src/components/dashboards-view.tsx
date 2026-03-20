@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Plus, X, BarChart2, Activity, CheckCircle2, Target,
   Cpu, TrendingUp, Loader2, FileText, PieChart as PieChartIcon,
   LineChart as LineChartIcon, AreaChart as AreaChartIcon, Settings2,
-  AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown,
+  AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown, Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -57,11 +57,12 @@ const METRICS: MetricDef[] = [
 const PALETTE = ['#6366f1','#f59e0b','#10b981','#ec4899','#3b82f6','#8b5cf6','#f97316','#06b6d4','#14b8a6','#a855f7'];
 
 const PRESET_REGISTRY = [
-  { id: 'summary',     title: 'Process Summary',      icon: BarChart2,  description: 'Portfolio totals and category counts' },
-  { id: 'categories',  title: 'Category Breakdown',   icon: Activity,   description: 'Portfolio processes by category (clickable)' },
-  { id: 'performance', title: 'Performance Overview', icon: Target,     description: 'KPI, Target and Actual per process' },
-  { id: 'ai-agents',   title: 'AI Agent Map',         icon: Cpu,        description: 'AI agents across processes' },
-  { id: 'value-impact',title: 'Value Impact',         icon: TrendingUp, description: 'Processes with value impact data' },
+  { id: 'summary',         title: 'Process Summary',      icon: BarChart2,  description: 'Portfolio totals and category counts' },
+  { id: 'categories',      title: 'Category Breakdown',   icon: Activity,   description: 'Portfolio processes by category (clickable)' },
+  { id: 'performance',     title: 'Performance Overview', icon: Target,     description: 'KPI, Target and Actual per process' },
+  { id: 'ai-agents',       title: 'AI Agent Map',         icon: Cpu,        description: 'AI agents across processes' },
+  { id: 'value-impact',    title: 'Value Impact',         icon: TrendingUp, description: 'Processes with value impact data' },
+  { id: 'recent-activity', title: 'Recent Activity',      icon: Clock,      description: 'Latest changes from the audit log' },
 ];
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -70,13 +71,14 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function buildDefaults(): WidgetConfig[] {
   return [
-    { kind: 'preset', uid: uid(), id: 'summary',     active: true },
-    { kind: 'preset', uid: uid(), id: 'categories',  active: true },
+    { kind: 'preset', uid: uid(), id: 'summary',         active: true },
+    { kind: 'preset', uid: uid(), id: 'categories',      active: true },
     { kind: 'chart',  uid: uid(), metric: 'processes-by-category', chartType: 'bar',   title: 'Processes by Category', active: true },
     { kind: 'chart',  uid: uid(), metric: 'portfolio-status',      chartType: 'donut', title: 'Portfolio Status',       active: true },
-    { kind: 'preset', uid: uid(), id: 'performance', active: false },
-    { kind: 'preset', uid: uid(), id: 'ai-agents',   active: false },
-    { kind: 'preset', uid: uid(), id: 'value-impact',active: false },
+    { kind: 'preset', uid: uid(), id: 'performance',     active: false },
+    { kind: 'preset', uid: uid(), id: 'ai-agents',       active: false },
+    { kind: 'preset', uid: uid(), id: 'value-impact',    active: false },
+    { kind: 'preset', uid: uid(), id: 'recent-activity', active: false },
   ];
 }
 
@@ -85,7 +87,13 @@ function loadWidgets(): WidgetConfig[] {
     const saved = localStorage.getItem(LS_KEY);
     if (saved) {
       const parsed: WidgetConfig[] = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0 && 'active' in parsed[0]) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0 && 'active' in parsed[0]) {
+        const knownPresetIds = PRESET_REGISTRY.map(r => r.id);
+        const existingIds = parsed.filter(w => w.kind === 'preset').map(w => (w as { kind: 'preset'; uid: string; id: string; active: boolean }).id);
+        const missing = knownPresetIds.filter(id => !existingIds.includes(id));
+        for (const id of missing) parsed.push({ kind: 'preset', uid: uid(), id, active: false });
+        return parsed;
+      }
     }
   } catch { /* ignore */ }
   return buildDefaults();
@@ -624,6 +632,56 @@ function ValueImpactWidget({ processes }: { processes: Process[] }) {
   );
 }
 
+function RecentActivityWidget({ logs }: { logs: Array<Record<string, unknown>> }) {
+  const recent = logs.slice(0, 8);
+
+  function relTime(ts: unknown): string {
+    if (!ts) return '';
+    const d = new Date(ts as string);
+    if (isNaN(d.getTime())) return '';
+    const diff = Date.now() - d.getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  function actionColor(action: string): string {
+    if (action === 'create') return 'text-green-400 bg-green-400/10';
+    if (action === 'delete') return 'text-red-400 bg-red-400/10';
+    if (action === 'update') return 'text-blue-400 bg-blue-400/10';
+    if (action === 'import') return 'text-violet-400 bg-violet-400/10';
+    return 'text-muted-foreground bg-secondary';
+  }
+
+  if (!recent.length) return <p className="text-sm text-muted-foreground italic">No activity recorded yet.</p>;
+
+  return (
+    <div className="space-y-2">
+      {recent.map((log, i) => {
+        const action = String(log.action ?? '');
+        const name = String(log.entityName ?? log.processName ?? '');
+        const desc = String(log.description ?? log.fieldChanged ?? '');
+        const ts = log.timestamp ?? log.createdAt;
+        return (
+          <div key={i} className="flex items-start gap-2.5 py-1">
+            <span className={cn("text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 mt-0.5 tracking-wide", actionColor(action))}>
+              {action || '—'}
+            </span>
+            <div className="flex-1 min-w-0">
+              {name && <div className="text-xs font-medium text-foreground/90 truncate">{name}</div>}
+              {desc && <div className="text-[10px] text-muted-foreground/70 truncate">{desc}</div>}
+            </div>
+            <span className="text-[10px] text-muted-foreground/50 shrink-0 mt-0.5">{relTime(ts)}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Widget shell ─────────────────────────────────────────────────────────────
 
 function WidgetShell({ title, icon, onClose, onConfigure, children }: {
@@ -839,6 +897,8 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
                     content = <AiAgentsWidget processes={allProcs} />;
                   } else if (w.id === 'value-impact') {
                     content = <ValueImpactWidget processes={allProcs} />;
+                  } else if (w.id === 'recent-activity') {
+                    content = <RecentActivityWidget logs={(rawLogs ?? []) as Array<Record<string, unknown>>} />;
                   }
 
                   return (
