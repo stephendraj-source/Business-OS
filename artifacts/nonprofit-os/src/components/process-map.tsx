@@ -1,17 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useProcessesData } from '@/hooks/use-app-data';
+import { useProcessesData, useOptimisticUpdateProcess } from '@/hooks/use-app-data';
 import {
   ChevronRight, Cpu, Target, ArrowRightLeft, Users, Activity,
-  TrendingUp, Loader2, Map, BarChart3, CheckCircle2, Award
+  TrendingUp, Loader2, Map, BarChart3, CheckCircle2, Award, Pencil
 } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
 
 export function ProcessMap() {
   const { data: processes, isLoading } = useProcessesData();
+  const { mutate: updateProcess } = useOptimisticUpdateProcess();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProcess, setSelectedProcess] = useState<Process | null>(null);
+
+  // Keep selectedProcess in sync with server data
+  const liveSelectedProcess = useMemo(() => {
+    if (!selectedProcess || !processes) return selectedProcess;
+    return processes.find(p => p.id === selectedProcess.id) ?? selectedProcess;
+  }, [selectedProcess, processes]);
 
   const includedProcesses = useMemo(() => {
     if (!processes) return [];
@@ -31,6 +38,11 @@ export function ProcessMap() {
     if (!selectedCategory) return [];
     return includedProcesses.filter(p => p.category === selectedCategory);
   }, [includedProcesses, selectedCategory]);
+
+  const handleSave = useCallback((field: string, value: string) => {
+    if (!liveSelectedProcess) return;
+    updateProcess({ id: liveSelectedProcess.id, data: { [field]: value } });
+  }, [liveSelectedProcess, updateProcess]);
 
   if (isLoading) {
     return (
@@ -77,10 +89,7 @@ export function ProcessMap() {
                 )}
               >
                 <div className="flex items-center gap-3">
-                  <div className={cn(
-                    "w-2 h-8 rounded-full shrink-0",
-                    isActive ? "bg-primary" : `bg-${getCategoryColorClass(cat).split(' ')[0].replace('text-', '')}`
-                  )} style={{ background: isActive ? undefined : getCatColor(cat) }} />
+                  <div className="w-2 h-8 rounded-full shrink-0" style={{ background: getCatColor(cat) }} />
                   <span className={cn("font-medium text-sm leading-snug", isActive ? "text-primary" : "text-foreground")}>
                     {cat}
                   </span>
@@ -106,12 +115,12 @@ export function ProcessMap() {
             className="flex-none w-72 border-r border-border bg-card flex flex-col h-full shrink-0 shadow-2xl z-10"
           >
             <div className="p-5 border-b border-border bg-card/50 flex items-center gap-3">
-              <span className={cn("w-3 h-3 rounded-full shrink-0")} style={{ background: getCatColor(selectedCategory) }} />
+              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: getCatColor(selectedCategory) }} />
               <h3 className="text-base font-display font-semibold text-foreground line-clamp-1">{selectedCategory}</h3>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-2">
               {categoryProcesses.map((process) => {
-                const isActive = selectedProcess?.id === process.id;
+                const isActive = liveSelectedProcess?.id === process.id;
                 return (
                   <button
                     key={process.id}
@@ -140,11 +149,11 @@ export function ProcessMap() {
         )}
       </AnimatePresence>
 
-      {/* Level 3: Info Card */}
+      {/* Level 3: Editable Info Card */}
       <AnimatePresence>
-        {selectedProcess && (
+        {liveSelectedProcess && (
           <motion.div
-            key={selectedProcess.id}
+            key={liveSelectedProcess.id}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
@@ -153,65 +162,122 @@ export function ProcessMap() {
           >
             <div className="max-w-3xl mx-auto p-8 space-y-8">
 
+              {/* Edit hint */}
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground/60 bg-secondary/30 border border-border/50 rounded-lg px-3 py-2">
+                <Pencil className="w-3 h-3" />
+                Click any field to edit inline — changes save automatically
+              </div>
+
               {/* Header */}
               <div>
                 <div className="flex items-center gap-3 mb-4">
-                  <span className={cn(
-                    "px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase",
-                    getCategoryColorClass(selectedProcess.category)
-                  )}>
-                    {selectedProcess.category}
+                  <span className={cn("px-3 py-1 rounded-full text-xs font-bold border tracking-wide uppercase", getCategoryColorClass(liveSelectedProcess.category))}>
+                    {liveSelectedProcess.category}
                   </span>
-                  <span className="text-sm font-mono text-muted-foreground">PRO-{selectedProcess.number.toString().padStart(3, '0')}</span>
+                  <span className="text-sm font-mono text-muted-foreground">PRO-{liveSelectedProcess.number.toString().padStart(3, '0')}</span>
                 </div>
-                <h1 className="text-2xl font-display font-bold text-foreground leading-tight">
-                  {selectedProcess.processName || selectedProcess.processDescription}
-                </h1>
-                {selectedProcess.processName && (
-                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed">{selectedProcess.processDescription}</p>
-                )}
+                <InlineEdit
+                  value={liveSelectedProcess.processName ?? ''}
+                  onSave={v => handleSave('processName', v)}
+                  className="text-2xl font-display font-bold text-foreground leading-tight"
+                  placeholder="Process name…"
+                  singleLine
+                />
+                <div className="mt-2">
+                  <InlineEdit
+                    value={liveSelectedProcess.processDescription ?? ''}
+                    onSave={v => handleSave('processDescription', v)}
+                    className="text-sm text-muted-foreground leading-relaxed"
+                    placeholder="Process description…"
+                  />
+                </div>
               </div>
 
               {/* KPI Performance Panel */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <KpiCard
+                <EditableKpiCard
                   icon={<Award />}
                   label="Industry Benchmark"
-                  value={selectedProcess.industryBenchmark}
+                  value={liveSelectedProcess.industryBenchmark ?? ''}
                   color="text-amber-400"
                   bg="bg-amber-400/10 border-amber-400/20"
                   emptyLabel="No benchmark set"
+                  onSave={v => handleSave('industryBenchmark', v)}
                 />
-                <KpiCard
+                <EditableKpiCard
                   icon={<Target />}
                   label="Target KPI"
-                  value={selectedProcess.target}
+                  value={liveSelectedProcess.target ?? ''}
                   color="text-primary"
                   bg="bg-primary/10 border-primary/20"
                   emptyLabel="No target set"
+                  onSave={v => handleSave('target', v)}
                 />
-                <KpiCard
+                <EditableKpiCard
                   icon={<CheckCircle2 />}
                   label="Achievement"
-                  value={selectedProcess.achievement}
+                  value={liveSelectedProcess.achievement ?? ''}
                   color="text-emerald-400"
                   bg="bg-emerald-400/10 border-emerald-400/20"
                   emptyLabel="No data yet"
+                  onSave={v => handleSave('achievement', v)}
                 />
               </div>
 
               {/* Detail grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <DetailSection icon={<Target />} title="Purpose" content={selectedProcess.purpose} fullWidth />
-                <DetailSection icon={<Cpu />} title="AI Agent" content={selectedProcess.aiAgent} highlight />
-                <DetailSection icon={<Users />} title="Human-in-the-Loop" content={selectedProcess.humanInTheLoop} />
+                <EditableDetailSection
+                  icon={<Target />}
+                  title="Purpose"
+                  value={liveSelectedProcess.purpose ?? ''}
+                  onSave={v => handleSave('purpose', v)}
+                  fullWidth
+                />
+                <EditableDetailSection
+                  icon={<Cpu />}
+                  title="AI Agent"
+                  value={liveSelectedProcess.aiAgent ?? ''}
+                  onSave={v => handleSave('aiAgent', v)}
+                  highlight
+                />
+                <EditableDetailSection
+                  icon={<Users />}
+                  title="Human-in-the-Loop"
+                  value={liveSelectedProcess.humanInTheLoop ?? ''}
+                  onSave={v => handleSave('humanInTheLoop', v)}
+                />
                 <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-secondary/30 rounded-2xl border border-border/50">
-                  <DetailSection icon={<ArrowRightLeft className="rotate-45" />} title="Inputs" content={selectedProcess.inputs} />
-                  <DetailSection icon={<ArrowRightLeft className="-rotate-45" />} title="Outputs" content={selectedProcess.outputs} />
+                  <EditableDetailSection
+                    icon={<ArrowRightLeft className="rotate-45" />}
+                    title="Inputs"
+                    value={liveSelectedProcess.inputs ?? ''}
+                    onSave={v => handleSave('inputs', v)}
+                  />
+                  <EditableDetailSection
+                    icon={<ArrowRightLeft className="-rotate-45" />}
+                    title="Outputs"
+                    value={liveSelectedProcess.outputs ?? ''}
+                    onSave={v => handleSave('outputs', v)}
+                  />
                 </div>
-                <DetailSection icon={<Activity />} title="KPIs" content={selectedProcess.kpi} />
-                <DetailSection icon={<TrendingUp />} title="Estimated Value Impact" content={selectedProcess.estimatedValueImpact} />
-                <DetailSection icon={<BarChart3 />} title="Industry Benchmark" content={selectedProcess.industryBenchmark} />
+                <EditableDetailSection
+                  icon={<Activity />}
+                  title="KPIs"
+                  value={liveSelectedProcess.kpi ?? ''}
+                  onSave={v => handleSave('kpi', v)}
+                />
+                <EditableDetailSection
+                  icon={<TrendingUp />}
+                  title="Estimated Value Impact"
+                  value={liveSelectedProcess.estimatedValueImpact ?? ''}
+                  onSave={v => handleSave('estimatedValueImpact', v)}
+                />
+                <EditableDetailSection
+                  icon={<BarChart3 />}
+                  title="Industry Benchmark (detail)"
+                  value={liveSelectedProcess.industryBenchmark ?? ''}
+                  onSave={v => handleSave('industryBenchmark', v)}
+                />
               </div>
 
             </div>
@@ -219,18 +285,234 @@ export function ProcessMap() {
         )}
       </AnimatePresence>
 
-      {/* Empty state */}
+      {/* Empty states */}
       {!selectedCategory && (
         <div className="flex-1 h-full flex flex-col items-center justify-center text-muted-foreground bg-background/50">
           <Map className="w-16 h-16 mb-4 opacity-20" />
           <p className="text-lg">Select a category to begin</p>
         </div>
       )}
-      {selectedCategory && !selectedProcess && (
+      {selectedCategory && !liveSelectedProcess && (
         <div className="flex-1 h-full flex flex-col items-center justify-center text-muted-foreground bg-background/50">
           <ChevronRight className="w-12 h-12 mb-3 opacity-20" />
           <p className="text-base">Select a process to view details</p>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Inline edit primitive ────────────────────────────────────────────────────
+
+function InlineEdit({
+  value,
+  onSave,
+  className,
+  placeholder,
+  singleLine,
+}: {
+  value: string;
+  onSave: (v: string) => void;
+  className?: string;
+  placeholder?: string;
+  singleLine?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => ref.current?.focus(), 30);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (singleLine && e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { setEditing(false); setDraft(value); }
+  };
+
+  if (editing) {
+    return singleLine ? (
+      <input
+        ref={ref as React.RefObject<HTMLInputElement>}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+        className={cn(
+          "w-full bg-secondary/60 border border-primary/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30",
+          className
+        )}
+      />
+    ) : (
+      <textarea
+        ref={ref as React.RefObject<HTMLTextAreaElement>}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={onKeyDown}
+        rows={3}
+        className={cn(
+          "w-full resize-y bg-secondary/60 border border-primary/40 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary/30",
+          className
+        )}
+      />
+    );
+  }
+
+  return (
+    <div
+      onClick={startEdit}
+      className={cn(
+        "group relative cursor-text rounded-lg px-2 py-1 -mx-2 -my-1 hover:bg-secondary/50 hover:ring-1 hover:ring-border transition-all",
+        !value && "italic text-muted-foreground",
+        className
+      )}
+    >
+      {value || placeholder}
+      <Pencil className="absolute top-2 right-2 w-3 h-3 text-muted-foreground/0 group-hover:text-muted-foreground/50 transition-opacity" />
+    </div>
+  );
+}
+
+// ── Editable KPI card ────────────────────────────────────────────────────────
+
+function EditableKpiCard({
+  icon, label, value, color, bg, emptyLabel, onSave,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  color: string;
+  bg: string;
+  emptyLabel: string;
+  onSave: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const startEdit = () => {
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => ref.current?.focus(), 30);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+
+  return (
+    <div className={cn("rounded-xl border p-4 space-y-2 group/card relative", bg)}>
+      <div className={cn("flex items-center gap-2 font-semibold text-xs uppercase tracking-wide", color)}>
+        <span className="w-3.5 h-3.5">{icon}</span>
+        {label}
+        <Pencil className="w-3 h-3 ml-auto opacity-0 group-hover/card:opacity-50 transition-opacity cursor-pointer" onClick={startEdit} />
+      </div>
+      {editing ? (
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Escape' && (setEditing(false), setDraft(value))}
+          rows={2}
+          className="w-full resize-none bg-background/50 border border-border rounded-lg px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+      ) : (
+        <p
+          onClick={startEdit}
+          className={cn(
+            "text-sm leading-relaxed cursor-text rounded px-1 py-0.5 -mx-1 hover:bg-background/30 transition-colors",
+            value ? "text-foreground" : "text-muted-foreground italic"
+          )}
+        >
+          {value || emptyLabel}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Editable detail section ──────────────────────────────────────────────────
+
+function EditableDetailSection({
+  icon, title, value, onSave, fullWidth, highlight,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  value: string;
+  onSave: (v: string) => void;
+  fullWidth?: boolean;
+  highlight?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  const startEdit = () => {
+    setDraft(value);
+    setEditing(true);
+    setTimeout(() => ref.current?.focus(), 30);
+  };
+
+  const commit = () => {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  };
+
+  return (
+    <div className={cn(
+      "space-y-2 group/section",
+      fullWidth && "col-span-1 md:col-span-2",
+      highlight && "p-5 bg-primary/5 border border-primary/20 rounded-xl"
+    )}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 text-muted-foreground font-semibold text-xs tracking-wide uppercase">
+          <span className={cn("w-4 h-4", highlight && "text-primary")}>{icon}</span>
+          <span className={highlight ? "text-primary" : ""}>{title}</span>
+        </div>
+        <button
+          onClick={startEdit}
+          className="opacity-0 group-hover/section:opacity-100 transition-opacity p-1 rounded hover:bg-secondary"
+          title={`Edit ${title}`}
+        >
+          <Pencil className="w-3 h-3 text-muted-foreground/60" />
+        </button>
+      </div>
+
+      {editing ? (
+        <textarea
+          ref={ref}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => e.key === 'Escape' && (setEditing(false), setDraft(value))}
+          rows={3}
+          className={cn(
+            "w-full resize-y bg-secondary/50 border border-primary/30 rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 leading-relaxed",
+            highlight && "font-medium"
+          )}
+        />
+      ) : (
+        <p
+          onClick={startEdit}
+          className={cn(
+            "text-foreground/90 leading-relaxed text-sm cursor-text rounded-lg px-2 py-1.5 -mx-2",
+            "hover:bg-secondary/40 transition-colors",
+            highlight && "text-foreground font-medium",
+            !value && "text-muted-foreground italic"
+          )}
+        >
+          {value || `Click to add ${title.toLowerCase()}…`}
+        </p>
       )}
     </div>
   );
@@ -247,48 +529,4 @@ function getCatColor(cat: string): string {
   if (lower.includes('hr') || lower.includes('talent')) return '#f97316';
   if (lower.includes('technology') || lower.includes('data')) return '#06b6d4';
   return '#64748b';
-}
-
-function KpiCard({ icon, label, value, color, bg, emptyLabel }: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  color: string;
-  bg: string;
-  emptyLabel: string;
-}) {
-  return (
-    <div className={cn("rounded-xl border p-4 space-y-2", bg)}>
-      <div className={cn("flex items-center gap-2 font-semibold text-xs uppercase tracking-wide", color)}>
-        <span className="w-3.5 h-3.5">{icon}</span>
-        {label}
-      </div>
-      <p className={cn("text-sm leading-relaxed", value ? "text-foreground" : "text-muted-foreground italic")}>
-        {value || emptyLabel}
-      </p>
-    </div>
-  );
-}
-
-function DetailSection({ icon, title, content, fullWidth, highlight }: {
-  icon: React.ReactNode;
-  title: string;
-  content: string;
-  fullWidth?: boolean;
-  highlight?: boolean;
-}) {
-  if (!content) return null;
-  return (
-    <div className={cn(
-      "space-y-2",
-      fullWidth && "col-span-1 md:col-span-2",
-      highlight && "p-5 bg-primary/5 border border-primary/20 rounded-xl"
-    )}>
-      <div className="flex items-center gap-2 text-muted-foreground font-semibold text-xs tracking-wide uppercase">
-        <span className={cn("w-4 h-4", highlight && "text-primary")}>{icon}</span>
-        <span className={highlight ? "text-primary" : ""}>{title}</span>
-      </div>
-      <p className={cn("text-foreground/90 leading-relaxed text-sm", highlight && "text-foreground font-medium")}>{content}</p>
-    </div>
-  );
 }
