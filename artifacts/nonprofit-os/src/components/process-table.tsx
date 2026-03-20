@@ -216,12 +216,21 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         return (
           <td key="include" className="align-middle p-0 text-center" style={{ width: widths['include'] }}>
             <label className="flex items-center justify-center h-full w-full cursor-pointer py-3">
-              <input
-                type="checkbox"
-                checked={process.included}
-                onChange={() => handleIncludeToggle(process)}
-                className="w-4 h-4 rounded accent-primary cursor-pointer"
-              />
+              <span
+                onClick={() => handleIncludeToggle(process)}
+                className={cn(
+                  "flex items-center justify-center w-5 h-5 rounded border-2 transition-all duration-150 shrink-0",
+                  process.included
+                    ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                    : "bg-transparent border-border hover:border-emerald-500/60"
+                )}
+              >
+                {process.included && (
+                  <svg viewBox="0 0 10 8" className="w-3 h-3 text-white fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                    <polyline points="1,4 3.5,6.5 9,1" />
+                  </svg>
+                )}
+              </span>
             </label>
           </td>
         );
@@ -436,14 +445,29 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                   >
                     {col.key === 'include' ? (
                       <div className="flex flex-col items-center justify-center gap-1 py-0.5">
-                        <input
-                          type="checkbox"
-                          title={allIncluded ? 'Deselect all' : someIncluded ? 'Select all' : 'Select all'}
-                          checked={allIncluded}
-                          ref={el => { if (el) el.indeterminate = someIncluded; }}
-                          onChange={handleSelectAll}
-                          className="w-3.5 h-3.5 cursor-pointer accent-primary"
-                        />
+                        <span
+                          onClick={handleSelectAll}
+                          title={allIncluded ? 'Deselect all' : 'Select all'}
+                          className={cn(
+                            "flex items-center justify-center w-4 h-4 rounded border-2 cursor-pointer transition-all duration-150 shrink-0",
+                            allIncluded
+                              ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                              : someIncluded
+                                ? "bg-emerald-500/30 border-emerald-500"
+                                : "bg-transparent border-border hover:border-emerald-500/60"
+                          )}
+                        >
+                          {allIncluded && (
+                            <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                              <polyline points="1,4 3.5,6.5 9,1" />
+                            </svg>
+                          )}
+                          {someIncluded && !allIncluded && (
+                            <svg viewBox="0 0 10 2" className="w-2.5 h-2.5 fill-none stroke-emerald-300 stroke-[2] stroke-linecap-round">
+                              <line x1="1" y1="1" x2="9" y2="1" />
+                            </svg>
+                          )}
+                        </span>
                         <span className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold leading-none">
                           {includedCount}/{filteredProcesses.length}
                         </span>
