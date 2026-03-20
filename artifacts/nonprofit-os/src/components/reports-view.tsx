@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
+import { useOptimisticUpdateProcess, useCategoriesData } from '@/hooks/use-app-data';
 import * as XLSX from 'xlsx';
 
 type Process = {
@@ -236,23 +237,89 @@ function DraggableTh({ fieldKey, children, className, onReorder, isActive, sortD
 
 // ─── Detail panels ─────────────────────────────────────────────────────────────
 
-function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: () => void }) {
+function RPanelTextField({ label, value, onSave, multiline }: {
+  label: string;
+  value: string;
+  onSave: (v: string) => void;
+  multiline?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<any>(null);
+
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+  useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+
+  function save() {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+    if (e.key === 'Enter' && !e.shiftKey && !multiline) { e.preventDefault(); save(); }
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">{label}</div>
+      {editing ? (
+        multiline ? (
+          <textarea
+            ref={ref}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={handleKey}
+            className="w-full px-3 py-2 text-sm border border-primary/40 bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y min-h-[72px] leading-relaxed"
+          />
+        ) : (
+          <input
+            ref={ref}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={handleKey}
+            className="w-full px-3 py-2 text-sm border border-primary/40 bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        )
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          className={cn(
+            "text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50 min-h-[38px] cursor-text hover:border-primary/30 hover:bg-secondary/50 transition-all whitespace-pre-wrap break-words leading-relaxed",
+            !value && "italic text-muted-foreground/40"
+          )}
+        >
+          {value || 'Click to edit…'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Process; onClose: () => void }) {
+  const { data: allProcesses = [] } = useListProcesses();
+  const process = (allProcesses.find((p: Process) => p.id === initialProcess.id) ?? initialProcess) as Process;
+  const { mutate: updateProcess } = useOptimisticUpdateProcess();
+  const { data: categories = [] } = useCategoriesData();
+
   const pct = completeness(process);
   const filled = TRACKABLE_FIELDS.filter(f => process[f] && String(process[f]).trim()).length;
 
-  const fieldRows: { label: string; value: string }[] = [
-    { label: 'Description',           value: process.processDescription },
-    { label: 'Purpose',               value: process.purpose },
-    { label: 'AI Agent',              value: process.aiAgent },
-    { label: 'Inputs',                value: process.inputs },
-    { label: 'Outputs',               value: process.outputs },
-    { label: 'Human-in-the-Loop',     value: process.humanInTheLoop },
-    { label: 'KPI',                   value: process.kpi },
-    { label: 'Target',                value: process.target },
-    { label: 'Achievement',           value: process.achievement },
-    { label: 'Estimated Value Impact',value: process.estimatedValueImpact },
-    { label: 'Industry Benchmark',    value: process.industryBenchmark },
-  ];
+  const CYCLE = ['', 'green', 'orange', 'red'] as const;
+  const tlColorMap: Record<string, { bg: string; glow: string; label: string }> = {
+    green:  { bg: 'bg-green-500', glow: '0 0 8px rgba(34,197,94,0.7)',  label: 'On Track' },
+    orange: { bg: 'bg-amber-400', glow: '0 0 8px rgba(251,191,36,0.7)', label: 'At Risk' },
+    red:    { bg: 'bg-red-500',   glow: '0 0 8px rgba(239,68,68,0.7)',  label: 'Off Track' },
+  };
+  const tl = (process as any).trafficLight as string ?? '';
+  const nextTl = CYCLE[(CYCLE.indexOf(tl as any) + 1) % CYCLE.length];
+  const tlMeta = tl ? tlColorMap[tl] : null;
+
+  function save(field: string, value: string | boolean | number) {
+    updateProcess({ id: process.id, data: { [field]: value } as any });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex" onClick={onClose}>
@@ -295,19 +362,78 @@ function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: (
           <CompletenessBar pct={pct} />
         </div>
 
-        {/* Fields */}
-        <div className="flex-1 p-5 space-y-3">
-          {fieldRows.map(({ label, value }) => (
-            <div key={label}>
-              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">{label}</div>
-              <div className={cn(
-                "text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50 min-h-[38px] whitespace-pre-wrap break-words leading-relaxed",
-                !value && "italic text-muted-foreground/40"
-              )}>
-                {value || '—'}
-              </div>
+        {/* Editable fields */}
+        <div className="flex-1 p-5 space-y-4">
+          {/* Category – dropdown */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Category</div>
+            <select
+              value={process.category}
+              onChange={e => save('category', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-border/50 bg-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 cursor-pointer hover:border-primary/30 hover:bg-secondary/50 transition-all"
+            >
+              {(categories as string[]).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          {/* Status – cycling traffic light */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Status</div>
+            <div
+              className="flex items-center gap-3 rounded-lg bg-secondary/30 px-3 py-2.5 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all cursor-pointer"
+              onClick={() => save('trafficLight', nextTl)}
+            >
+              <span
+                className={cn(
+                  "w-5 h-5 rounded-full flex-shrink-0 transition-all duration-200",
+                  tlMeta ? `${tlMeta.bg} border-2 border-transparent` : "border-2 border-dashed border-muted-foreground/30"
+                )}
+                style={tlMeta ? { boxShadow: tlMeta.glow } : undefined}
+              />
+              <span className="text-sm">{tlMeta ? tlMeta.label : <em className="text-muted-foreground/40 not-italic">None — click to set</em>}</span>
             </div>
-          ))}
+          </div>
+
+          {/* In Portfolio – toggle */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">In Portfolio</div>
+            <button
+              onClick={() => save('included', !process.included)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border w-full text-left",
+                process.included
+                  ? "bg-green-500/10 border-green-500/30 text-green-400"
+                  : "bg-secondary/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:bg-secondary/50"
+              )}
+            >
+              <span className={cn(
+                "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                process.included ? "bg-green-500 border-green-500" : "border-muted-foreground/40"
+              )}>
+                {process.included && (
+                  <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                    <polyline points="1,4 3.5,6.5 9,1" />
+                  </svg>
+                )}
+              </span>
+              {process.included ? 'Yes – included in portfolio' : 'No – excluded from portfolio'}
+            </button>
+          </div>
+
+          <div className="border-t border-border/50 pt-4 space-y-4">
+            <RPanelTextField label="Process Name"       value={process.processName ?? ''}          onSave={v => save('processName', v)} />
+            <RPanelTextField label="Description"        value={process.processDescription ?? ''}   onSave={v => save('processDescription', v)} multiline />
+            <RPanelTextField label="AI Agent"           value={process.aiAgent ?? ''}              onSave={v => save('aiAgent', v)} />
+            <RPanelTextField label="Purpose"            value={process.purpose ?? ''}              onSave={v => save('purpose', v)} multiline />
+            <RPanelTextField label="Inputs"             value={process.inputs ?? ''}               onSave={v => save('inputs', v)} multiline />
+            <RPanelTextField label="Outputs"            value={process.outputs ?? ''}              onSave={v => save('outputs', v)} multiline />
+            <RPanelTextField label="Human-in-the-Loop"  value={process.humanInTheLoop ?? ''}       onSave={v => save('humanInTheLoop', v)} multiline />
+            <RPanelTextField label="KPI"                value={process.kpi ?? ''}                  onSave={v => save('kpi', v)} />
+            <RPanelTextField label="Target"             value={process.target ?? ''}               onSave={v => save('target', v)} />
+            <RPanelTextField label="Achievement"        value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
+            <RPanelTextField label="Estimated Value Impact" value={process.estimatedValueImpact ?? ''} onSave={v => save('estimatedValueImpact', v)} />
+            <RPanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''}    onSave={v => save('industryBenchmark', v)} />
+          </div>
         </div>
       </div>
     </div>

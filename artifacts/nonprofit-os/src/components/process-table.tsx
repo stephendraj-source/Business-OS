@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
 import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye } from 'lucide-react';
@@ -54,60 +54,183 @@ interface TableProps {
   mode?: 'matrix' | 'portfolio';
 }
 
-function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: () => void }) {
-  const pid = `PRO-${String(process.number).padStart(3, '0')}`;
-  const tlMap: Record<string, { dot: string; label: string; text: string }> = {
-    green:  { dot: 'bg-green-500',  label: 'On Track',  text: 'text-green-400' },
-    orange: { dot: 'bg-amber-400',  label: 'At Risk',   text: 'text-amber-400' },
-    red:    { dot: 'bg-red-500',    label: 'Off Track', text: 'text-red-400' },
-  };
-  const tl = (process as any).trafficLight as string | undefined;
-  const tlMeta = tl ? tlMap[tl] : null;
+function PanelTextField({ label, value, onSave, multiline }: {
+  label: string;
+  value: string;
+  onSave: (v: string) => void;
+  multiline?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const ref = useRef<any>(null);
 
-  const fields: { label: string; value: React.ReactNode }[] = [
-    { label: 'Process ID',         value: <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{pid}</span> },
-    { label: 'Category',           value: process.category },
-    { label: 'Process Name',       value: <span className="font-medium">{process.processName}</span> },
-    { label: 'Description',        value: process.processDescription || <em className="opacity-40">—</em> },
-    { label: 'AI Agent',           value: process.aiAgent || <em className="opacity-40">—</em> },
-    { label: 'Purpose',            value: process.purpose || <em className="opacity-40">—</em> },
-    { label: 'Inputs',             value: process.inputs || <em className="opacity-40">—</em> },
-    { label: 'Outputs',            value: process.outputs || <em className="opacity-40">—</em> },
-    { label: 'Human in the Loop',  value: process.humanInTheLoop || <em className="opacity-40">—</em> },
-    { label: 'KPI',                value: process.kpi || <em className="opacity-40">—</em> },
-    { label: 'Target',             value: process.target || <em className="opacity-40">—</em> },
-    { label: 'Achievement',        value: process.achievement || <em className="opacity-40">—</em> },
-    { label: 'Est. Value Impact',  value: process.estimatedValueImpact || <em className="opacity-40">—</em> },
-    { label: 'Industry Benchmark', value: process.industryBenchmark || <em className="opacity-40">—</em> },
-    {
-      label: 'Traffic Light',
-      value: tlMeta
-        ? <span className={cn("inline-flex items-center gap-1.5 text-xs font-semibold", tlMeta.text)}><span className={cn("w-2.5 h-2.5 rounded-full", tlMeta.dot)} />{tlMeta.label}</span>
-        : <em className="opacity-40">—</em>,
-    },
-    { label: 'In Portfolio', value: process.included ? <span className="text-xs text-green-400 font-semibold">Yes</span> : <span className="text-xs text-muted-foreground">No</span> },
-  ];
+  useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
+  useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
+
+  function save() {
+    setEditing(false);
+    if (draft !== value) onSave(draft);
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Escape') { setDraft(value); setEditing(false); }
+    if (e.key === 'Enter' && !e.shiftKey && !multiline) { e.preventDefault(); save(); }
+  }
+
+  return (
+    <div>
+      <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">{label}</div>
+      {editing ? (
+        multiline ? (
+          <textarea
+            ref={ref}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={handleKey}
+            className="w-full px-3 py-2 text-sm border border-primary/40 bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y min-h-[72px] leading-relaxed"
+          />
+        ) : (
+          <input
+            ref={ref}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={handleKey}
+            className="w-full px-3 py-2 text-sm border border-primary/40 bg-background rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+          />
+        )
+      ) : (
+        <div
+          onClick={() => setEditing(true)}
+          className={cn(
+            "text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50 min-h-[38px] cursor-text hover:border-primary/30 hover:bg-secondary/50 transition-all whitespace-pre-wrap break-words leading-relaxed",
+            !value && "italic text-muted-foreground/40"
+          )}
+        >
+          {value || 'Click to edit…'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Process; onClose: () => void }) {
+  const { data: processes } = useProcessesData();
+  const process = (processes?.find(p => p.id === initialProcess.id) ?? initialProcess) as Process;
+  const { mutate: updateProcess } = useOptimisticUpdateProcess();
+  const { data: categories = [] } = useCategoriesData();
+
+  const pid = `PRO-${String(process.number).padStart(3, '0')}`;
+  const CYCLE = ['', 'green', 'orange', 'red'] as const;
+  const tlColorMap: Record<string, { bg: string; glow: string; label: string }> = {
+    green:  { bg: 'bg-green-500', glow: '0 0 8px rgba(34,197,94,0.7)',  label: 'On Track' },
+    orange: { bg: 'bg-amber-400', glow: '0 0 8px rgba(251,191,36,0.7)', label: 'At Risk' },
+    red:    { bg: 'bg-red-500',   glow: '0 0 8px rgba(239,68,68,0.7)',  label: 'Off Track' },
+  };
+  const tl = (process as any).trafficLight as string ?? '';
+  const nextTl = CYCLE[(CYCLE.indexOf(tl as any) + 1) % CYCLE.length];
+  const tlMeta = tl ? tlColorMap[tl] : null;
+
+  function save(field: string, value: string | boolean | number) {
+    updateProcess({ id: process.id, data: { [field]: value } as any });
+  }
 
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full z-50 w-[420px] max-w-full bg-card border-l border-border shadow-2xl flex flex-col">
+      <div className="fixed right-0 top-0 h-full z-50 w-[440px] max-w-full bg-card border-l border-border shadow-2xl flex flex-col">
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-none">
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="text-xs font-mono text-primary mb-0.5">{pid}</div>
-            <h3 className="font-semibold text-foreground text-base leading-tight">{process.processName}</h3>
+            <h3 className="font-semibold text-foreground text-base leading-tight truncate">{process.processName || 'Unnamed Process'}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">{process.category}</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={onClose} className="ml-3 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shrink-0">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {fields.map(f => (
-            <div key={f.label} className="grid grid-cols-[9rem_1fr] gap-2 items-start">
-              <span className="text-xs text-muted-foreground pt-0.5">{f.label}</span>
-              <span className="text-sm text-foreground break-words">{f.value}</span>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* Process ID – read-only */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Process ID</div>
+            <div className="text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50">
+              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{pid}</span>
             </div>
-          ))}
+          </div>
+
+          {/* Category – dropdown */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Category</div>
+            <select
+              value={process.category}
+              onChange={e => save('category', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-border/50 bg-secondary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 cursor-pointer hover:border-primary/30 hover:bg-secondary/50 transition-all"
+            >
+              {(categories as string[]).map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          {/* Status – cycling traffic light */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Status</div>
+            <div
+              className="flex items-center gap-3 rounded-lg bg-secondary/30 px-3 py-2.5 border border-border/50 hover:border-primary/30 hover:bg-secondary/50 transition-all cursor-pointer"
+              onClick={() => save('trafficLight', nextTl)}
+            >
+              <span
+                className={cn(
+                  "w-5 h-5 rounded-full flex-shrink-0 transition-all duration-200",
+                  tlMeta ? `${tlMeta.bg} border-2 border-transparent` : "border-2 border-dashed border-muted-foreground/30"
+                )}
+                style={tlMeta ? { boxShadow: tlMeta.glow } : undefined}
+              />
+              <span className="text-sm">{tlMeta ? tlMeta.label : <em className="text-muted-foreground/40 not-italic">None — click to set</em>}</span>
+            </div>
+          </div>
+
+          {/* In Portfolio – toggle */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">In Portfolio</div>
+            <button
+              onClick={() => save('included', !process.included)}
+              className={cn(
+                "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border w-full text-left",
+                process.included
+                  ? "bg-green-500/10 border-green-500/30 text-green-400"
+                  : "bg-secondary/30 border-border/50 text-muted-foreground hover:border-primary/30 hover:bg-secondary/50"
+              )}
+            >
+              <span className={cn(
+                "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                process.included ? "bg-green-500 border-green-500" : "border-muted-foreground/40"
+              )}>
+                {process.included && (
+                  <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                    <polyline points="1,4 3.5,6.5 9,1" />
+                  </svg>
+                )}
+              </span>
+              {process.included ? 'Yes – included in portfolio' : 'No – excluded from portfolio'}
+            </button>
+          </div>
+
+          <div className="border-t border-border/50 pt-4 space-y-4">
+            <PanelTextField label="Process Name"       value={process.processName ?? ''}          onSave={v => save('processName', v)} />
+            <PanelTextField label="Description"        value={process.processDescription ?? ''}   onSave={v => save('processDescription', v)} multiline />
+            <PanelTextField label="AI Agent"           value={process.aiAgent ?? ''}              onSave={v => save('aiAgent', v)} />
+            <PanelTextField label="Purpose"            value={process.purpose ?? ''}              onSave={v => save('purpose', v)} multiline />
+            <PanelTextField label="Inputs"             value={process.inputs ?? ''}               onSave={v => save('inputs', v)} multiline />
+            <PanelTextField label="Outputs"            value={process.outputs ?? ''}              onSave={v => save('outputs', v)} multiline />
+            <PanelTextField label="Human in the Loop"  value={process.humanInTheLoop ?? ''}       onSave={v => save('humanInTheLoop', v)} multiline />
+            <PanelTextField label="KPI"                value={process.kpi ?? ''}                  onSave={v => save('kpi', v)} />
+            <PanelTextField label="Target"             value={process.target ?? ''}               onSave={v => save('target', v)} />
+            <PanelTextField label="Achievement"        value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
+            <PanelTextField label="Est. Value Impact"  value={process.estimatedValueImpact ?? ''} onSave={v => save('estimatedValueImpact', v)} />
+            <PanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''}    onSave={v => save('industryBenchmark', v)} />
+          </div>
         </div>
       </div>
     </>
