@@ -40,10 +40,16 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
           </div>
 
           <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Governance</div>
+            <div className="space-y-1">
+              <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
+            </div>
+          </div>
+
+          <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Integrations</div>
             <div className="space-y-1">
               <NavItem icon={<Plug />} label="Connectors" active={activeView === 'connectors'} onClick={() => onViewChange('connectors')} />
-              <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
             </div>
           </div>
 

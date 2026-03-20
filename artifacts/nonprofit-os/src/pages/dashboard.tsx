@@ -23,9 +23,20 @@ const fadeSlide = {
 
 export default function Dashboard() {
   const [activeView, setActiveView] = useState<ActiveView>('table');
+  const [treeInitialCategory, setTreeInitialCategory] = useState<string | null>(null);
+
+  const navigateToProcessMap = (category: string) => {
+    setTreeInitialCategory(category);
+    setActiveView('tree');
+  };
+
+  const handleViewChange = (view: ActiveView) => {
+    if (view !== 'tree') setTreeInitialCategory(null);
+    setActiveView(view);
+  };
 
   return (
-    <Layout activeView={activeView} onViewChange={setActiveView}>
+    <Layout activeView={activeView} onViewChange={handleViewChange}>
       <AnimatePresence mode="wait">
         {activeView === 'table' && (
           <motion.div key="table" {...fadeSlide} className="w-full h-full">
@@ -34,7 +45,7 @@ export default function Dashboard() {
         )}
         {activeView === 'tree' && (
           <motion.div key="tree" {...fadeSlide} className="w-full h-full">
-            <HorizontalTree />
+            <HorizontalTree initialCategory={treeInitialCategory} />
           </motion.div>
         )}
         {activeView === 'process-map' && (
@@ -54,7 +65,7 @@ export default function Dashboard() {
         )}
         {activeView === 'dashboards' && (
           <motion.div key="dashboards" {...fadeSlide} className="w-full h-full">
-            <DashboardsView />
+            <DashboardsView onNavigateToProcessMap={navigateToProcessMap} />
           </motion.div>
         )}
         {activeView === 'governance' && (
