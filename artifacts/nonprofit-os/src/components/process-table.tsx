@@ -1,9 +1,12 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
+
+type GovStandard = { id: number; complianceName: string };
+type GovMap = Record<number, number[]>;
 
 interface ColumnDef {
   key: string;
@@ -32,6 +35,7 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'achievement',          label: 'Achievement',           defaultWidth: 160, minWidth: 110 },
   { key: 'estimatedValueImpact', label: 'Value Impact',          defaultWidth: 190, minWidth: 120 },
   { key: 'industryBenchmark',    label: 'Industry Benchmark',    defaultWidth: 235, minWidth: 150 },
+  { key: 'governance',           label: 'Governance',            defaultWidth: 190, minWidth: 130 },
 ];
 
 const FIXED_END: ColumnDef[] = [
@@ -62,6 +66,32 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
+
+  const [govStandards, setGovStandards] = useState<GovStandard[]>([]);
+  const [govMap, setGovMap] = useState<GovMap>({});
+  const [govPopoverFor, setGovPopoverFor] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch('/api/governance').then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
+      setGovStandards(data.map(d => ({ id: d.id, complianceName: d.complianceName })));
+    }).catch(() => {});
+    fetch('/api/processes/governance-map').then(r => r.json()).then((data: GovMap) => {
+      setGovMap(data);
+    }).catch(() => {});
+  }, []);
+
+  const toggleGovAssignment = async (processId: number, govId: number) => {
+    const current = govMap[processId] ?? [];
+    const next = current.includes(govId)
+      ? current.filter(id => id !== govId)
+      : [...current, govId];
+    setGovMap(prev => ({ ...prev, [processId]: next }));
+    await fetch(`/api/processes/${processId}/governance`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ governanceIds: next }),
+    });
+  };
 
   const resizing = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const dragKey = useRef<string | null>(null);
@@ -328,6 +358,63 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline />
           </td>
         );
+      case 'governance': {
+        const assigned = govMap[process.id] ?? [];
+        const assignedStandards = govStandards.filter(g => assigned.includes(g.id));
+        const isOpen = govPopoverFor === process.id;
+        return (
+          <td key="governance" className="align-middle p-2 overflow-hidden relative" style={{ width: widths['governance'] }}>
+            <div className="flex flex-wrap gap-1 items-center">
+              {assignedStandards.map(g => (
+                <span key={g.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">
+                  <ShieldCheck className="w-2.5 h-2.5" />
+                  {g.complianceName}
+                </span>
+              ))}
+              <button
+                onClick={() => setGovPopoverFor(isOpen ? null : process.id)}
+                title="Assign governance standards"
+                className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {isOpen && (
+              <div
+                className="absolute z-50 top-full left-0 mt-1 w-56 rounded-xl border border-border bg-card shadow-xl shadow-black/30 py-2"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                  Assign Standards
+                </div>
+                {govStandards.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">No standards available</div>
+                ) : (
+                  govStandards.map(g => {
+                    const checked = assigned.includes(g.id);
+                    return (
+                      <label key={g.id} className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 cursor-pointer transition-colors">
+                        <span className={cn(
+                          "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all",
+                          checked ? "bg-primary border-primary" : "border-border"
+                        )}>
+                          {checked && <CheckCircle2 className="w-2.5 h-2.5 text-primary-foreground" />}
+                        </span>
+                        <span onClick={() => toggleGovAssignment(process.id, g.id)} className="text-xs text-foreground flex-1">{g.complianceName}</span>
+                      </label>
+                    );
+                  })
+                )}
+                <div className="border-t border-border mt-1 pt-1 px-3">
+                  <button onClick={() => setGovPopoverFor(null)} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </td>
+        );
+      }
       case 'actions':
         return (
           <td key="actions" className="align-middle p-2 text-center" style={{ width: widths['actions'] }}>

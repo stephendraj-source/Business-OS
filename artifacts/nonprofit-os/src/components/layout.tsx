@@ -1,8 +1,8 @@
-import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug, FileBarChart } from 'lucide-react';
+import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug, FileBarChart, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -43,6 +43,7 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Integrations</div>
             <div className="space-y-1">
               <NavItem icon={<Plug />} label="Connectors" active={activeView === 'connectors'} onClick={() => onViewChange('connectors')} />
+              <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
             </div>
           </div>
 
