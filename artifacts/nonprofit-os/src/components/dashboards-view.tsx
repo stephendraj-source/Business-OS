@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Plus, X, BarChart2, Activity, CheckCircle2, Target,
   Cpu, TrendingUp, Loader2, FileText, PieChart as PieChartIcon,
   LineChart as LineChartIcon, AreaChart as AreaChartIcon, Settings2,
-  AlignLeft, Layers, GripVertical, ExternalLink
+  AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -19,7 +19,7 @@ import {
 type ChartType = 'bar' | 'horizontal-bar' | 'line' | 'area' | 'pie' | 'donut';
 
 type WidgetConfig =
-  | { kind: 'preset'; uid: string; id: string; active: boolean }
+  | { kind: 'preset'; uid: string; id: string; active: boolean; config?: Record<string, unknown> }
   | { kind: 'chart'; uid: string; metric: string; chartType: ChartType; title: string; active: boolean };
 
 interface DashboardsViewProps {
@@ -28,7 +28,7 @@ interface DashboardsViewProps {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LS_KEY = 'nonprofit-os-dashboard-widgets-v3';
+const LS_KEY = 'nonprofit-os-dashboard-widgets-v4';
 const TRACKABLE_FIELDS = ['processName','processDescription','aiAgent','purpose','inputs','outputs','humanInTheLoop','kpi','estimatedValueImpact','industryBenchmark','target','achievement'] as const;
 
 const CHART_TYPES: { id: ChartType; label: string; icon: React.ElementType; supports: string[] }[] = [
@@ -42,27 +42,26 @@ const CHART_TYPES: { id: ChartType; label: string; icon: React.ElementType; supp
 
 type MetricDef = { id: string; label: string; dataShape: string; defaultChart: ChartType };
 const METRICS: MetricDef[] = [
-  { id: 'processes-by-category',  label: 'Processes by Category',          dataShape: 'categorical',  defaultChart: 'bar' },
-  { id: 'portfolio-status',       label: 'Portfolio Status',               dataShape: 'binary',       defaultChart: 'donut' },
-  { id: 'ai-agent-distribution',  label: 'AI Agent Distribution',          dataShape: 'categorical',  defaultChart: 'horizontal-bar' },
-  { id: 'data-completeness',      label: 'Data Completeness by Category',  dataShape: 'comparative',  defaultChart: 'bar' },
-  { id: 'governance-coverage',    label: 'Governance Coverage',            dataShape: 'binary',       defaultChart: 'donut' },
-  { id: 'kpi-coverage',           label: 'KPI Coverage',                   dataShape: 'binary',       defaultChart: 'pie' },
-  { id: 'target-coverage',        label: 'Target Coverage',                dataShape: 'binary',       defaultChart: 'pie' },
-  { id: 'value-impact-coverage',  label: 'Value Impact Coverage',          dataShape: 'binary',       defaultChart: 'pie' },
-  { id: 'category-portfolio',     label: 'Included vs Excluded by Category', dataShape: 'comparative', defaultChart: 'bar' },
-  { id: 'audit-by-action',        label: 'Activity by Action Type',        dataShape: 'categorical',  defaultChart: 'bar' },
+  { id: 'processes-by-category',  label: 'Processes by Category (Portfolio)', dataShape: 'categorical',  defaultChart: 'bar' },
+  { id: 'portfolio-status',       label: 'Portfolio Status',                  dataShape: 'binary',       defaultChart: 'donut' },
+  { id: 'ai-agent-distribution',  label: 'AI Agent Distribution',             dataShape: 'categorical',  defaultChart: 'horizontal-bar' },
+  { id: 'data-completeness',      label: 'Data Completeness by Category',     dataShape: 'comparative',  defaultChart: 'bar' },
+  { id: 'governance-coverage',    label: 'Governance Coverage',               dataShape: 'binary',       defaultChart: 'donut' },
+  { id: 'kpi-coverage',           label: 'KPI Coverage',                      dataShape: 'binary',       defaultChart: 'pie' },
+  { id: 'target-coverage',        label: 'Target Coverage',                   dataShape: 'binary',       defaultChart: 'pie' },
+  { id: 'value-impact-coverage',  label: 'Value Impact Coverage',             dataShape: 'binary',       defaultChart: 'pie' },
+  { id: 'category-portfolio',     label: 'Included vs Excluded by Category',  dataShape: 'comparative',  defaultChart: 'bar' },
+  { id: 'audit-by-action',        label: 'Activity by Action Type',           dataShape: 'categorical',  defaultChart: 'bar' },
 ];
 
 const PALETTE = ['#6366f1','#f59e0b','#10b981','#ec4899','#3b82f6','#8b5cf6','#f97316','#06b6d4','#14b8a6','#a855f7'];
 
 const PRESET_REGISTRY = [
-  { id: 'summary',         title: 'Process Summary',      icon: BarChart2,  description: 'Total, included, and category counts' },
-  { id: 'categories',      title: 'Category Breakdown',   icon: Activity,   description: 'Processes by category (clickable)' },
-  { id: 'performance',     title: 'Performance Overview', icon: Target,     description: 'Processes with targets and achievements' },
-  { id: 'recent-activity', title: 'Recent Activity',      icon: FileText,   description: 'Latest audit log entries' },
-  { id: 'ai-agents',       title: 'AI Agent Map',         icon: Cpu,        description: 'AI agents across processes' },
-  { id: 'value-impact',    title: 'Value Impact',         icon: TrendingUp, description: 'Processes with value impact data' },
+  { id: 'summary',     title: 'Process Summary',      icon: BarChart2,  description: 'Portfolio totals and category counts' },
+  { id: 'categories',  title: 'Category Breakdown',   icon: Activity,   description: 'Portfolio processes by category (clickable)' },
+  { id: 'performance', title: 'Performance Overview', icon: Target,     description: 'KPI, Target and Actual per process' },
+  { id: 'ai-agents',   title: 'AI Agent Map',         icon: Cpu,        description: 'AI agents across processes' },
+  { id: 'value-impact',title: 'Value Impact',         icon: TrendingUp, description: 'Processes with value impact data' },
 ];
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -71,14 +70,13 @@ function uid() { return Math.random().toString(36).slice(2, 10); }
 
 function buildDefaults(): WidgetConfig[] {
   return [
-    { kind: 'preset', uid: uid(), id: 'summary',         active: true },
-    { kind: 'preset', uid: uid(), id: 'categories',      active: true },
+    { kind: 'preset', uid: uid(), id: 'summary',     active: true },
+    { kind: 'preset', uid: uid(), id: 'categories',  active: true },
     { kind: 'chart',  uid: uid(), metric: 'processes-by-category', chartType: 'bar',   title: 'Processes by Category', active: true },
     { kind: 'chart',  uid: uid(), metric: 'portfolio-status',      chartType: 'donut', title: 'Portfolio Status',       active: true },
-    { kind: 'preset', uid: uid(), id: 'performance',     active: false },
-    { kind: 'preset', uid: uid(), id: 'recent-activity', active: false },
-    { kind: 'preset', uid: uid(), id: 'ai-agents',       active: false },
-    { kind: 'preset', uid: uid(), id: 'value-impact',    active: false },
+    { kind: 'preset', uid: uid(), id: 'performance', active: false },
+    { kind: 'preset', uid: uid(), id: 'ai-agents',   active: false },
+    { kind: 'preset', uid: uid(), id: 'value-impact',active: false },
   ];
 }
 
@@ -104,7 +102,7 @@ function completeness(p: Process): number {
   return Math.round((filled / TRACKABLE_FIELDS.length) * 100);
 }
 
-function computeMetric(metric: string, processes: Process[], auditLogs: { action: string }[], govMap: Record<number, number[]>): ChartEntry[] {
+function computeMetric(metric: string, processes: Process[], auditLogs: { action: string }[], govMap: Record<number, number[]>, allProcesses: Process[]): ChartEntry[] {
   switch (metric) {
     case 'processes-by-category': {
       const map: Record<string, number> = {};
@@ -112,38 +110,38 @@ function computeMetric(metric: string, processes: Process[], auditLogs: { action
       return Object.entries(map).map(([name, value]) => ({ name: name.split(' ')[0], value })).sort((a, b) => b.value - a.value);
     }
     case 'portfolio-status': {
-      const inc = processes.filter(p => p.included).length;
-      return [{ name: 'Included', value: inc }, { name: 'Excluded', value: processes.length - inc }];
+      const inc = allProcesses.filter(p => p.included).length;
+      return [{ name: 'Included', value: inc }, { name: 'Excluded', value: allProcesses.length - inc }];
     }
     case 'ai-agent-distribution': {
       const map: Record<string, number> = {};
-      for (const p of processes) { const a = p.aiAgent?.trim() || 'Unassigned'; map[a] = (map[a] ?? 0) + 1; }
+      for (const p of allProcesses) { const a = p.aiAgent?.trim() || 'Unassigned'; map[a] = (map[a] ?? 0) + 1; }
       return Object.entries(map).map(([name, value]) => ({ name: name.split(' ')[0], value })).sort((a, b) => b.value - a.value).slice(0, 10);
     }
     case 'data-completeness': {
       const catMap: Record<string, number[]> = {};
-      for (const p of processes) { if (!catMap[p.category]) catMap[p.category] = []; catMap[p.category].push(completeness(p)); }
+      for (const p of allProcesses) { if (!catMap[p.category]) catMap[p.category] = []; catMap[p.category].push(completeness(p)); }
       return Object.entries(catMap).map(([name, vals]) => ({ name: name.split(' ')[0], value: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) })).sort((a, b) => b.value - a.value);
     }
     case 'governance-coverage': {
-      const assigned = processes.filter(p => (govMap[p.id] ?? []).length > 0).length;
-      return [{ name: 'Assigned', value: assigned }, { name: 'Unassigned', value: processes.length - assigned }];
+      const assigned = allProcesses.filter(p => (govMap[p.id] ?? []).length > 0).length;
+      return [{ name: 'Assigned', value: assigned }, { name: 'Unassigned', value: allProcesses.length - assigned }];
     }
     case 'kpi-coverage': {
-      const w = processes.filter(p => p.kpi?.trim()).length;
-      return [{ name: 'Has KPI', value: w }, { name: 'No KPI', value: processes.length - w }];
+      const w = allProcesses.filter(p => p.kpi?.trim()).length;
+      return [{ name: 'Has KPI', value: w }, { name: 'No KPI', value: allProcesses.length - w }];
     }
     case 'target-coverage': {
-      const w = processes.filter(p => p.target?.trim()).length;
-      return [{ name: 'Has Target', value: w }, { name: 'No Target', value: processes.length - w }];
+      const w = allProcesses.filter(p => p.target?.trim()).length;
+      return [{ name: 'Has Target', value: w }, { name: 'No Target', value: allProcesses.length - w }];
     }
     case 'value-impact-coverage': {
-      const w = processes.filter(p => p.estimatedValueImpact?.trim()).length;
-      return [{ name: 'Has Impact', value: w }, { name: 'Missing', value: processes.length - w }];
+      const w = allProcesses.filter(p => p.estimatedValueImpact?.trim()).length;
+      return [{ name: 'Has Impact', value: w }, { name: 'Missing', value: allProcesses.length - w }];
     }
     case 'category-portfolio': {
       const map: Record<string, { inc: number; exc: number }> = {};
-      for (const p of processes) { if (!map[p.category]) map[p.category] = { inc: 0, exc: 0 }; if (p.included) map[p.category].inc++; else map[p.category].exc++; }
+      for (const p of allProcesses) { if (!map[p.category]) map[p.category] = { inc: 0, exc: 0 }; if (p.included) map[p.category].inc++; else map[p.category].exc++; }
       return Object.entries(map).map(([name, v]) => ({ name: name.split(' ')[0], value: v.inc, value2: v.exc })).sort((a, b) => (b.value + (b.value2 ?? 0)) - (a.value + (a.value2 ?? 0)));
     }
     case 'audit-by-action': {
@@ -333,17 +331,18 @@ function getCatColor(cat: string) {
   return '#64748b';
 }
 
+/** Shows summary stats using only portfolio-included processes */
 function SummaryWidget({ processes }: { processes: Process[] }) {
-  const included = processes.filter(p => p.included).length;
   const cats = new Set(processes.map(p => p.category)).size;
   const withTargets = processes.filter(p => p.target).length;
+  const withKpis = processes.filter(p => p.kpi).length;
   return (
     <div className="grid grid-cols-2 gap-3">
       {[
-        { label: 'Total Processes', value: processes.length, color: 'text-primary' },
-        { label: 'Included', value: included, color: 'text-emerald-400' },
-        { label: 'Categories', value: cats, color: 'text-amber-400' },
-        { label: 'With Targets', value: withTargets, color: 'text-blue-400' },
+        { label: 'Portfolio Processes', value: processes.length, color: 'text-primary' },
+        { label: 'With KPIs',           value: withKpis,         color: 'text-emerald-400' },
+        { label: 'Categories',          value: cats,             color: 'text-amber-400' },
+        { label: 'With Targets',        value: withTargets,      color: 'text-blue-400' },
       ].map(({ label, value, color }) => (
         <div key={label} className="bg-secondary/30 rounded-xl p-3 border border-border/50">
           <div className={cn("text-2xl font-bold font-display", color)}>{value}</div>
@@ -354,6 +353,7 @@ function SummaryWidget({ processes }: { processes: Process[] }) {
   );
 }
 
+/** Shows categories filtered to portfolio-included processes */
 function CategoriesWidget({ processes, onNavigate }: { processes: Process[]; onNavigate?: (cat: string) => void }) {
   const cats = useMemo(() => {
     const map: Record<string, number> = {};
@@ -391,44 +391,204 @@ function CategoriesWidget({ processes, onNavigate }: { processes: Process[]; onN
   );
 }
 
-function PerformanceWidget({ processes }: { processes: Process[] }) {
-  const withData = processes.filter(p => p.target || p.achievement).slice(0, 6);
-  if (!withData.length) return <p className="text-sm text-muted-foreground italic">No processes with targets yet.</p>;
+// ─── Performance widget with KPI / Target / Actual and process selection ──────
+
+function trafficDot(tl: string | null | undefined) {
+  if (tl === 'green')  return <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 shadow shadow-emerald-400/60 shrink-0" title="On Track" />;
+  if (tl === 'orange') return <span className="inline-block w-2 h-2 rounded-full bg-amber-400 shadow shadow-amber-400/60 shrink-0" title="At Risk" />;
+  if (tl === 'red')    return <span className="inline-block w-2 h-2 rounded-full bg-red-500 shadow shadow-red-500/60 shrink-0" title="Off Track" />;
+  return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground/20 shrink-0" title="No Status" />;
+}
+
+function PerformanceWidget({ processes, selectedIds, onConfigure }: {
+  processes: Process[];
+  selectedIds: number[] | null;
+  onConfigure: () => void;
+}) {
+  const displayed = useMemo(() => {
+    if (selectedIds && selectedIds.length > 0) {
+      return selectedIds.map(id => processes.find(p => p.id === id)).filter(Boolean) as Process[];
+    }
+    return processes.filter(p => p.kpi || p.target || p.achievement).slice(0, 10);
+  }, [processes, selectedIds]);
+
+  if (!displayed.length) {
+    return (
+      <div className="text-center py-6 space-y-2">
+        <p className="text-sm text-muted-foreground italic">No processes selected yet.</p>
+        <button onClick={onConfigure} className="text-xs text-primary hover:underline">Select processes</button>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-2">
-      {withData.map(p => (
-        <div key={p.id} className="flex items-start gap-3 p-2.5 bg-secondary/30 rounded-lg border border-border/50">
-          <CheckCircle2 className={cn("w-4 h-4 mt-0.5 shrink-0", p.achievement ? "text-emerald-400" : "text-muted-foreground/40")} />
-          <div className="min-w-0">
-            <div className="text-xs font-medium truncate">{p.processName || p.processDescription}</div>
-            <div className="flex gap-3 mt-1">
-              {p.target && <span className="text-[10px] text-primary">Target: {p.target.slice(0, 30)}</span>}
-              {p.achievement && <span className="text-[10px] text-emerald-400">Got: {p.achievement.slice(0, 30)}</span>}
-            </div>
-          </div>
-        </div>
-      ))}
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs border-separate border-spacing-y-1.5">
+        <thead>
+          <tr>
+            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Process</th>
+            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">KPI</th>
+            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Target</th>
+            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Actual</th>
+            <th className="px-2 pb-1 w-6" />
+          </tr>
+        </thead>
+        <tbody>
+          {displayed.map(p => (
+            <tr key={p.id} className="bg-secondary/20 rounded-lg hover:bg-secondary/40 transition-colors">
+              <td className="px-2 py-2 rounded-l-lg max-w-[120px]">
+                <span className="truncate block font-medium text-foreground/90" title={p.processName || p.processDescription || ''}>
+                  {p.processName || p.processDescription || `Process ${p.number}`}
+                </span>
+              </td>
+              <td className="px-2 py-2 max-w-[100px]">
+                {p.kpi ? (
+                  <span className="truncate block text-primary/80" title={p.kpi}>{p.kpi}</span>
+                ) : (
+                  <span className="text-muted-foreground/40 italic">—</span>
+                )}
+              </td>
+              <td className="px-2 py-2 max-w-[90px]">
+                {p.target ? (
+                  <span className="truncate block text-blue-400" title={p.target}>{p.target}</span>
+                ) : (
+                  <span className="text-muted-foreground/40 italic">—</span>
+                )}
+              </td>
+              <td className="px-2 py-2 max-w-[90px]">
+                {p.achievement ? (
+                  <span className="truncate block text-emerald-400" title={p.achievement}>{p.achievement}</span>
+                ) : (
+                  <span className="text-muted-foreground/40 italic">—</span>
+                )}
+              </td>
+              <td className="px-2 py-2 rounded-r-lg text-center">
+                {trafficDot((p as any).trafficLight)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function RecentActivityWidget() {
-  const { data: logs } = useAuditLogsData(10);
-  if (!logs?.length) return <p className="text-sm text-muted-foreground italic">No activity yet.</p>;
+// ─── Performance process selector modal ───────────────────────────────────────
+
+function PerformanceConfigModal({ processes, selectedIds, onSave, onClose }: {
+  processes: Process[];
+  selectedIds: number[];
+  onSave: (ids: number[]) => void;
+  onClose: () => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [draft, setDraft] = useState<Set<number>>(new Set(selectedIds));
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return processes.filter(p =>
+      !q ||
+      (p.processName ?? '').toLowerCase().includes(q) ||
+      (p.processDescription ?? '').toLowerCase().includes(q) ||
+      (p.kpi ?? '').toLowerCase().includes(q) ||
+      (p.category ?? '').toLowerCase().includes(q)
+    );
+  }, [processes, search]);
+
+  const toggle = (id: number) => setDraft(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => {
+    if (draft.size === filtered.length) setDraft(new Set());
+    else setDraft(new Set(filtered.map(p => p.id)));
+  };
+
   return (
-    <div className="space-y-2">
-      {logs.slice(0, 7).map(log => (
-        <div key={log.id} className="flex items-start gap-2.5 text-xs">
-          <Activity className="w-3 h-3 mt-0.5 text-muted-foreground/60 shrink-0" />
-          <div className="min-w-0">
-            <span className="text-foreground/80">{log.description ?? log.entityName ?? log.action}</span>
-            <span className="text-muted-foreground ml-2">{new Date(log.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl w-[480px] max-h-[80vh] shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
+          <div>
+            <div className="text-sm font-semibold">Select Processes for Performance Widget</div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">{draft.size} selected</div>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-border shrink-0">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-secondary/40 rounded-lg border border-border/60">
+            <Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            <input
+              autoFocus
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search processes…"
+              className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            />
           </div>
         </div>
-      ))}
+
+        {/* Column headers */}
+        <div className="flex items-center gap-3 px-4 py-2 border-b border-border/50 shrink-0">
+          <input
+            type="checkbox"
+            checked={draft.size > 0 && draft.size === filtered.length}
+            onChange={toggleAll}
+            className="w-3.5 h-3.5 accent-primary cursor-pointer"
+          />
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider flex-1">Process Name</span>
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-24">KPI</span>
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider w-20">Target</span>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto divide-y divide-border/40">
+          {filtered.length === 0 && (
+            <p className="text-sm text-muted-foreground italic text-center py-8">No processes match your search.</p>
+          )}
+          {filtered.map(p => (
+            <label key={p.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/30 cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={draft.has(p.id)}
+                onChange={() => toggle(p.id)}
+                className="w-3.5 h-3.5 accent-primary cursor-pointer shrink-0"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-medium text-foreground/90 truncate">
+                  {p.processName || p.processDescription || `Process ${p.number}`}
+                </div>
+                <div className="text-[10px] text-muted-foreground/60 truncate">{p.category}</div>
+              </div>
+              <div className="w-24 text-[10px] text-primary/70 truncate shrink-0" title={p.kpi ?? ''}>{p.kpi || '—'}</div>
+              <div className="w-20 text-[10px] text-blue-400/80 truncate shrink-0" title={p.target ?? ''}>{p.target || '—'}</div>
+            </label>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center gap-3 px-5 py-4 border-t border-border shrink-0">
+          <button
+            onClick={() => { onSave(Array.from(draft)); onClose(); }}
+            className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            Save Selection
+          </button>
+          <button onClick={onClose} className="px-4 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-secondary transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
+
+// ─── Other preset widgets ─────────────────────────────────────────────────────
 
 function AiAgentsWidget({ processes }: { processes: Process[] }) {
   const agents = useMemo(() => {
@@ -504,6 +664,7 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
   const [showAdd, setShowAdd] = useState(false);
   const [addMode, setAddMode] = useState<'picker' | 'chart-config'>('picker');
   const [configuringUid, setConfiguringUid] = useState<string | null>(null);
+  const [showPerfConfig, setShowPerfConfig] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const dragUid = useRef<string | null>(null);
 
@@ -531,6 +692,14 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
     setConfiguringUid(null);
   };
 
+  const savePerformanceConfig = (ids: number[]) => {
+    persist(widgets.map(w =>
+      w.kind === 'preset' && w.id === 'performance'
+        ? { ...w, config: { ...(w.config ?? {}), processIds: ids } }
+        : w
+    ));
+  };
+
   const handleDragStart = (u: string) => { dragUid.current = u; };
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -538,9 +707,15 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
     if (dragUid.current) { activateWidget(dragUid.current); dragUid.current = null; }
   };
 
-  const procs = processes ?? [];
+  const allProcs = processes ?? [];
+  // Portfolio-included processes only (for summary, categories, processes-by-category)
+  const includedProcs = useMemo(() => allProcs.filter(p => p.included), [allProcs]);
   const auditLogs = (rawLogs ?? []) as { action: string }[];
   const configuringWidget = widgets.find(w => w.uid === configuringUid);
+
+  // Performance widget config
+  const perfWidget = widgets.find(w => w.kind === 'preset' && w.id === 'performance') as (WidgetConfig & { kind: 'preset' }) | undefined;
+  const perfSelectedIds = (perfWidget?.config?.processIds as number[] | undefined) ?? null;
 
   if (isLoading) {
     return <div className="h-full flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary/50" /></div>;
@@ -640,26 +815,49 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
                   if (!reg) return null;
                   const Icon = reg.icon;
                   let content: React.ReactNode = null;
-                  if (w.id === 'summary') content = <SummaryWidget processes={procs} />;
-                  else if (w.id === 'categories') content = (
-                    <CategoriesWidget
-                      processes={procs}
-                      onNavigate={onNavigateToProcessMap}
-                    />
-                  );
-                  else if (w.id === 'performance') content = <PerformanceWidget processes={procs} />;
-                  else if (w.id === 'recent-activity') content = <RecentActivityWidget />;
-                  else if (w.id === 'ai-agents') content = <AiAgentsWidget processes={procs} />;
-                  else if (w.id === 'value-impact') content = <ValueImpactWidget processes={procs} />;
+
+                  if (w.id === 'summary') {
+                    // Summary uses portfolio-included processes only
+                    content = <SummaryWidget processes={includedProcs} />;
+                  } else if (w.id === 'categories') {
+                    // Category breakdown uses portfolio-included processes only
+                    content = (
+                      <CategoriesWidget
+                        processes={includedProcs}
+                        onNavigate={onNavigateToProcessMap}
+                      />
+                    );
+                  } else if (w.id === 'performance') {
+                    content = (
+                      <PerformanceWidget
+                        processes={allProcs}
+                        selectedIds={perfSelectedIds}
+                        onConfigure={() => setShowPerfConfig(true)}
+                      />
+                    );
+                  } else if (w.id === 'ai-agents') {
+                    content = <AiAgentsWidget processes={allProcs} />;
+                  } else if (w.id === 'value-impact') {
+                    content = <ValueImpactWidget processes={allProcs} />;
+                  }
+
                   return (
-                    <WidgetShell key={w.uid} title={reg.title} icon={<Icon className="w-4 h-4" />} onClose={() => closeWidget(w.uid)}>
+                    <WidgetShell
+                      key={w.uid}
+                      title={reg.title}
+                      icon={<Icon className="w-4 h-4" />}
+                      onClose={() => closeWidget(w.uid)}
+                      onConfigure={w.id === 'performance' ? () => setShowPerfConfig(true) : undefined}
+                    >
                       {content}
                     </WidgetShell>
                   );
                 }
 
                 if (w.kind === 'chart') {
-                  const data = computeMetric(w.metric, procs, auditLogs, govMap);
+                  // Processes by category uses portfolio-included processes; others use all
+                  const chartProcs = w.metric === 'processes-by-category' ? includedProcs : allProcs;
+                  const data = computeMetric(w.metric, chartProcs, auditLogs, govMap, allProcs);
                   const ChartIcon = CHART_TYPES.find(ct => ct.id === w.chartType)?.icon ?? BarChart2;
                   return (
                     <WidgetShell
@@ -681,7 +879,7 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
         </div>
       </div>
 
-      {/* Reconfigure modal */}
+      {/* Reconfigure chart modal */}
       {configuringUid && configuringWidget?.kind === 'chart' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-card border border-border rounded-2xl w-80 shadow-2xl overflow-hidden">
@@ -698,6 +896,16 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
             />
           </div>
         </div>
+      )}
+
+      {/* Performance process selector modal */}
+      {showPerfConfig && (
+        <PerformanceConfigModal
+          processes={allProcs}
+          selectedIds={perfSelectedIds ?? []}
+          onSave={savePerformanceConfig}
+          onClose={() => setShowPerfConfig(false)}
+        />
       )}
 
       {showAdd && <div className="fixed inset-0 z-20" onClick={() => { setShowAdd(false); setAddMode('picker'); }} />}
