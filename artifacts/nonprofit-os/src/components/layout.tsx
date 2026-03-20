@@ -1,4 +1,7 @@
-import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug, FileBarChart, ShieldCheck } from 'lucide-react';
+import {
+  Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
@@ -8,10 +11,29 @@ interface LayoutProps {
   children: React.ReactNode;
   activeView: ActiveView;
   onViewChange: (view: ActiveView) => void;
+  canGoBack?: boolean;
+  onBack?: () => void;
 }
 
-export function Layout({ children, activeView, onViewChange }: LayoutProps) {
+type ViewMeta = { label: string; section: string };
+
+const VIEW_META: Record<ActiveView, ViewMeta> = {
+  table:        { label: 'Process Catalogue',  section: 'Core Views' },
+  tree:         { label: 'Process Map',         section: 'Core Views' },
+  portfolio:    { label: 'Portfolio Catalogue', section: 'Core Views' },
+  'process-map':{ label: 'Portfolio Map',       section: 'Core Views' },
+  governance:   { label: 'Governance',          section: 'Governance' },
+  connectors:   { label: 'Connectors',          section: 'Integrations' },
+  dashboards:   { label: 'Dashboards',          section: 'System' },
+  reports:      { label: 'Reports',             section: 'System' },
+  'audit-logs': { label: 'Audit & Logs',        section: 'System' },
+  settings:     { label: 'Settings',            section: 'System' },
+};
+
+export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
   const orgName = useOrgName();
+  const meta = VIEW_META[activeView];
+
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
 
@@ -82,7 +104,64 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 bg-background relative shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.5)]">
-        {children}
+
+        {/* Breadcrumb bar */}
+        <div className="flex-none flex items-center gap-1 h-10 px-4 border-b border-border bg-card/60 backdrop-blur-sm z-30">
+          {/* Back button */}
+          <button
+            onClick={onBack}
+            disabled={!canGoBack}
+            title={canGoBack ? 'Go back' : 'No history'}
+            className={cn(
+              "flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
+              canGoBack
+                ? "text-foreground/70 hover:text-foreground hover:bg-secondary cursor-pointer"
+                : "text-muted-foreground/30 cursor-not-allowed"
+            )}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Divider */}
+          <div className="w-px h-4 bg-border mx-1" />
+
+          {/* Breadcrumb segments */}
+          <div className="flex items-center gap-0.5 text-xs min-w-0">
+            {/* Home / org name */}
+            <button
+              onClick={() => onViewChange('table')}
+              className={cn(
+                "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap",
+                activeView === 'table'
+                  ? "text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+              )}
+            >
+              <Home className="w-3 h-3 flex-shrink-0" />
+              <span className="hidden sm:inline truncate max-w-[120px]">{orgName}</span>
+            </button>
+
+            <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+
+            {/* Section */}
+            <span className="px-1.5 py-0.5 text-muted-foreground whitespace-nowrap hidden md:inline">
+              {meta.section}
+            </span>
+
+            <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0 hidden md:inline" />
+
+            {/* Current page */}
+            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium whitespace-nowrap">
+              {meta.label}
+            </span>
+          </div>
+        </div>
+
+        {/* View content */}
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {children}
+        </div>
+
       </main>
 
     </div>

@@ -24,19 +24,36 @@ const fadeSlide = {
 export default function Dashboard() {
   const [activeView, setActiveView] = useState<ActiveView>('table');
   const [treeInitialCategory, setTreeInitialCategory] = useState<string | null>(null);
+  const [navHistory, setNavHistory] = useState<ActiveView[]>([]);
+
+  function navigateTo(view: ActiveView) {
+    if (view === activeView) return;
+    setNavHistory(prev => [...prev, activeView]);
+    if (view !== 'tree') setTreeInitialCategory(null);
+    setActiveView(view);
+  }
+
+  function goBack() {
+    if (navHistory.length === 0) return;
+    const prev = navHistory[navHistory.length - 1];
+    setNavHistory(h => h.slice(0, -1));
+    if (prev !== 'tree') setTreeInitialCategory(null);
+    setActiveView(prev);
+  }
 
   const navigateToProcessMap = (category: string) => {
+    setNavHistory(prev => [...prev, activeView]);
     setTreeInitialCategory(category);
     setActiveView('tree');
   };
 
-  const handleViewChange = (view: ActiveView) => {
-    if (view !== 'tree') setTreeInitialCategory(null);
-    setActiveView(view);
-  };
-
   return (
-    <Layout activeView={activeView} onViewChange={handleViewChange}>
+    <Layout
+      activeView={activeView}
+      onViewChange={navigateTo}
+      canGoBack={navHistory.length > 0}
+      onBack={goBack}
+    >
       <AnimatePresence mode="wait">
         {activeView === 'table' && (
           <motion.div key="table" {...fadeSlide} className="w-full h-full">
