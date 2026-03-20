@@ -1051,6 +1051,33 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
 
 // ── Add Process Modal ─────────────────────────────────────────────────────────
 
+const TL_OPTIONS = [
+  { value: '',       label: 'None',      dot: null },
+  { value: 'green',  label: 'On Track',  dot: 'bg-green-500' },
+  { value: 'orange', label: 'At Risk',   dot: 'bg-amber-400' },
+  { value: 'red',    label: 'Off Track', dot: 'bg-red-500' },
+] as const;
+
+function ModalField({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="block text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1.5">
+        {label}{required && <span className="text-primary ml-0.5">*</span>}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <div className="text-[10px] font-bold text-primary uppercase tracking-widest">{children}</div>
+      <div className="flex-1 h-px bg-border/60" />
+    </div>
+  );
+}
+
 function AddProcessModal({
   categories,
   onClose,
@@ -1060,27 +1087,47 @@ function AddProcessModal({
 }: {
   categories: string[];
   onClose: () => void;
-  onCreateAndPopulate: (body: Record<string, string>, useAi: boolean) => void;
+  onCreateAndPopulate: (body: Record<string, string | boolean>, useAi: boolean) => void;
   isCreating: boolean;
   isPopulating: boolean;
 }) {
-  const [category, setCategory] = useState(categories[0] ?? '');
-  const [processName, setProcessName] = useState('');
+  const [category, setCategory]                     = useState(categories[0] ?? '');
+  const [processName, setProcessName]               = useState('');
   const [processDescription, setProcessDescription] = useState('');
-  const [useAi, setUseAi] = useState(true);
+  const [aiAgent, setAiAgent]                       = useState('');
+  const [purpose, setPurpose]                       = useState('');
+  const [inputs, setInputs]                         = useState('');
+  const [outputs, setOutputs]                       = useState('');
+  const [humanInTheLoop, setHumanInTheLoop]         = useState('');
+  const [kpi, setKpi]                               = useState('');
+  const [target, setTarget]                         = useState('');
+  const [achievement, setAchievement]               = useState('');
+  const [estimatedValueImpact, setEstimatedValueImpact] = useState('');
+  const [industryBenchmark, setIndustryBenchmark]   = useState('');
+  const [trafficLight, setTrafficLight]             = useState('');
+  const [included, setIncluded]                     = useState(false);
+  const [useAi, setUseAi]                           = useState(true);
+
   const isBusy = isCreating || isPopulating;
+
+  const inputCls = "w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 placeholder:text-muted-foreground/40";
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!category || !processDescription.trim()) return;
-    onCreateAndPopulate({ category, processName, processDescription }, useAi);
+    onCreateAndPopulate({
+      category, processName, processDescription,
+      aiAgent, purpose, inputs, outputs, humanInTheLoop,
+      kpi, target, achievement, estimatedValueImpact, industryBenchmark,
+      trafficLight, included,
+    }, useAi);
   };
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-none">
           <div className="flex items-center gap-2 font-semibold text-foreground">
             <Plus className="w-4 h-4 text-primary" />
             Add New Process
@@ -1090,101 +1137,169 @@ function AddProcessModal({
           </button>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Category *</label>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              required
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
+        {/* Scrollable form body */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
 
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Process Name (short)</label>
-            <input
-              type="text"
-              value={processName}
-              onChange={e => setProcessName(e.target.value)}
-              placeholder="e.g. Donor Retention"
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+            <SectionHeading>Core Info</SectionHeading>
 
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Process Description *</label>
-            <textarea
-              value={processDescription}
-              onChange={e => setProcessDescription(e.target.value)}
-              required
-              rows={3}
-              placeholder="Describe what this process does…"
-              className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
-          </div>
+            <ModalField label="Category" required>
+              <select value={category} onChange={e => setCategory(e.target.value)} required className={inputCls}>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </ModalField>
 
-          {/* AI Auto-Fill Toggle */}
-          <button
-            type="button"
-            onClick={() => setUseAi(v => !v)}
-            className={cn(
-              "w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-all",
-              useAi
-                ? "border-primary/50 bg-primary/5"
-                : "border-border bg-secondary/30 opacity-70"
-            )}
-          >
-            <div className={cn(
-              "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
-              useAi ? "bg-primary/20" : "bg-secondary"
-            )}>
-              <Sparkles className={cn("w-4 h-4", useAi ? "text-primary" : "text-muted-foreground")} />
+            <ModalField label="Process Name">
+              <input type="text" value={processName} onChange={e => setProcessName(e.target.value)}
+                placeholder="e.g. Donor Retention" className={inputCls} />
+            </ModalField>
+
+            <ModalField label="Process Description" required>
+              <textarea value={processDescription} onChange={e => setProcessDescription(e.target.value)}
+                required rows={3} placeholder="Describe what this process does…"
+                className={cn(inputCls, "resize-y min-h-[76px]")} />
+            </ModalField>
+
+            <SectionHeading>Operations</SectionHeading>
+
+            <ModalField label="AI Agent">
+              <input type="text" value={aiAgent} onChange={e => setAiAgent(e.target.value)}
+                placeholder="e.g. Donor Insights Agent" className={inputCls} />
+            </ModalField>
+
+            <ModalField label="Purpose">
+              <textarea value={purpose} onChange={e => setPurpose(e.target.value)}
+                rows={2} placeholder="What is the goal of this process?" className={cn(inputCls, "resize-y")} />
+            </ModalField>
+
+            <div className="grid grid-cols-2 gap-4">
+              <ModalField label="Inputs">
+                <textarea value={inputs} onChange={e => setInputs(e.target.value)}
+                  rows={2} placeholder="What goes in?" className={cn(inputCls, "resize-y")} />
+              </ModalField>
+              <ModalField label="Outputs">
+                <textarea value={outputs} onChange={e => setOutputs(e.target.value)}
+                  rows={2} placeholder="What comes out?" className={cn(inputCls, "resize-y")} />
+              </ModalField>
             </div>
-            <div>
-              <div className={cn("text-sm font-semibold", useAi ? "text-foreground" : "text-muted-foreground")}>
-                AI Auto-Fill
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5">
-                {useAi
-                  ? "Claude will auto-populate all blank fields after creation"
-                  : "Create with manual data only"}
-              </div>
-            </div>
-            <div className={cn(
-              "ml-auto w-4 h-4 rounded-full border-2 shrink-0 transition-colors",
-              useAi ? "bg-primary border-primary" : "border-muted-foreground/40"
-            )} />
-          </button>
 
-          {/* Actions */}
-          <div className="flex items-center gap-3 pt-2">
+            <ModalField label="Human in the Loop">
+              <textarea value={humanInTheLoop} onChange={e => setHumanInTheLoop(e.target.value)}
+                rows={2} placeholder="Who reviews or approves?" className={cn(inputCls, "resize-y")} />
+            </ModalField>
+
+            <SectionHeading>Performance</SectionHeading>
+
+            <div className="grid grid-cols-2 gap-4">
+              <ModalField label="KPI">
+                <input type="text" value={kpi} onChange={e => setKpi(e.target.value)}
+                  placeholder="e.g. Donor retention rate" className={inputCls} />
+              </ModalField>
+              <ModalField label="Target">
+                <input type="text" value={target} onChange={e => setTarget(e.target.value)}
+                  placeholder="e.g. 80%" className={inputCls} />
+              </ModalField>
+              <ModalField label="Achievement">
+                <input type="text" value={achievement} onChange={e => setAchievement(e.target.value)}
+                  placeholder="e.g. 74%" className={inputCls} />
+              </ModalField>
+              <ModalField label="Est. Value Impact">
+                <input type="text" value={estimatedValueImpact} onChange={e => setEstimatedValueImpact(e.target.value)}
+                  placeholder="e.g. $50k/yr" className={inputCls} />
+              </ModalField>
+            </div>
+
+            <ModalField label="Industry Benchmark">
+              <input type="text" value={industryBenchmark} onChange={e => setIndustryBenchmark(e.target.value)}
+                placeholder="e.g. Sector avg 75%" className={inputCls} />
+            </ModalField>
+
+            <SectionHeading>Status</SectionHeading>
+
+            <ModalField label="Traffic Light">
+              <div className="flex gap-2">
+                {TL_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTrafficLight(opt.value)}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border text-xs font-medium transition-all",
+                      trafficLight === opt.value
+                        ? "border-primary/60 bg-primary/10 text-foreground"
+                        : "border-border bg-secondary/30 text-muted-foreground hover:border-primary/30"
+                    )}
+                  >
+                    {opt.dot
+                      ? <span className={cn("w-2.5 h-2.5 rounded-full shrink-0", opt.dot)} />
+                      : <span className="w-2.5 h-2.5 rounded-full border-2 border-dashed border-muted-foreground/40 shrink-0" />
+                    }
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </ModalField>
+
+            <ModalField label="In Portfolio">
+              <button
+                type="button"
+                onClick={() => setIncluded(v => !v)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all border w-full text-left",
+                  included
+                    ? "bg-green-500/10 border-green-500/30 text-green-400"
+                    : "bg-secondary/30 border-border/50 text-muted-foreground hover:border-primary/30"
+                )}
+              >
+                <span className={cn(
+                  "w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 transition-all",
+                  included ? "bg-green-500 border-green-500" : "border-muted-foreground/40"
+                )}>
+                  {included && (
+                    <svg viewBox="0 0 10 8" className="w-2.5 h-2.5 fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round">
+                      <polyline points="1,4 3.5,6.5 9,1" />
+                    </svg>
+                  )}
+                </span>
+                {included ? 'Yes – include in portfolio' : 'No – exclude from portfolio'}
+              </button>
+            </ModalField>
+
+            {/* AI Auto-Fill Toggle */}
             <button
               type="button"
-              onClick={onClose}
-              disabled={isBusy}
-              className="flex-1 px-4 py-2.5 border border-border bg-secondary/50 hover:bg-secondary text-foreground rounded-xl text-sm font-medium transition-colors"
+              onClick={() => setUseAi(v => !v)}
+              className={cn(
+                "w-full flex items-center gap-3 p-3.5 rounded-xl border-2 text-left transition-all",
+                useAi ? "border-primary/50 bg-primary/5" : "border-border bg-secondary/30 opacity-70"
+              )}
             >
+              <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", useAi ? "bg-primary/20" : "bg-secondary")}>
+                <Sparkles className={cn("w-4 h-4", useAi ? "text-primary" : "text-muted-foreground")} />
+              </div>
+              <div>
+                <div className={cn("text-sm font-semibold", useAi ? "text-foreground" : "text-muted-foreground")}>AI Auto-Fill</div>
+                <div className="text-xs text-muted-foreground mt-0.5">
+                  {useAi ? "Claude will auto-populate all blank fields after creation" : "Create with manual data only"}
+                </div>
+              </div>
+              <div className={cn("ml-auto w-4 h-4 rounded-full border-2 shrink-0 transition-colors", useAi ? "bg-primary border-primary" : "border-muted-foreground/40")} />
+            </button>
+
+          </div>
+
+          {/* Sticky footer */}
+          <div className="flex items-center gap-3 px-6 py-4 border-t border-border flex-none bg-card">
+            <button type="button" onClick={onClose} disabled={isBusy}
+              className="flex-1 px-4 py-2.5 border border-border bg-secondary/50 hover:bg-secondary text-foreground rounded-xl text-sm font-medium transition-colors">
               Cancel
             </button>
-            <button
-              type="submit"
-              disabled={isBusy || !processDescription.trim()}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors disabled:opacity-50"
-            >
+            <button type="submit" disabled={isBusy || !processDescription.trim()}
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl text-sm font-medium transition-colors disabled:opacity-50">
               {isBusy ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  {isCreating ? 'Creating…' : 'AI Filling…'}
-                </>
+                <><Loader2 className="w-4 h-4 animate-spin" />{isCreating ? 'Creating…' : 'AI Filling…'}</>
               ) : (
-                <>
-                  {useAi ? <Cpu className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  {useAi ? 'Create & AI Fill' : 'Create Process'}
-                </>
+                <>{useAi ? <Cpu className="w-4 h-4" /> : <Plus className="w-4 h-4" />}{useAi ? 'Create & AI Fill' : 'Create Process'}</>
               )}
             </button>
           </div>

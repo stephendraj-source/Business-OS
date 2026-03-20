@@ -254,6 +254,7 @@ router.post("/processes", async (req, res) => {
       included: body.included ?? false,
       target: body.target ?? "",
       achievement: body.achievement ?? "",
+      trafficLight: body.trafficLight ?? "",
     }).returning();
 
     await writeAuditLog({
