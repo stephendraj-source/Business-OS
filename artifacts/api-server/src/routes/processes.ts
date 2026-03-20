@@ -294,8 +294,18 @@ router.put("/processes/:id", async (req, res) => {
     const [before] = await db.select().from(processesTable).where(eq(processesTable.id, id));
     if (!before) { res.status(404).json({ error: "Process not found" }); return; }
 
-    const body = req.body as Record<string, string | boolean>;
+    const body = req.body as Record<string, string | boolean | number>;
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
+
+    if (body.number !== undefined) {
+      const newNumber = parseInt(String(body.number), 10);
+      if (isNaN(newNumber) || newNumber < 1) { res.status(400).json({ error: "Process ID must be a positive integer" }); return; }
+      const [conflict] = await db.select().from(processesTable)
+        .where(eq(processesTable.number, newNumber));
+      if (conflict && conflict.id !== id) { res.status(409).json({ error: `PRO-${newNumber.toString().padStart(3, '0')} is already in use` }); return; }
+      updateData.number = newNumber;
+    }
+
     if (body.category !== undefined) updateData.category = body.category as string;
     if (body.processDescription !== undefined) updateData.processDescription = body.processDescription as string;
     if (body.processName !== undefined) updateData.processName = body.processName as string;

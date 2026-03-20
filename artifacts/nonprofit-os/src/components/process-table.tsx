@@ -73,6 +73,52 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [govMap, setGovMap] = useState<GovMap>({});
   const [govPopoverFor, setGovPopoverFor] = useState<number | null>(null);
 
+  const [editingNumberFor, setEditingNumberFor] = useState<number | null>(null);
+  const [editingNumberValue, setEditingNumberValue] = useState('');
+  const [editingNumberError, setEditingNumberError] = useState<string | null>(null);
+  const [savingNumber, setSavingNumber] = useState(false);
+
+  function startEditNumber(process: Process) {
+    setEditingNumberFor(process.id);
+    setEditingNumberValue(String(process.number));
+    setEditingNumberError(null);
+  }
+
+  function cancelEditNumber() {
+    setEditingNumberFor(null);
+    setEditingNumberValue('');
+    setEditingNumberError(null);
+  }
+
+  async function commitEditNumber(processId: number) {
+    const raw = editingNumberValue.trim().replace(/^pro-?/i, '');
+    const newNumber = parseInt(raw, 10);
+    if (isNaN(newNumber) || newNumber < 1) {
+      setEditingNumberError('Enter a valid number (e.g. 5 or PRO-005)');
+      return;
+    }
+    setSavingNumber(true);
+    setEditingNumberError(null);
+    try {
+      const res = await fetch(`/api/processes/${processId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: newNumber }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setEditingNumberError(data.error ?? 'Failed to update');
+        return;
+      }
+      updateProcess({ id: processId, data: { number: newNumber } as any });
+      setEditingNumberFor(null);
+    } catch {
+      setEditingNumberError('Network error — please try again');
+    } finally {
+      setSavingNumber(false);
+    }
+  }
+
   useEffect(() => {
     fetch('/api/governance').then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
       setGovStandards(data.map(d => ({ id: d.id, complianceName: d.complianceName })));
@@ -269,14 +315,51 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             </label>
           </td>
         );
-      case '#':
+      case '#': {
+        const isEditingNum = editingNumberFor === process.id;
         return (
-          <td key="#" className="align-middle p-3 text-center font-mono text-xs overflow-hidden" style={{ width: widths['#'] }}>
-            <span className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold tracking-wide text-[10px]">
-              PRO-{process.number.toString().padStart(3, '0')}
-            </span>
+          <td key="#" className="align-middle p-0 text-center overflow-visible" style={{ width: widths['#'] }}>
+            {isEditingNum ? (
+              <div className="relative flex flex-col items-center px-1 py-1 gap-0.5">
+                <div className="flex items-center gap-0.5">
+                  <span className="text-[9px] text-muted-foreground font-mono font-bold">PRO-</span>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingNumberValue}
+                    onChange={e => { setEditingNumberValue(e.target.value); setEditingNumberError(null); }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { e.preventDefault(); commitEditNumber(process.id); }
+                      if (e.key === 'Escape') cancelEditNumber();
+                    }}
+                    onBlur={() => { if (!savingNumber) commitEditNumber(process.id); }}
+                    className={cn(
+                      "w-10 px-1 py-0.5 text-[10px] font-mono font-semibold rounded border text-center bg-background text-primary focus:outline-none focus:ring-1 focus:ring-primary/50",
+                      editingNumberError ? "border-red-500" : "border-primary/40"
+                    )}
+                    placeholder="001"
+                  />
+                </div>
+                {editingNumberError && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 z-50 whitespace-nowrap px-2 py-1 rounded bg-red-500/90 text-white text-[9px] font-medium shadow-lg">
+                    {editingNumberError}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-3 px-2">
+                <button
+                  onClick={() => startEditNumber(process)}
+                  title="Click to edit Process ID"
+                  className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold tracking-wide text-[10px] font-mono hover:bg-primary/20 hover:ring-1 hover:ring-primary/40 transition-all cursor-pointer"
+                >
+                  PRO-{process.number.toString().padStart(3, '0')}
+                </button>
+              </div>
+            )}
           </td>
         );
+      }
       case 'category':
         return (
           <td key="category" className="align-middle p-3 overflow-hidden" style={{ width: widths['category'] }}>
