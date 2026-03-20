@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2 } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
 
@@ -64,6 +64,37 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const dragKey = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ inserted: number; updated: number; total: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const a = document.createElement('a');
+    a.href = '/api/processes/export';
+    a.download = 'nonprofit-processes.xlsx';
+    a.click();
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      const res = await fetch('/api/processes/import', { method: 'POST', body: formData });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Import failed');
+      setImportResult(result);
+      window.location.reload();
+    } catch (err: any) {
+      alert(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const orderedReorderable = useMemo(() =>
     colOrder.map(k => REORDERABLE.find(c => c.key === k)!).filter(Boolean),
@@ -301,8 +332,8 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
           <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-60">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div className="relative w-full sm:w-52">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               placeholder="Search processes..."
@@ -321,6 +352,39 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
               <option key={cat} value={cat}>{cat}</option>
             ))}
           </select>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleExport}
+              title="Export to Excel"
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importing}
+              title="Import from Excel"
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+            >
+              {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Import
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImport}
+              className="hidden"
+            />
+            {importResult && (
+              <span className="flex items-center gap-1 text-xs text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                {importResult.updated} updated, {importResult.inserted} new
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

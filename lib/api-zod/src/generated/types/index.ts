@@ -6,8 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./anthropicConversation";
+export * from "./anthropicConversationWithMessages";
+export * from "./anthropicError";
+export * from "./anthropicMessage";
+export * from "./createAnthropicConversationBody";
 export * from "./deleteResponse";
 export * from "./errorResponse";
 export * from "./healthStatus";
+export * from "./importProcessesBody";
+export * from "./importResult";
 export * from "./process";
+export * from "./sendAnthropicMessageBody";
 export * from "./updateProcessBody";

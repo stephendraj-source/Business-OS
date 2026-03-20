@@ -3,9 +3,11 @@ import { Layout } from '@/components/layout';
 import { ProcessTable } from '@/components/process-table';
 import { HorizontalTree } from '@/components/horizontal-tree';
 import { ProcessMap } from '@/components/process-map';
+import { Connectors } from '@/components/connectors';
+import { Chatbot } from '@/components/chatbot';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -40,7 +42,13 @@ export default function Dashboard() {
             <ProcessTable mode="portfolio" />
           </motion.div>
         )}
+        {activeView === 'connectors' && (
+          <motion.div key="connectors" {...fadeSlide} className="w-full h-full">
+            <Connectors />
+          </motion.div>
+        )}
       </AnimatePresence>
+      <Chatbot />
     </Layout>
   );
 }

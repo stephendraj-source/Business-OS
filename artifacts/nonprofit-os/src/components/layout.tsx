@@ -1,7 +1,7 @@
-import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map } from 'lucide-react';
+import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,30 +30,17 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
           <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Core Views</div>
             <div className="space-y-1">
-              <NavItem
-                icon={<TableProperties />}
-                label="Process Matrix"
-                active={activeView === 'table'}
-                onClick={() => onViewChange('table')}
-              />
-              <NavItem
-                icon={<Network />}
-                label="Architecture Tree"
-                active={activeView === 'tree'}
-                onClick={() => onViewChange('tree')}
-              />
-              <NavItem
-                icon={<Map />}
-                label="Process Map"
-                active={activeView === 'process-map'}
-                onClick={() => onViewChange('process-map')}
-              />
-              <NavItem
-                icon={<Briefcase />}
-                label="Portfolio"
-                active={activeView === 'portfolio'}
-                onClick={() => onViewChange('portfolio')}
-              />
+              <NavItem icon={<TableProperties />} label="Process Matrix" active={activeView === 'table'} onClick={() => onViewChange('table')} />
+              <NavItem icon={<Network />} label="Architecture Tree" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
+              <NavItem icon={<Map />} label="Process Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
+              <NavItem icon={<Briefcase />} label="Portfolio" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Integrations</div>
+            <div className="space-y-1">
+              <NavItem icon={<Plug />} label="Connectors" active={activeView === 'connectors'} onClick={() => onViewChange('connectors')} />
             </div>
           </div>
 
