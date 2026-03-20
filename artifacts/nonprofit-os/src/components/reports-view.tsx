@@ -1,5 +1,9 @@
-import { useState, useMemo } from 'react';
-import { FileBarChart, Download, Filter, ChevronDown, CheckCircle2, AlertCircle, TrendingUp, Bot, Tag, Layers, BarChart3, Search } from 'lucide-react';
+import { useState, useMemo, useRef } from 'react';
+import {
+  FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
+  TrendingUp, Bot, Tag, Layers, BarChart3, Search,
+  SlidersHorizontal, GripVertical, X, Plus, RotateCcw,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
 import * as XLSX from 'xlsx';
@@ -34,6 +38,70 @@ const REPORT_TYPES = [
 
 type ReportId = (typeof REPORT_TYPES)[number]['id'];
 
+type FieldDef = { key: string; label: string };
+
+const FIELD_DEFS: Record<ReportId, FieldDef[]> = {
+  coverage: [
+    { key: 'processId',   label: 'Process ID' },
+    { key: 'category',    label: 'Category' },
+    { key: 'processName', label: 'Process Name' },
+    { key: 'description', label: 'Description' },
+    { key: 'fieldsFilled',label: 'Fields Filled' },
+    { key: 'completeness',label: 'Completeness' },
+    { key: 'status',      label: 'Status' },
+  ],
+  category: [
+    { key: 'category',        label: 'Category' },
+    { key: 'total',           label: 'Total Processes' },
+    { key: 'inPortfolio',     label: 'In Portfolio' },
+    { key: 'excluded',        label: 'Excluded' },
+    { key: 'avgCompleteness', label: 'Avg Completeness' },
+    { key: 'status',          label: 'Status' },
+  ],
+  'ai-agents': [
+    { key: 'agent',      label: 'AI Agent' },
+    { key: 'count',      label: 'Process Count' },
+    { key: 'categories', label: 'Categories Covered' },
+    { key: 'processes',  label: 'Processes' },
+  ],
+  kpi: [
+    { key: 'processId',   label: 'Process ID' },
+    { key: 'processName', label: 'Process Name' },
+    { key: 'category',    label: 'Category' },
+    { key: 'kpi',         label: 'KPI' },
+    { key: 'target',      label: 'Target' },
+    { key: 'achievement', label: 'Achievement' },
+  ],
+  value: [
+    { key: 'processId',   label: 'Process ID' },
+    { key: 'processName', label: 'Process Name' },
+    { key: 'category',    label: 'Category' },
+    { key: 'valueImpact', label: 'Estimated Value Impact' },
+    { key: 'benchmark',   label: 'Industry Benchmark' },
+  ],
+  portfolio: [
+    { key: 'processId',      label: 'Process ID' },
+    { key: 'category',       label: 'Category' },
+    { key: 'processName',    label: 'Process Name' },
+    { key: 'inPortfolio',    label: 'In Portfolio' },
+    { key: 'purpose',        label: 'Purpose' },
+    { key: 'inputs',         label: 'Inputs' },
+    { key: 'outputs',        label: 'Outputs' },
+    { key: 'humanInTheLoop', label: 'Human-in-the-Loop' },
+  ],
+};
+
+const DEFAULT_ACTIVE: Record<ReportId, string[]> = {
+  coverage:   ['processId', 'category', 'processName', 'fieldsFilled', 'completeness', 'status'],
+  category:   ['category', 'total', 'inPortfolio', 'excluded', 'avgCompleteness', 'status'],
+  'ai-agents':['agent', 'count', 'categories', 'processes'],
+  kpi:        ['processId', 'processName', 'category', 'kpi', 'target', 'achievement'],
+  value:      ['processId', 'processName', 'category', 'valueImpact', 'benchmark'],
+  portfolio:  ['processId', 'category', 'processName', 'inPortfolio', 'purpose'],
+};
+
+const LS_KEY = 'nonprofit-os-report-fields-v1';
+
 const TRACKABLE_FIELDS: (keyof Process)[] = [
   'processName', 'processDescription', 'aiAgent', 'purpose',
   'inputs', 'outputs', 'humanInTheLoop', 'kpi', 'estimatedValueImpact',
@@ -45,9 +113,7 @@ function completeness(p: Process): number {
   return Math.round((filled / TRACKABLE_FIELDS.length) * 100);
 }
 
-function processId(n: number) {
-  return `PRO-${n.toString().padStart(3, '0')}`;
-}
+function processId(n: number) { return `PRO-${n.toString().padStart(3, '0')}`; }
 
 function CompletenessBar({ pct }: { pct: number }) {
   const color = pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-amber-400' : 'bg-red-400';
@@ -89,11 +155,31 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
   );
 }
 
+function loadFieldConfig(): Record<ReportId, string[]> {
+  try {
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored) as Partial<Record<ReportId, string[]>>;
+      const result = { ...DEFAULT_ACTIVE };
+      for (const id of REPORT_TYPES.map(r => r.id)) {
+        if (parsed[id] && parsed[id]!.length > 0) result[id] = parsed[id]!;
+      }
+      return result;
+    }
+  } catch { /* ignore */ }
+  return { ...DEFAULT_ACTIVE };
+}
+
 export function ReportsView() {
   const { data: processes = [] } = useListProcesses();
   const [activeReport, setActiveReport] = useState<ReportId>('coverage');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFieldPanel, setShowFieldPanel] = useState(false);
+  const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
+
+  const dragIndexRef = useRef<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   const categories = useMemo(() => {
     const cats = [...new Set((processes as Process[]).map(p => p.category))].sort();
@@ -115,70 +201,144 @@ export function ReportsView() {
   }, [processes, categoryFilter, searchQuery]);
 
   const reportDef = REPORT_TYPES.find(r => r.id === activeReport)!;
+  const allFieldDefs = FIELD_DEFS[activeReport];
+  const activeFields = fieldConfig[activeReport] ?? DEFAULT_ACTIVE[activeReport];
+  const inactiveFields = allFieldDefs.filter(f => !activeFields.includes(f.key));
+
+  function updateFields(newFields: string[]) {
+    const newConfig = { ...fieldConfig, [activeReport]: newFields };
+    setFieldConfig(newConfig);
+    localStorage.setItem(LS_KEY, JSON.stringify(newConfig));
+  }
+
+  function addField(key: string) {
+    if (!activeFields.includes(key)) updateFields([...activeFields, key]);
+  }
+
+  function removeField(key: string) {
+    const next = activeFields.filter(k => k !== key);
+    if (next.length === 0) return;
+    updateFields(next);
+  }
+
+  function resetFields() {
+    updateFields([...DEFAULT_ACTIVE[activeReport]]);
+  }
+
+  function handleDragStart(index: number) {
+    dragIndexRef.current = index;
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    setDragOver(index);
+  }
+
+  function handleDrop(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    const from = dragIndexRef.current;
+    if (from === null || from === index) { setDragOver(null); return; }
+    const next = [...activeFields];
+    const [moved] = next.splice(from, 1);
+    next.splice(index, 0, moved);
+    updateFields(next);
+    dragIndexRef.current = null;
+    setDragOver(null);
+  }
+
+  function handleDragEnd() {
+    dragIndexRef.current = null;
+    setDragOver(null);
+  }
 
   function exportReport() {
     let rows: Record<string, unknown>[] = [];
-
     if (activeReport === 'coverage') {
-      rows = filtered.map(p => ({
-        'Process ID': processId(p.number),
-        'Category': p.category,
-        'Process Name': p.processName,
-        'Description': p.processDescription,
-        'Completeness (%)': completeness(p),
-        'Fields Filled': TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length,
-        'Total Fields': TRACKABLE_FIELDS.length,
-      }));
+      rows = filtered.map(p => {
+        const row: Record<string, unknown> = {};
+        const pct = completeness(p);
+        const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length;
+        for (const key of activeFields) {
+          if (key === 'processId') row['Process ID'] = processId(p.number);
+          else if (key === 'category') row['Category'] = p.category;
+          else if (key === 'processName') row['Process Name'] = p.processName;
+          else if (key === 'description') row['Description'] = p.processDescription;
+          else if (key === 'fieldsFilled') row['Fields Filled'] = `${filled}/${TRACKABLE_FIELDS.length}`;
+          else if (key === 'completeness') row['Completeness (%)'] = pct;
+          else if (key === 'status') row['Status'] = pct >= 80 ? 'Complete' : pct >= 50 ? 'Partial' : 'Sparse';
+        }
+        return row;
+      });
     } else if (activeReport === 'category') {
       const grouped: Record<string, Process[]> = {};
-      (processes as Process[]).forEach(p => {
-        if (!grouped[p.category]) grouped[p.category] = [];
-        grouped[p.category].push(p);
+      (processes as Process[]).forEach(p => { if (!grouped[p.category]) grouped[p.category] = []; grouped[p.category].push(p); });
+      rows = Object.entries(grouped).map(([cat, ps]) => {
+        const row: Record<string, unknown> = {};
+        const avg = Math.round(ps.reduce((s, p) => s + completeness(p), 0) / ps.length);
+        const included = ps.filter(p => p.included).length;
+        for (const key of activeFields) {
+          if (key === 'category') row['Category'] = cat;
+          else if (key === 'total') row['Total Processes'] = ps.length;
+          else if (key === 'inPortfolio') row['In Portfolio'] = included;
+          else if (key === 'excluded') row['Excluded'] = ps.length - included;
+          else if (key === 'avgCompleteness') row['Avg Completeness (%)'] = avg;
+          else if (key === 'status') row['Status'] = avg >= 80 ? 'Complete' : avg >= 50 ? 'Partial' : 'Sparse';
+        }
+        return row;
       });
-      rows = Object.entries(grouped).map(([cat, ps]) => ({
-        'Category': cat,
-        'Total Processes': ps.length,
-        'Included in Portfolio': ps.filter(p => p.included).length,
-        'Avg Completeness (%)': Math.round(ps.reduce((s, p) => s + completeness(p), 0) / ps.length),
-      }));
     } else if (activeReport === 'ai-agents') {
       const agentMap: Record<string, Process[]> = {};
-      (processes as Process[]).forEach(p => {
-        const a = p.aiAgent?.trim() || 'Unassigned';
-        if (!agentMap[a]) agentMap[a] = [];
-        agentMap[a].push(p);
+      (processes as Process[]).forEach(p => { const a = p.aiAgent?.trim() || 'Unassigned'; if (!agentMap[a]) agentMap[a] = []; agentMap[a].push(p); });
+      rows = Object.entries(agentMap).map(([agent, ps]) => {
+        const row: Record<string, unknown> = {};
+        for (const key of activeFields) {
+          if (key === 'agent') row['AI Agent'] = agent;
+          else if (key === 'count') row['Process Count'] = ps.length;
+          else if (key === 'categories') row['Categories Covered'] = [...new Set(ps.map(p => p.category))].join(', ');
+          else if (key === 'processes') row['Processes'] = ps.map(p => p.processName).join('; ');
+        }
+        return row;
       });
-      rows = Object.entries(agentMap).map(([agent, ps]) => ({
-        'AI Agent': agent,
-        'Process Count': ps.length,
-        'Categories Covered': [...new Set(ps.map(p => p.category))].join(', '),
-        'Processes': ps.map(p => p.processName).join('; '),
-      }));
     } else if (activeReport === 'kpi') {
-      rows = filtered.map(p => ({
-        'Process ID': processId(p.number),
-        'Category': p.category,
-        'Process Name': p.processName,
-        'KPI': p.kpi,
-        'Target': p.target,
-        'Achievement': p.achievement,
-      }));
+      rows = filtered.map(p => {
+        const row: Record<string, unknown> = {};
+        for (const key of activeFields) {
+          if (key === 'processId') row['Process ID'] = processId(p.number);
+          else if (key === 'processName') row['Process Name'] = p.processName;
+          else if (key === 'category') row['Category'] = p.category;
+          else if (key === 'kpi') row['KPI'] = p.kpi;
+          else if (key === 'target') row['Target'] = p.target;
+          else if (key === 'achievement') row['Achievement'] = p.achievement;
+        }
+        return row;
+      });
     } else if (activeReport === 'value') {
-      rows = filtered.map(p => ({
-        'Process ID': processId(p.number),
-        'Category': p.category,
-        'Process Name': p.processName,
-        'Estimated Value Impact': p.estimatedValueImpact,
-        'Industry Benchmark': p.industryBenchmark,
-      }));
+      rows = filtered.map(p => {
+        const row: Record<string, unknown> = {};
+        for (const key of activeFields) {
+          if (key === 'processId') row['Process ID'] = processId(p.number);
+          else if (key === 'processName') row['Process Name'] = p.processName;
+          else if (key === 'category') row['Category'] = p.category;
+          else if (key === 'valueImpact') row['Estimated Value Impact'] = p.estimatedValueImpact;
+          else if (key === 'benchmark') row['Industry Benchmark'] = p.industryBenchmark;
+        }
+        return row;
+      });
     } else if (activeReport === 'portfolio') {
-      rows = filtered.map(p => ({
-        'Process ID': processId(p.number),
-        'Category': p.category,
-        'Process Name': p.processName,
-        'In Portfolio': p.included ? 'Yes' : 'No',
-        'Purpose': p.purpose,
-      }));
+      rows = filtered.map(p => {
+        const row: Record<string, unknown> = {};
+        for (const key of activeFields) {
+          if (key === 'processId') row['Process ID'] = processId(p.number);
+          else if (key === 'category') row['Category'] = p.category;
+          else if (key === 'processName') row['Process Name'] = p.processName;
+          else if (key === 'inPortfolio') row['In Portfolio'] = p.included ? 'Yes' : 'No';
+          else if (key === 'purpose') row['Purpose'] = p.purpose;
+          else if (key === 'inputs') row['Inputs'] = p.inputs;
+          else if (key === 'outputs') row['Outputs'] = p.outputs;
+          else if (key === 'humanInTheLoop') row['Human-in-the-Loop'] = p.humanInTheLoop;
+        }
+        return row;
+      });
     }
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -198,13 +358,15 @@ export function ReportsView() {
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">Generate and export configurable reports from your process data.</p>
         </div>
-        <button
-          onClick={exportReport}
-          className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 font-medium transition-all"
-        >
-          <Download className="w-4 h-4" />
-          Export Report
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportReport}
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 font-medium transition-all"
+          >
+            <Download className="w-4 h-4" />
+            Export Report
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 flex min-h-0">
@@ -216,7 +378,7 @@ export function ReportsView() {
             return (
               <button
                 key={r.id}
-                onClick={() => setActiveReport(r.id)}
+                onClick={() => { setActiveReport(r.id); setShowFieldPanel(false); }}
                 className={cn(
                   "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all",
                   activeReport === r.id
@@ -234,73 +396,204 @@ export function ReportsView() {
           })}
         </aside>
 
-        {/* Right: Report content */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          {/* Filters bar */}
-          <div className="flex-none flex items-center gap-3 px-5 py-3 border-b border-border bg-card/40 flex-wrap">
-            <Filter className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <div className="relative">
-              <select
-                value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-              >
-                <option value="all">All Categories</option>
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
-            </div>
-            {activeReport !== 'category' && activeReport !== 'ai-agents' && (
-              <div className="relative flex items-center">
-                <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="Search processes..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-52"
-                />
+        {/* Right: Report content + optional fields panel */}
+        <div className="flex-1 flex min-w-0 min-h-0 relative">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            {/* Filters bar */}
+            <div className="flex-none flex items-center gap-3 px-5 py-3 border-b border-border bg-card/40 flex-wrap">
+              <Filter className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <div className="relative">
+                <select
+                  value={categoryFilter}
+                  onChange={e => setCategoryFilter(e.target.value)}
+                  className="appearance-none pl-3 pr-8 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="all">All Categories</option>
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
               </div>
-            )}
-            <span className="ml-auto text-xs text-muted-foreground">
-              {activeReport === 'category'
-                ? `${categories.length} categories`
-                : `${filtered.length} processes`}
-            </span>
+              {activeReport !== 'category' && activeReport !== 'ai-agents' && (
+                <div className="relative flex items-center">
+                  <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="Search processes..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-52"
+                  />
+                </div>
+              )}
+              <span className="text-xs text-muted-foreground">
+                {activeReport === 'category'
+                  ? `${categories.length} categories`
+                  : `${filtered.length} processes`}
+              </span>
+              {/* Fields button */}
+              <button
+                onClick={() => setShowFieldPanel(v => !v)}
+                className={cn(
+                  "ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border font-medium transition-all",
+                  showFieldPanel
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                Fields
+                <span className={cn(
+                  "ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold",
+                  showFieldPanel ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
+                )}>
+                  {activeFields.length}
+                </span>
+              </button>
+            </div>
+
+            {/* Report content */}
+            <div className="flex-1 overflow-auto p-5">
+              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}                   activeFields={activeFields} />}
+              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]}     categoryFilter={categoryFilter} activeFields={activeFields} />}
+              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]}     categoryFilter={categoryFilter} activeFields={activeFields} />}
+              {activeReport === 'kpi'       && <KpiReport       processes={filtered}                   activeFields={activeFields} />}
+              {activeReport === 'value'     && <ValueReport     processes={filtered}                   activeFields={activeFields} />}
+              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}                   activeFields={activeFields} />}
+            </div>
           </div>
 
-          {/* Report content */}
-          <div className="flex-1 overflow-auto p-5">
-            {activeReport === 'coverage' && <CoverageReport processes={filtered} />}
-            {activeReport === 'category' && <CategoryReport processes={processes as Process[]} categoryFilter={categoryFilter} />}
-            {activeReport === 'ai-agents' && <AiAgentReport processes={processes as Process[]} categoryFilter={categoryFilter} />}
-            {activeReport === 'kpi' && <KpiReport processes={filtered} />}
-            {activeReport === 'value' && <ValueReport processes={filtered} />}
-            {activeReport === 'portfolio' && <PortfolioReport processes={filtered} />}
-          </div>
+          {/* Field configuration panel */}
+          {showFieldPanel && (
+            <div className="w-64 flex-shrink-0 border-l border-border bg-card flex flex-col overflow-hidden">
+              {/* Panel header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <span className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-primary" />
+                  Configure Fields
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={resetFields}
+                    title="Reset to default"
+                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setShowFieldPanel(false)}
+                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3 space-y-5">
+                {/* Active fields — draggable */}
+                <div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+                    Active Columns ({activeFields.length})
+                  </div>
+                  <div className="space-y-1">
+                    {activeFields.map((key, index) => {
+                      const def = allFieldDefs.find(f => f.key === key);
+                      if (!def) return null;
+                      return (
+                        <div
+                          key={key}
+                          draggable
+                          onDragStart={() => handleDragStart(index)}
+                          onDragOver={e => handleDragOver(e, index)}
+                          onDrop={e => handleDrop(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={cn(
+                            "flex items-center gap-2 px-2 py-2 rounded-lg border transition-all cursor-grab active:cursor-grabbing group",
+                            dragOver === index
+                              ? "border-primary/50 bg-primary/10"
+                              : "border-border bg-secondary/30 hover:bg-secondary/60"
+                          )}
+                        >
+                          <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 group-hover:text-muted-foreground transition-colors" />
+                          <span className="flex-1 text-xs text-foreground font-medium truncate">{def.label}</span>
+                          <button
+                            onClick={() => removeField(key)}
+                            disabled={activeFields.length <= 1}
+                            className="p-0.5 rounded hover:bg-red-500/10 text-muted-foreground/50 hover:text-red-400 transition-colors disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Available fields — click to add */}
+                {inactiveFields.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2 px-1">
+                      Available to Add
+                    </div>
+                    <div className="space-y-1">
+                      {inactiveFields.map(def => (
+                        <button
+                          key={def.key}
+                          onClick={() => addField(def.key)}
+                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:bg-primary/5 hover:text-primary transition-all group"
+                        >
+                          <Plus className="w-3.5 h-3.5 flex-shrink-0 opacity-50 group-hover:opacity-100" />
+                          <span className="flex-1 text-xs text-left truncate">{def.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="px-3 py-3 border-t border-border">
+                <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+                  Drag to reorder. Click <X className="inline w-2.5 h-2.5" /> to hide a column or <Plus className="inline w-2.5 h-2.5" /> to add it back. Changes are saved automatically.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function CoverageReport({ processes }: { processes: Process[] }) {
-  const avgCompleteness = processes.length
-    ? Math.round(processes.reduce((s, p) => s + completeness(p), 0) / processes.length)
-    : 0;
+function renderCoverageCell(p: Process, field: string): React.ReactNode {
+  const pct = completeness(p);
+  const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length;
+  switch (field) {
+    case 'processId':   return <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
+    case 'category':    return <span className="text-xs text-muted-foreground">{p.category}</span>;
+    case 'processName': return <span className="font-medium">{p.processName}</span>;
+    case 'description': return <span className="text-xs text-muted-foreground max-w-xs truncate block">{p.processDescription || <em className="opacity-40">—</em>}</span>;
+    case 'fieldsFilled':return <span className="text-xs text-muted-foreground">{filled}/{TRACKABLE_FIELDS.length}</span>;
+    case 'completeness':return <CompletenessBar pct={pct} />;
+    case 'status':      return <StatusBadge pct={pct} />;
+    default:            return null;
+  }
+}
+
+function CoverageReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+  const avgCompleteness = processes.length ? Math.round(processes.reduce((s, p) => s + completeness(p), 0) / processes.length) : 0;
   const complete = processes.filter(p => completeness(p) >= 80).length;
-  const partial = processes.filter(p => completeness(p) >= 50 && completeness(p) < 80).length;
-  const sparse = processes.filter(p => completeness(p) < 50).length;
+  const partial  = processes.filter(p => completeness(p) >= 50 && completeness(p) < 80).length;
+  const sparse   = processes.filter(p => completeness(p) < 50).length;
+
+  const fieldDefs = FIELD_DEFS.coverage.filter(f => activeFields.includes(f.key));
 
   return (
     <div className="space-y-5">
-      {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
           { label: 'Avg Completeness', value: `${avgCompleteness}%`, color: 'text-primary' },
-          { label: 'Complete (≥80%)', value: complete, color: 'text-green-400' },
-          { label: 'Partial (50–79%)', value: partial, color: 'text-amber-400' },
-          { label: 'Sparse (<50%)', value: sparse, color: 'text-red-400' },
+          { label: 'Complete (≥80%)',  value: complete,              color: 'text-green-400' },
+          { label: 'Partial (50–79%)', value: partial,               color: 'text-amber-400' },
+          { label: 'Sparse (<50%)',    value: sparse,                color: 'text-red-400' },
         ].map(card => (
           <div key={card.label} className="p-4 rounded-xl border border-border bg-card">
             <div className={cn("text-2xl font-bold font-display", card.color)}>{card.value}</div>
@@ -308,94 +601,78 @@ function CoverageReport({ processes }: { processes: Process[] }) {
           </div>
         ))}
       </div>
-      {/* Table */}
       <TableWrapper>
-        <thead>
-          <tr>
-            <Th>Process ID</Th>
-            <Th>Category</Th>
-            <Th>Process Name</Th>
-            <Th>Fields Filled</Th>
-            <Th className="w-48">Completeness</Th>
-            <Th>Status</Th>
-          </tr>
-        </thead>
+        <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'completeness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
         <tbody>
-          {processes.map(p => {
-            const pct = completeness(p);
-            const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length;
-            return (
-              <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
-                <Td><span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span></Td>
-                <Td className="text-muted-foreground text-xs">{p.category}</Td>
-                <Td className="font-medium">{p.processName}</Td>
-                <Td className="text-muted-foreground text-xs">{filled}/{TRACKABLE_FIELDS.length}</Td>
-                <Td className="w-48"><CompletenessBar pct={pct} /></Td>
-                <Td><StatusBadge pct={pct} /></Td>
-              </tr>
-            );
-          })}
+          {processes.map(p => (
+            <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
+              {fieldDefs.map(f => <Td key={f.key} className={f.key === 'completeness' ? 'w-48' : undefined}>{renderCoverageCell(p, f.key)}</Td>)}
+            </tr>
+          ))}
         </tbody>
       </TableWrapper>
     </div>
   );
 }
 
-function CategoryReport({ processes, categoryFilter }: { processes: Process[]; categoryFilter: string }) {
+function renderCategoryCell(cat: string, ps: Process[], field: string): React.ReactNode {
+  const avg = Math.round(ps.reduce((s, p) => s + completeness(p), 0) / ps.length);
+  const included = ps.filter(p => p.included).length;
+  switch (field) {
+    case 'category':        return <span className="font-medium">{cat}</span>;
+    case 'total':           return <span>{ps.length}</span>;
+    case 'inPortfolio':     return <span className="text-green-400 font-medium">{included}</span>;
+    case 'excluded':        return <span className="text-muted-foreground">{ps.length - included}</span>;
+    case 'avgCompleteness': return <CompletenessBar pct={avg} />;
+    case 'status':          return <StatusBadge pct={avg} />;
+    default:                return null;
+  }
+}
+
+function CategoryReport({ processes, categoryFilter, activeFields }: { processes: Process[]; categoryFilter: string; activeFields: string[] }) {
   const grouped = useMemo(() => {
     const map: Record<string, Process[]> = {};
-    processes.forEach(p => {
-      if (!map[p.category]) map[p.category] = [];
-      map[p.category].push(p);
-    });
+    processes.forEach(p => { if (!map[p.category]) map[p.category] = []; map[p.category].push(p); });
     return Object.entries(map)
       .filter(([cat]) => categoryFilter === 'all' || cat === categoryFilter)
       .sort((a, b) => a[0].localeCompare(b[0]));
   }, [processes, categoryFilter]);
 
+  const fieldDefs = FIELD_DEFS.category.filter(f => activeFields.includes(f.key));
+
   return (
     <TableWrapper>
-      <thead>
-        <tr>
-          <Th>Category</Th>
-          <Th>Total Processes</Th>
-          <Th>In Portfolio</Th>
-          <Th>Excluded</Th>
-          <Th className="w-48">Avg Completeness</Th>
-          <Th>Status</Th>
-        </tr>
-      </thead>
+      <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
       <tbody>
-        {grouped.map(([cat, ps]) => {
-          const avg = Math.round(ps.reduce((s, p) => s + completeness(p), 0) / ps.length);
-          const included = ps.filter(p => p.included).length;
-          return (
-            <tr key={cat} className="hover:bg-secondary/20 transition-colors">
-              <Td className="font-medium">{cat}</Td>
-              <Td>{ps.length}</Td>
-              <Td className="text-green-400 font-medium">{included}</Td>
-              <Td className="text-muted-foreground">{ps.length - included}</Td>
-              <Td><CompletenessBar pct={avg} /></Td>
-              <Td><StatusBadge pct={avg} /></Td>
-            </tr>
-          );
-        })}
+        {grouped.map(([cat, ps]) => (
+          <tr key={cat} className="hover:bg-secondary/20 transition-colors">
+            {fieldDefs.map(f => <Td key={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined}>{renderCategoryCell(cat, ps, f.key)}</Td>)}
+          </tr>
+        ))}
       </tbody>
     </TableWrapper>
   );
 }
 
-function AiAgentReport({ processes, categoryFilter }: { processes: Process[]; categoryFilter: string }) {
+function renderAgentCell(agent: string, ps: Process[], field: string): React.ReactNode {
+  switch (field) {
+    case 'agent':      return <span className={cn("font-medium", agent === 'Unassigned' ? "text-muted-foreground italic" : "text-foreground")}>{agent}</span>;
+    case 'count':      return <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold">{ps.length}</span>;
+    case 'categories': return <span className="text-xs text-muted-foreground">{[...new Set(ps.map(p => p.category))].join(', ')}</span>;
+    case 'processes':  return <span className="text-xs text-muted-foreground max-w-xs truncate block">{ps.map(p => p.processName).join(', ')}</span>;
+    default:           return null;
+  }
+}
+
+function AiAgentReport({ processes, categoryFilter, activeFields }: { processes: Process[]; categoryFilter: string; activeFields: string[] }) {
   const agentMap = useMemo(() => {
-    const filtered = categoryFilter === 'all' ? processes : processes.filter(p => p.category === categoryFilter);
+    const filt = categoryFilter === 'all' ? processes : processes.filter(p => p.category === categoryFilter);
     const map: Record<string, Process[]> = {};
-    filtered.forEach(p => {
-      const a = p.aiAgent?.trim() || 'Unassigned';
-      if (!map[a]) map[a] = [];
-      map[a].push(p);
-    });
+    filt.forEach(p => { const a = p.aiAgent?.trim() || 'Unassigned'; if (!map[a]) map[a] = []; map[a].push(p); });
     return Object.entries(map).sort((a, b) => b[1].length - a[1].length);
   }, [processes, categoryFilter]);
+
+  const fieldDefs = FIELD_DEFS['ai-agents'].filter(f => activeFields.includes(f.key));
 
   return (
     <div className="space-y-4">
@@ -418,29 +695,11 @@ function AiAgentReport({ processes, categoryFilter }: { processes: Process[]; ca
         </div>
       </div>
       <TableWrapper>
-        <thead>
-          <tr>
-            <Th>AI Agent</Th>
-            <Th>Process Count</Th>
-            <Th>Categories Covered</Th>
-            <Th>Processes</Th>
-          </tr>
-        </thead>
+        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {agentMap.map(([agent, ps]) => (
             <tr key={agent} className="hover:bg-secondary/20 transition-colors">
-              <Td>
-                <span className={cn("font-medium", agent === 'Unassigned' ? "text-muted-foreground italic" : "text-foreground")}>
-                  {agent}
-                </span>
-              </Td>
-              <Td>
-                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary text-xs font-bold">
-                  {ps.length}
-                </span>
-              </Td>
-              <Td className="text-xs text-muted-foreground">{[...new Set(ps.map(p => p.category))].join(', ')}</Td>
-              <Td className="text-xs text-muted-foreground max-w-xs truncate">{ps.map(p => p.processName).join(', ')}</Td>
+              {fieldDefs.map(f => <Td key={f.key}>{renderAgentCell(agent, ps, f.key)}</Td>)}
             </tr>
           ))}
         </tbody>
@@ -449,21 +708,37 @@ function AiAgentReport({ processes, categoryFilter }: { processes: Process[]; ca
   );
 }
 
-function KpiReport({ processes }: { processes: Process[] }) {
-  const withKpi = processes.filter(p => p.kpi?.trim()).length;
-  const withTarget = processes.filter(p => p.target?.trim()).length;
+function renderKpiCell(p: Process, field: string): React.ReactNode {
+  const dash = <span className="text-muted-foreground/50 italic">—</span>;
+  switch (field) {
+    case 'processId':   return <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
+    case 'processName': return <span className="font-medium">{p.processName}</span>;
+    case 'category':    return <span className="text-xs text-muted-foreground">{p.category}</span>;
+    case 'kpi':         return <span className="text-xs">{p.kpi || dash}</span>;
+    case 'target':      return <span className="text-xs">{p.target || dash}</span>;
+    case 'achievement': return <span className="text-xs">{p.achievement || dash}</span>;
+    default:            return null;
+  }
+}
+
+function KpiReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+  const withKpi         = processes.filter(p => p.kpi?.trim()).length;
+  const withTarget      = processes.filter(p => p.target?.trim()).length;
   const withAchievement = processes.filter(p => p.achievement?.trim()).length;
+  const fieldDefs = FIELD_DEFS.kpi.filter(f => activeFields.includes(f.key));
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Have KPI Defined', value: withKpi, total: processes.length, color: 'text-primary' },
-          { label: 'Have Target Set', value: withTarget, total: processes.length, color: 'text-blue-400' },
-          { label: 'Have Achievement', value: withAchievement, total: processes.length, color: 'text-green-400' },
+          { label: 'Have KPI Defined', value: withKpi,         total: processes.length, color: 'text-primary' },
+          { label: 'Have Target Set',   value: withTarget,      total: processes.length, color: 'text-blue-400' },
+          { label: 'Have Achievement',  value: withAchievement, total: processes.length, color: 'text-green-400' },
         ].map(card => (
           <div key={card.label} className="p-4 rounded-xl border border-border bg-card">
-            <div className={cn("text-2xl font-bold font-display", card.color)}>{card.value}<span className="text-sm text-muted-foreground font-normal">/{card.total}</span></div>
+            <div className={cn("text-2xl font-bold font-display", card.color)}>
+              {card.value}<span className="text-sm text-muted-foreground font-normal">/{card.total}</span>
+            </div>
             <div className="text-xs text-muted-foreground mt-1">{card.label}</div>
             <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
               <div className={cn("h-full rounded-full", card.color.replace('text-', 'bg-'))} style={{ width: `${Math.round((card.value / card.total) * 100)}%` }} />
@@ -472,25 +747,11 @@ function KpiReport({ processes }: { processes: Process[] }) {
         ))}
       </div>
       <TableWrapper>
-        <thead>
-          <tr>
-            <Th>Process ID</Th>
-            <Th>Process Name</Th>
-            <Th>Category</Th>
-            <Th>KPI</Th>
-            <Th>Target</Th>
-            <Th>Achievement</Th>
-          </tr>
-        </thead>
+        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
-              <Td><span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span></Td>
-              <Td className="font-medium">{p.processName}</Td>
-              <Td className="text-xs text-muted-foreground">{p.category}</Td>
-              <Td className="text-xs">{p.kpi || <span className="text-muted-foreground/50 italic">—</span>}</Td>
-              <Td className="text-xs">{p.target || <span className="text-muted-foreground/50 italic">—</span>}</Td>
-              <Td className="text-xs">{p.achievement || <span className="text-muted-foreground/50 italic">—</span>}</Td>
+              {fieldDefs.map(f => <Td key={f.key}>{renderKpiCell(p, f.key)}</Td>)}
             </tr>
           ))}
         </tbody>
@@ -499,41 +760,44 @@ function KpiReport({ processes }: { processes: Process[] }) {
   );
 }
 
-function ValueReport({ processes }: { processes: Process[] }) {
-  const withValue = processes.filter(p => p.estimatedValueImpact?.trim()).length;
+function renderValueCell(p: Process, field: string): React.ReactNode {
+  const dash = <span className="text-muted-foreground/50 italic">—</span>;
+  switch (field) {
+    case 'processId':   return <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
+    case 'processName': return <span className="font-medium">{p.processName}</span>;
+    case 'category':    return <span className="text-xs text-muted-foreground">{p.category}</span>;
+    case 'valueImpact': return <span className="text-xs max-w-xs">{p.estimatedValueImpact || dash}</span>;
+    case 'benchmark':   return <span className="text-xs max-w-xs">{p.industryBenchmark || dash}</span>;
+    default:            return null;
+  }
+}
+
+function ValueReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
+  const withValue     = processes.filter(p => p.estimatedValueImpact?.trim()).length;
   const withBenchmark = processes.filter(p => p.industryBenchmark?.trim()).length;
+  const fieldDefs = FIELD_DEFS.value.filter(f => activeFields.includes(f.key));
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-4">
         {[
-          { label: 'With Value Impact', value: withValue, total: processes.length, color: 'text-primary' },
-          { label: 'With Benchmark', value: withBenchmark, total: processes.length, color: 'text-violet-400' },
+          { label: 'With Value Impact', value: withValue,     total: processes.length, color: 'text-primary' },
+          { label: 'With Benchmark',    value: withBenchmark, total: processes.length, color: 'text-violet-400' },
         ].map(card => (
           <div key={card.label} className="p-4 rounded-xl border border-border bg-card">
-            <div className={cn("text-2xl font-bold font-display", card.color)}>{card.value}<span className="text-sm text-muted-foreground font-normal">/{card.total}</span></div>
+            <div className={cn("text-2xl font-bold font-display", card.color)}>
+              {card.value}<span className="text-sm text-muted-foreground font-normal">/{card.total}</span>
+            </div>
             <div className="text-xs text-muted-foreground mt-1">{card.label}</div>
           </div>
         ))}
       </div>
       <TableWrapper>
-        <thead>
-          <tr>
-            <Th>Process ID</Th>
-            <Th>Process Name</Th>
-            <Th>Category</Th>
-            <Th>Estimated Value Impact</Th>
-            <Th>Industry Benchmark</Th>
-          </tr>
-        </thead>
+        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
-              <Td><span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span></Td>
-              <Td className="font-medium">{p.processName}</Td>
-              <Td className="text-xs text-muted-foreground">{p.category}</Td>
-              <Td className="text-xs max-w-xs">{p.estimatedValueImpact || <span className="text-muted-foreground/50 italic">—</span>}</Td>
-              <Td className="text-xs max-w-xs">{p.industryBenchmark || <span className="text-muted-foreground/50 italic">—</span>}</Td>
+              {fieldDefs.map(f => <Td key={f.key}>{renderValueCell(p, f.key)}</Td>)}
             </tr>
           ))}
         </tbody>
@@ -542,18 +806,34 @@ function ValueReport({ processes }: { processes: Process[] }) {
   );
 }
 
-function PortfolioReport({ processes }: { processes: Process[] }) {
+function renderPortfolioCell(p: Process, field: string): React.ReactNode {
+  const dash = <span className="text-muted-foreground/50 italic">—</span>;
+  switch (field) {
+    case 'processId':      return <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
+    case 'category':       return <span className="text-xs text-muted-foreground">{p.category}</span>;
+    case 'processName':    return <span className="font-medium">{p.processName}</span>;
+    case 'inPortfolio':    return p.included
+      ? <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 font-semibold">Yes</span>
+      : <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-semibold">No</span>;
+    case 'purpose':        return <span className="text-xs max-w-xs truncate block">{p.purpose || dash}</span>;
+    case 'inputs':         return <span className="text-xs max-w-xs truncate block">{p.inputs || dash}</span>;
+    case 'outputs':        return <span className="text-xs max-w-xs truncate block">{p.outputs || dash}</span>;
+    case 'humanInTheLoop': return <span className="text-xs max-w-xs truncate block">{p.humanInTheLoop || dash}</span>;
+    default:               return null;
+  }
+}
+
+function PortfolioReport({ processes, activeFields }: { processes: Process[]; activeFields: string[] }) {
   const included = processes.filter(p => p.included).length;
-  const excluded = processes.filter(p => !p.included).length;
-  const pct = processes.length ? Math.round((included / processes.length) * 100) : 0;
+  const fieldDefs = FIELD_DEFS.portfolio.filter(f => activeFields.includes(f.key));
 
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Total Processes', value: processes.length, color: 'text-primary' },
-          { label: 'Included in Portfolio', value: `${included} (${pct}%)`, color: 'text-green-400' },
-          { label: 'Excluded', value: `${excluded} (${100 - pct}%)`, color: 'text-muted-foreground' },
+          { label: 'Total Processes',     value: processes.length,                color: 'text-primary' },
+          { label: 'In Portfolio',        value: included,                        color: 'text-green-400' },
+          { label: 'Excluded',            value: processes.length - included,     color: 'text-muted-foreground' },
         ].map(card => (
           <div key={card.label} className="p-4 rounded-xl border border-border bg-card">
             <div className={cn("text-2xl font-bold font-display", card.color)}>{card.value}</div>
@@ -562,28 +842,11 @@ function PortfolioReport({ processes }: { processes: Process[] }) {
         ))}
       </div>
       <TableWrapper>
-        <thead>
-          <tr>
-            <Th>Process ID</Th>
-            <Th>Process Name</Th>
-            <Th>Category</Th>
-            <Th>Portfolio Status</Th>
-            <Th>Purpose</Th>
-          </tr>
-        </thead>
+        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr key={p.id} className="hover:bg-secondary/20 transition-colors">
-              <Td><span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span></Td>
-              <Td className="font-medium">{p.processName}</Td>
-              <Td className="text-xs text-muted-foreground">{p.category}</Td>
-              <Td>
-                {p.included
-                  ? <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-green-500/15 text-green-400 font-semibold"><CheckCircle2 className="w-3 h-3" /> Included</span>
-                  : <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-semibold"><AlertCircle className="w-3 h-3" /> Excluded</span>
-                }
-              </Td>
-              <Td className="text-xs max-w-xs truncate text-muted-foreground">{p.purpose || '—'}</Td>
+              {fieldDefs.map(f => <Td key={f.key}>{renderPortfolioCell(p, f.key)}</Td>)}
             </tr>
           ))}
         </tbody>
