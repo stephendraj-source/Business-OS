@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
@@ -178,17 +178,21 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
 
 type ReorderFn = (fromKey: string, toKey: string, side: 'before' | 'after') => void;
 
-function DraggableTh({ fieldKey, children, className, onReorder }: {
+function DraggableTh({ fieldKey, children, className, onReorder, isActive, sortDir: activeSortDir, onSort }: {
   fieldKey: string;
   children: React.ReactNode;
   className?: string;
   onReorder: ReorderFn;
+  isActive?: boolean;
+  sortDir?: 'asc' | 'desc';
+  onSort?: () => void;
 }) {
   const [dragOverSide, setDragOverSide] = useState<'before' | 'after' | null>(null);
   return (
     <th
       draggable
       title={typeof children === 'string' ? children : undefined}
+      onClick={() => onSort?.()}
       onDragStart={e => e.dataTransfer.setData('text/plain', fieldKey)}
       onDragOver={e => {
         e.preventDefault();
@@ -206,7 +210,9 @@ function DraggableTh({ fieldKey, children, className, onReorder }: {
       }}
       onDragEnd={() => setDragOverSide(null)}
       className={cn(
-        "relative text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-secondary/50 border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none",
+        "relative text-left px-4 py-3 text-xs font-semibold bg-secondary/50 border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors",
+        isActive ? "text-primary" : "text-muted-foreground",
+        onSort && "hover:text-foreground",
         className,
       )}
     >
@@ -216,7 +222,14 @@ function DraggableTh({ fieldKey, children, className, onReorder }: {
           style={{ [dragOverSide === 'before' ? 'left' : 'right']: 0 }}
         />
       )}
-      {children}
+      <span className="inline-flex items-center gap-1 pointer-events-none">
+        {children}
+        {onSort && (
+          <span className={cn("text-[9px] leading-none", isActive ? "text-primary" : "text-muted-foreground/30")}>
+            {isActive ? (activeSortDir === 'asc' ? '↑' : '↓') : '⇅'}
+          </span>
+        )}
+      </span>
     </th>
   );
 }
@@ -384,6 +397,36 @@ function loadFieldConfig(): Record<ReportId, string[]> {
   return { ...DEFAULT_ACTIVE };
 }
 
+const TL_ORDER: Record<string, number> = { green: 3, orange: 2, red: 1 };
+
+function sortProcesses(ps: Process[], key: string | null, dir: 'asc' | 'desc'): Process[] {
+  if (!key) return ps;
+  const m = dir === 'asc' ? 1 : -1;
+  return [...ps].sort((a, b) => {
+    let av: string | number = 0, bv: string | number = 0;
+    switch (key) {
+      case 'processId':    av = a.number;                         bv = b.number; break;
+      case 'category':     av = a.category ?? '';                  bv = b.category ?? ''; break;
+      case 'processName':  av = a.processName ?? '';               bv = b.processName ?? ''; break;
+      case 'description':  av = a.processDescription ?? '';        bv = b.processDescription ?? ''; break;
+      case 'fieldsFilled':
+      case 'completeness':
+      case 'status':       av = completeness(a);                   bv = completeness(b); break;
+      case 'trafficLight': av = TL_ORDER[(a as any).trafficLight] ?? 0; bv = TL_ORDER[(b as any).trafficLight] ?? 0; break;
+      case 'kpi':          av = a.kpi ?? '';                       bv = b.kpi ?? ''; break;
+      case 'target':       av = a.target ?? '';                    bv = b.target ?? ''; break;
+      case 'achievement':  av = a.achievement ?? '';               bv = b.achievement ?? ''; break;
+      case 'value':        av = a.estimatedValueImpact ?? '';      bv = b.estimatedValueImpact ?? ''; break;
+      case 'benchmark':    av = a.industryBenchmark ?? '';         bv = b.industryBenchmark ?? ''; break;
+      case 'included':     av = a.included ? 1 : 0;               bv = b.included ? 1 : 0; break;
+      case 'aiAgent':      av = a.aiAgent ?? '';                   bv = b.aiAgent ?? ''; break;
+      default:             return 0;
+    }
+    if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * m;
+    return String(av).localeCompare(String(bv)) * m;
+  });
+}
+
 export function ReportsView() {
   const { data: processes = [] } = useListProcesses();
   const [activeReport, setActiveReport] = useState<ReportId>('coverage');
@@ -394,6 +437,16 @@ export function ReportsView() {
 
   const [detailProcess, setDetailProcess] = useState<Process | null>(null);
   const [detailGroup, setDetailGroup] = useState<{ title: string; subtitle?: string; processes: Process[] } | null>(null);
+
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  useEffect(() => { setSortKey(null); setSortDir('asc'); }, [activeReport]);
+
+  function toggleSort(key: string) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }
 
   const dragIndexRef = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -682,12 +735,12 @@ export function ReportsView() {
 
             {/* Report content */}
             <div className="flex-1 overflow-auto p-5">
-              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
-              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} />}
-              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} />}
-              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
-              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
-              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
+              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
             </div>
           </div>
 
@@ -821,7 +874,7 @@ function renderCoverageCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function CoverageReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
+function CoverageReport({ processes, activeFields, onRowClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const avgCompleteness = processes.length ? Math.round(processes.reduce((s, p) => s + completeness(p), 0) / processes.length) : 0;
   const complete = processes.filter(p => completeness(p) >= 80).length;
   const partial  = processes.filter(p => completeness(p) >= 50 && completeness(p) < 80).length;
@@ -845,9 +898,9 @@ function CoverageReport({ processes, activeFields, onRowClick, onReorderField }:
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'completeness' ? 'w-48' : undefined} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'completeness' ? 'w-48' : undefined} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
-          {processes.map(p => (
+          {sortProcesses(processes, sortKey, sortDir).map(p => (
             <tr
               key={p.id}
               className="hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -876,20 +929,39 @@ function renderCategoryCell(cat: string, ps: Process[], field: string): React.Re
   }
 }
 
-function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn }) {
+function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const grouped = useMemo(() => {
     const map: Record<string, Process[]> = {};
     processes.forEach(p => { if (!map[p.category]) map[p.category] = []; map[p.category].push(p); });
-    return Object.entries(map)
-      .filter(([cat]) => categoryFilter === 'all' || cat === categoryFilter)
-      .sort((a, b) => a[0].localeCompare(b[0]));
-  }, [processes, categoryFilter]);
+    let entries = Object.entries(map)
+      .filter(([cat]) => categoryFilter === 'all' || cat === categoryFilter);
+    if (sortKey) {
+      const m = sortDir === 'asc' ? 1 : -1;
+      entries = entries.sort(([catA, psA], [catB, psB]) => {
+        switch (sortKey) {
+          case 'total':           return (psA.length - psB.length) * m;
+          case 'inPortfolio':     return (psA.filter(p => p.included).length - psB.filter(p => p.included).length) * m;
+          case 'excluded':        return ((psA.length - psA.filter(p => p.included).length) - (psB.length - psB.filter(p => p.included).length)) * m;
+          case 'avgCompleteness':
+          case 'status': {
+            const avgA = psA.length ? psA.reduce((s, p) => s + completeness(p), 0) / psA.length : 0;
+            const avgB = psB.length ? psB.reduce((s, p) => s + completeness(p), 0) / psB.length : 0;
+            return (avgA - avgB) * m;
+          }
+          default: return catA.localeCompare(catB) * m;
+        }
+      });
+    } else {
+      entries = entries.sort((a, b) => a[0].localeCompare(b[0]));
+    }
+    return entries;
+  }, [processes, categoryFilter, sortKey, sortDir]);
 
   const fieldDefs = FIELD_DEFS.category.filter(f => activeFields.includes(f.key));
 
   return (
     <TableWrapper>
-      <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+      <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
       <tbody>
         {grouped.map(([cat, ps]) => (
           <tr
@@ -915,13 +987,27 @@ function renderAgentCell(agent: string, ps: Process[], field: string): React.Rea
   }
 }
 
-function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn }) {
+function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const agentMap = useMemo(() => {
     const filt = categoryFilter === 'all' ? processes : processes.filter(p => p.category === categoryFilter);
     const map: Record<string, Process[]> = {};
     filt.forEach(p => { const a = p.aiAgent?.trim() || 'Unassigned'; if (!map[a]) map[a] = []; map[a].push(p); });
-    return Object.entries(map).sort((a, b) => b[1].length - a[1].length);
-  }, [processes, categoryFilter]);
+    let entries = Object.entries(map);
+    if (sortKey) {
+      const m = sortDir === 'asc' ? 1 : -1;
+      entries = entries.sort(([agentA, psA], [agentB, psB]) => {
+        switch (sortKey) {
+          case 'count':
+          case 'processes':  return (psA.length - psB.length) * m;
+          case 'categories': return (new Set(psA.map(p => p.category)).size - new Set(psB.map(p => p.category)).size) * m;
+          default:           return agentA.localeCompare(agentB) * m;
+        }
+      });
+    } else {
+      entries = entries.sort((a, b) => b[1].length - a[1].length);
+    }
+    return entries;
+  }, [processes, categoryFilter, sortKey, sortDir]);
 
   const fieldDefs = FIELD_DEFS['ai-agents'].filter(f => activeFields.includes(f.key));
 
@@ -946,7 +1032,7 @@ function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick, 
         </div>
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {agentMap.map(([agent, ps]) => (
             <tr
@@ -977,7 +1063,7 @@ function renderKpiCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function KpiReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
+function KpiReport({ processes, activeFields, onRowClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const withKpi         = processes.filter(p => p.kpi?.trim()).length;
   const withTarget      = processes.filter(p => p.target?.trim()).length;
   const withAchievement = processes.filter(p => p.achievement?.trim()).length;
@@ -1003,9 +1089,9 @@ function KpiReport({ processes, activeFields, onRowClick, onReorderField }: { pr
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
-          {processes.map(p => (
+          {sortProcesses(processes, sortKey, sortDir).map(p => (
             <tr
               key={p.id}
               className="hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -1032,7 +1118,7 @@ function renderValueCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function ValueReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
+function ValueReport({ processes, activeFields, onRowClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const withValue     = processes.filter(p => p.estimatedValueImpact?.trim()).length;
   const withBenchmark = processes.filter(p => p.industryBenchmark?.trim()).length;
   const fieldDefs = FIELD_DEFS.value.filter(f => activeFields.includes(f.key));
@@ -1053,9 +1139,9 @@ function ValueReport({ processes, activeFields, onRowClick, onReorderField }: { 
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
-          {processes.map(p => (
+          {sortProcesses(processes, sortKey, sortDir).map(p => (
             <tr
               key={p.id}
               className="hover:bg-secondary/30 transition-colors cursor-pointer"
@@ -1087,7 +1173,7 @@ function renderPortfolioCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function PortfolioReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
+function PortfolioReport({ processes, activeFields, onRowClick, onReorderField, sortKey, sortDir, onSortChange }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn; sortKey: string | null; sortDir: 'asc' | 'desc'; onSortChange: (key: string) => void }) {
   const included = processes.filter(p => p.included).length;
   const fieldDefs = FIELD_DEFS.portfolio.filter(f => activeFields.includes(f.key));
 
@@ -1106,9 +1192,9 @@ function PortfolioReport({ processes, activeFields, onRowClick, onReorderField }
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
-          {processes.map(p => (
+          {sortProcesses(processes, sortKey, sortDir).map(p => (
             <tr
               key={p.id}
               className="hover:bg-secondary/30 transition-colors cursor-pointer"
