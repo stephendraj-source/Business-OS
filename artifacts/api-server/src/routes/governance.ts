@@ -5,6 +5,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
 
@@ -33,6 +34,35 @@ async function seedIfEmpty() {
 }
 
 seedIfEmpty().catch(console.error);
+
+router.post("/governance/ai-populate", async (req, res) => {
+  try {
+    const { complianceName } = req.body as { complianceName: string };
+    if (!complianceName?.trim()) { res.status(400).json({ error: "complianceName required" }); return; }
+
+    const prompt = `You are an expert in regulatory compliance and governance frameworks. Given this compliance standard or regulation name: "${complianceName}", provide the following as a JSON object:
+{
+  "complianceAuthority": "The full official name of the regulatory body or authority that issues/oversees this standard",
+  "referenceUrl": "The official website URL for this standard or its governing authority",
+  "description": "A concise 1-2 sentence description of what this standard covers and who it applies to"
+}
+Return ONLY the JSON object. Be precise — if you recognise the standard, use accurate real-world data. If uncertain, make a reasonable inference from the name.`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { res.status(500).json({ error: "AI did not return valid JSON" }); return; }
+
+    res.json(JSON.parse(jsonMatch[0]));
+  } catch (err) {
+    res.status(500).json({ error: "AI populate failed" });
+  }
+});
 
 router.get("/governance", async (_req, res) => {
   const standards = await db.select().from(governanceStandardsTable).orderBy(governanceStandardsTable.id);

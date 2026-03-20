@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Plus, Trash2, Upload, FileText, ExternalLink, Edit2, Check, X, Download, Loader2 } from 'lucide-react';
+import { ShieldCheck, Plus, Trash2, Upload, ExternalLink, Edit2, Check, X, Download, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const API = '/api';
@@ -49,6 +49,8 @@ export function GovernanceView() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [savingId, setSavingId] = useState<number | 'new' | null>(null);
+  const [aiPopulating, setAiPopulating] = useState(false);
+  const [aiPopulateError, setAiPopulateError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -76,6 +78,31 @@ export function GovernanceView() {
   function cancelEdit() {
     setEditingId(null);
     setEditState({ complianceName: '', complianceAuthority: '', referenceUrl: '' });
+    setAiPopulateError(null);
+  }
+
+  async function aiPopulate() {
+    if (!editState.complianceName.trim()) return;
+    setAiPopulating(true);
+    setAiPopulateError(null);
+    try {
+      const res = await fetch(`${API}/governance/ai-populate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ complianceName: editState.complianceName }),
+      });
+      if (!res.ok) throw new Error('AI request failed');
+      const data = await res.json() as { complianceAuthority?: string; referenceUrl?: string };
+      setEditState(prev => ({
+        ...prev,
+        complianceAuthority: prev.complianceAuthority.trim() ? prev.complianceAuthority : (data.complianceAuthority ?? prev.complianceAuthority),
+        referenceUrl: prev.referenceUrl.trim() ? prev.referenceUrl : (data.referenceUrl ?? prev.referenceUrl),
+      }));
+    } catch {
+      setAiPopulateError('AI could not populate fields. Please try again.');
+    } finally {
+      setAiPopulating(false);
+    }
   }
 
   async function saveEdit() {
@@ -186,6 +213,9 @@ export function GovernanceView() {
               onSave={saveEdit}
               onCancel={cancelEdit}
               saving={savingId === 'new'}
+              onAiPopulate={aiPopulate}
+              aiPopulating={aiPopulating}
+              aiPopulateError={aiPopulateError}
             />
           </div>
         )}
@@ -229,12 +259,18 @@ function EditForm({
   onSave,
   onCancel,
   saving,
+  onAiPopulate,
+  aiPopulating,
+  aiPopulateError,
 }: {
   state: EditState;
   onChange: (s: EditState) => void;
   onSave: () => void;
   onCancel: () => void;
   saving: boolean;
+  onAiPopulate?: () => Promise<void>;
+  aiPopulating?: boolean;
+  aiPopulateError?: string | null;
 }) {
   return (
     <div className="space-y-3">
@@ -272,6 +308,44 @@ function EditForm({
           />
         </div>
       </div>
+
+      {/* AI populate hint / error */}
+      {onAiPopulate && (
+        <div className="flex items-center gap-2">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+      )}
+      {onAiPopulate && (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={onAiPopulate}
+            disabled={aiPopulating || !state.complianceName.trim()}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 px-4 py-2 text-xs rounded-lg font-medium border transition-all",
+              "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50",
+              "disabled:opacity-50 disabled:cursor-not-allowed"
+            )}
+          >
+            {aiPopulating
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Looking up with AI...</>
+              : <><Sparkles className="w-3.5 h-3.5" /> Auto-fill Authority &amp; URL with AI</>
+            }
+          </button>
+          {aiPopulateError && (
+            <p className="text-xs text-red-400 text-center">{aiPopulateError}</p>
+          )}
+          {!aiPopulateError && !aiPopulating && (
+            <p className="text-[10px] text-muted-foreground/50 text-center">
+              Enter the compliance name above and AI will suggest the authority and reference URL.
+              Existing values won't be overwritten.
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={onSave}
