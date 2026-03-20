@@ -426,11 +426,11 @@ function PerformanceWidget({ processes, selectedIds, onConfigure }: {
       <table className="w-full text-xs border-separate border-spacing-y-1.5">
         <thead>
           <tr>
-            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Process</th>
-            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">KPI</th>
-            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Target</th>
-            <th className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Actual</th>
-            <th className="px-2 pb-1 w-6" />
+            <th title="Process Name" className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Process</th>
+            <th title="Key Performance Indicator" className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">KPI</th>
+            <th title="Target" className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Target</th>
+            <th title="Actual Achievement" className="text-left px-2 pb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Actual</th>
+            <th title="Status" className="px-2 pb-1 w-6" />
           </tr>
         </thead>
         <tbody>

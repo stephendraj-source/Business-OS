@@ -141,9 +141,10 @@ function TableWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Th({ children, className }: { children: React.ReactNode; className?: string }) {
+function Th({ children, className, title }: { children: React.ReactNode; className?: string; title?: string }) {
+  const resolvedTitle = title ?? (typeof children === 'string' ? children : undefined);
   return (
-    <th className={cn("text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-secondary/50 border-b border-border whitespace-nowrap", className)}>
+    <th title={resolvedTitle} className={cn("text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-secondary/50 border-b border-border whitespace-nowrap", className)}>
       {children}
     </th>
   );

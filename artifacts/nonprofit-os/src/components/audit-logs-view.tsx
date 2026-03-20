@@ -121,12 +121,12 @@ export function AuditLogsView() {
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 z-10 bg-card border-b border-border">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-44">Timestamp</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Action</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">Type</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Field</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">User</th>
+                <th title="Timestamp" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-44">Timestamp</th>
+                <th title="Action" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Action</th>
+                <th title="Entity Type" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">Type</th>
+                <th title="Description" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</th>
+                <th title="Field Changed" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-28">Field</th>
+                <th title="User" className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider w-24">User</th>
               </tr>
             </thead>
             <tbody>

@@ -679,6 +679,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                 return (
                   <th
                     key={col.key}
+                    title={col.label || undefined}
                     className={cn(
                       "relative select-none overflow-hidden text-ellipsis whitespace-nowrap",
                       isReorderable && "cursor-grab active:cursor-grabbing",
