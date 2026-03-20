@@ -176,6 +176,51 @@ function Td({ children, className }: { children: React.ReactNode; className?: st
   );
 }
 
+type ReorderFn = (fromKey: string, toKey: string, side: 'before' | 'after') => void;
+
+function DraggableTh({ fieldKey, children, className, onReorder }: {
+  fieldKey: string;
+  children: React.ReactNode;
+  className?: string;
+  onReorder: ReorderFn;
+}) {
+  const [dragOverSide, setDragOverSide] = useState<'before' | 'after' | null>(null);
+  return (
+    <th
+      draggable
+      title={typeof children === 'string' ? children : undefined}
+      onDragStart={e => e.dataTransfer.setData('text/plain', fieldKey)}
+      onDragOver={e => {
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        setDragOverSide(e.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
+      }}
+      onDragLeave={e => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSide(null);
+      }}
+      onDrop={e => {
+        e.preventDefault();
+        const fromKey = e.dataTransfer.getData('text/plain');
+        if (fromKey && fromKey !== fieldKey && dragOverSide) onReorder(fromKey, fieldKey, dragOverSide);
+        setDragOverSide(null);
+      }}
+      onDragEnd={() => setDragOverSide(null)}
+      className={cn(
+        "relative text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-secondary/50 border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none",
+        className,
+      )}
+    >
+      {dragOverSide && (
+        <div
+          className="absolute inset-y-0 w-0.5 bg-primary z-20 pointer-events-none shadow-[0_0_6px_2px_hsl(var(--primary)/0.5)]"
+          style={{ [dragOverSide === 'before' ? 'left' : 'right']: 0 }}
+        />
+      )}
+      {children}
+    </th>
+  );
+}
+
 // ─── Detail panels ─────────────────────────────────────────────────────────────
 
 function ProcessDetailPanel({ process, onClose }: { process: Process; onClose: () => void }) {
@@ -395,6 +440,16 @@ export function ReportsView() {
 
   function resetFields() {
     updateFields([...DEFAULT_ACTIVE[activeReport]]);
+  }
+
+  function reorderField(fromKey: string, toKey: string, side: 'before' | 'after') {
+    if (fromKey === toKey) return;
+    const next = [...activeFields];
+    const fromIdx = next.indexOf(fromKey);
+    next.splice(fromIdx, 1);
+    const toIdx = next.indexOf(toKey);
+    next.splice(side === 'after' ? toIdx + 1 : toIdx, 0, fromKey);
+    updateFields(next);
   }
 
   function handleDragStart(index: number) {
@@ -627,12 +682,12 @@ export function ReportsView() {
 
             {/* Report content */}
             <div className="flex-1 overflow-auto p-5">
-              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
-              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} />}
-              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} />}
-              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
-              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
-              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} />}
+              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
+              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} />}
+              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} />}
+              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
+              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
+              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} />}
             </div>
           </div>
 
@@ -766,7 +821,7 @@ function renderCoverageCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function CoverageReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
+function CoverageReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
   const avgCompleteness = processes.length ? Math.round(processes.reduce((s, p) => s + completeness(p), 0) / processes.length) : 0;
   const complete = processes.filter(p => completeness(p) >= 80).length;
   const partial  = processes.filter(p => completeness(p) >= 50 && completeness(p) < 80).length;
@@ -790,7 +845,7 @@ function CoverageReport({ processes, activeFields, onRowClick }: { processes: Pr
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'completeness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'completeness' ? 'w-48' : undefined} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr
@@ -821,7 +876,7 @@ function renderCategoryCell(cat: string, ps: Process[], field: string): React.Re
   }
 }
 
-function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void }) {
+function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn }) {
   const grouped = useMemo(() => {
     const map: Record<string, Process[]> = {};
     processes.forEach(p => { if (!map[p.category]) map[p.category] = []; map[p.category].push(p); });
@@ -834,7 +889,7 @@ function CategoryReport({ processes, categoryFilter, activeFields, onGroupClick 
 
   return (
     <TableWrapper>
-      <thead><tr>{fieldDefs.map(f => <Th key={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined}>{f.label}</Th>)}</tr></thead>
+      <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} className={f.key === 'avgCompleteness' ? 'w-48' : undefined} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
       <tbody>
         {grouped.map(([cat, ps]) => (
           <tr
@@ -860,7 +915,7 @@ function renderAgentCell(agent: string, ps: Process[], field: string): React.Rea
   }
 }
 
-function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void }) {
+function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick, onReorderField }: { processes: Process[]; categoryFilter: string; activeFields: string[]; onGroupClick?: (title: string, subtitle: string, ps: Process[]) => void; onReorderField: ReorderFn }) {
   const agentMap = useMemo(() => {
     const filt = categoryFilter === 'all' ? processes : processes.filter(p => p.category === categoryFilter);
     const map: Record<string, Process[]> = {};
@@ -891,7 +946,7 @@ function AiAgentReport({ processes, categoryFilter, activeFields, onGroupClick }
         </div>
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {agentMap.map(([agent, ps]) => (
             <tr
@@ -922,7 +977,7 @@ function renderKpiCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function KpiReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
+function KpiReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
   const withKpi         = processes.filter(p => p.kpi?.trim()).length;
   const withTarget      = processes.filter(p => p.target?.trim()).length;
   const withAchievement = processes.filter(p => p.achievement?.trim()).length;
@@ -948,7 +1003,7 @@ function KpiReport({ processes, activeFields, onRowClick }: { processes: Process
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr
@@ -977,7 +1032,7 @@ function renderValueCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function ValueReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
+function ValueReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
   const withValue     = processes.filter(p => p.estimatedValueImpact?.trim()).length;
   const withBenchmark = processes.filter(p => p.industryBenchmark?.trim()).length;
   const fieldDefs = FIELD_DEFS.value.filter(f => activeFields.includes(f.key));
@@ -998,7 +1053,7 @@ function ValueReport({ processes, activeFields, onRowClick }: { processes: Proce
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr
@@ -1032,7 +1087,7 @@ function renderPortfolioCell(p: Process, field: string): React.ReactNode {
   }
 }
 
-function PortfolioReport({ processes, activeFields, onRowClick }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void }) {
+function PortfolioReport({ processes, activeFields, onRowClick, onReorderField }: { processes: Process[]; activeFields: string[]; onRowClick?: (p: Process) => void; onReorderField: ReorderFn }) {
   const included = processes.filter(p => p.included).length;
   const fieldDefs = FIELD_DEFS.portfolio.filter(f => activeFields.includes(f.key));
 
@@ -1051,7 +1106,7 @@ function PortfolioReport({ processes, activeFields, onRowClick }: { processes: P
         ))}
       </div>
       <TableWrapper>
-        <thead><tr>{fieldDefs.map(f => <Th key={f.key}>{f.label}</Th>)}</tr></thead>
+        <thead><tr>{fieldDefs.map(f => <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField}>{f.label}</DraggableTh>)}</tr></thead>
         <tbody>
           {processes.map(p => (
             <tr
