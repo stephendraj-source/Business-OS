@@ -7,10 +7,11 @@ import { Connectors } from '@/components/connectors';
 import { Chatbot } from '@/components/chatbot';
 import { AuditLogsView } from '@/components/audit-logs-view';
 import { DashboardsView } from '@/components/dashboards-view';
+import { ReportsView } from '@/components/reports-view';
 import { SettingsView } from '@/components/settings-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'audit-logs' | 'settings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -53,6 +54,11 @@ export default function Dashboard() {
         {activeView === 'dashboards' && (
           <motion.div key="dashboards" {...fadeSlide} className="w-full h-full">
             <DashboardsView />
+          </motion.div>
+        )}
+        {activeView === 'reports' && (
+          <motion.div key="reports" {...fadeSlide} className="w-full h-full">
+            <ReportsView />
           </motion.div>
         )}
         {activeView === 'audit-logs' && (

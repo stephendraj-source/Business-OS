@@ -15,7 +15,7 @@ interface ColumnDef {
 
 const FIXED_START: ColumnDef[] = [
   { key: 'include', label: 'Include', defaultWidth: 72, minWidth: 60, fixed: true },
-  { key: '#',       label: '#',       defaultWidth: 52, minWidth: 40, fixed: true },
+  { key: '#',       label: 'Process ID', defaultWidth: 90, minWidth: 70, fixed: true },
 ];
 
 const REORDERABLE: ColumnDef[] = [
@@ -239,8 +239,10 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         );
       case '#':
         return (
-          <td key="#" className="align-middle p-3 text-center text-muted-foreground font-mono text-xs overflow-hidden" style={{ width: widths['#'] }}>
-            {process.number}
+          <td key="#" className="align-middle p-3 text-center font-mono text-xs overflow-hidden" style={{ width: widths['#'] }}>
+            <span className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold tracking-wide text-[10px]">
+              PRO-{process.number.toString().padStart(3, '0')}
+            </span>
           </td>
         );
       case 'category':

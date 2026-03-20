@@ -1,7 +1,8 @@
-import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug } from 'lucide-react';
+import { Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase, Map, Plug, FileBarChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'audit-logs' | 'settings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -10,6 +11,7 @@ interface LayoutProps {
 }
 
 export function Layout({ children, activeView, onViewChange }: LayoutProps) {
+  const orgName = useOrgName();
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
 
@@ -21,7 +23,7 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center mr-3 shadow-lg shadow-primary/20">
             <Box className="w-5 h-5 text-primary-foreground" />
           </div>
-          <span className="font-display font-bold text-lg tracking-tight">Nonprofit<span className="text-primary">OS</span></span>
+          <span className="font-display font-bold text-lg tracking-tight truncate" title={orgName}>{orgName}</span>
         </div>
 
         {/* Navigation */}
@@ -48,6 +50,7 @@ export function Layout({ children, activeView, onViewChange }: LayoutProps) {
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">System</div>
             <div className="space-y-1">
               <NavItem icon={<LayoutDashboard />} label="Dashboards" active={activeView === 'dashboards'} onClick={() => onViewChange('dashboards')} />
+              <NavItem icon={<FileBarChart />} label="Reports" active={activeView === 'reports'} onClick={() => onViewChange('reports')} />
               <NavItem icon={<Bell />} label="Audit &amp; Logs" active={activeView === 'audit-logs'} onClick={() => onViewChange('audit-logs')} />
               <NavItem icon={<Settings />} label="Settings" active={activeView === 'settings'} onClick={() => onViewChange('settings')} />
             </div>
