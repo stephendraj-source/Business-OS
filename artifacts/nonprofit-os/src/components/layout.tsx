@@ -1,11 +1,11 @@
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,6 +29,7 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'audit-logs': { label: 'Audit & Logs',        section: 'System' },
   settings:     { label: 'Settings',            section: 'System' },
   'ai-agents':  { label: 'AI Agents',           section: 'AI' },
+  'workflows':  { label: 'Workflows',            section: 'Workflows' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -66,6 +67,13 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Governance</div>
             <div className="space-y-1">
               <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Workflows</div>
+            <div className="space-y-1">
+              <NavItem icon={<GitBranch />} label="Workflows" active={activeView === 'workflows'} onClick={() => onViewChange('workflows')} />
             </div>
           </div>
 
