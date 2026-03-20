@@ -9,8 +9,11 @@ Nonprofit Operating System — a full-stack business operating system for nonpro
 - **Process Map** (was "Architecture Tree") — horizontal tree diagram
 - **Portfolio Map** (was "Process Map") — drill-down category/process info card view
 - **Portfolio Catalogue** (was "Portfolio") — filtered process table for included processes
+- **Governance** — compliance standards management with document uploads and AI population
+- **AI Agents** — AI agent management with knowledge bases, schedulers, and Claude-powered execution
 - **Connectors** — Salesforce and integration config
 - **Dashboards** — configurable widget dashboard (stored in localStorage)
+- **Reports** — built-in and custom reports with drag-and-drop field configuration
 - **Audit & Logs** — full audit trail of all create/update/delete/import/export/AI actions
 - **Settings** — colour theme selector (5 themes, persisted in localStorage)
 

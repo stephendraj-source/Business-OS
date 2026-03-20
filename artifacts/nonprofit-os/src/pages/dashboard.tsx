@@ -10,9 +10,10 @@ import { DashboardsView } from '@/components/dashboards-view';
 import { ReportsView } from '@/components/reports-view';
 import { GovernanceView } from '@/components/governance-view';
 import { SettingsView } from '@/components/settings-view';
+import { AiAgentsView } from '@/components/ai-agents-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -103,6 +104,11 @@ export default function Dashboard() {
         {activeView === 'settings' && (
           <motion.div key="settings" {...fadeSlide} className="w-full h-full">
             <SettingsView />
+          </motion.div>
+        )}
+        {activeView === 'ai-agents' && (
+          <motion.div key="ai-agents" {...fadeSlide} className="w-full h-full">
+            <AiAgentsView />
           </motion.div>
         )}
       </AnimatePresence>

@@ -1,11 +1,11 @@
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -28,6 +28,7 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   reports:      { label: 'Reports',             section: 'System' },
   'audit-logs': { label: 'Audit & Logs',        section: 'System' },
   settings:     { label: 'Settings',            section: 'System' },
+  'ai-agents':  { label: 'AI Agents',           section: 'AI' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -65,6 +66,13 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Governance</div>
             <div className="space-y-1">
               <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">AI</div>
+            <div className="space-y-1">
+              <NavItem icon={<Bot />} label="AI Agents" active={activeView === 'ai-agents'} onClick={() => onViewChange('ai-agents')} />
             </div>
           </div>
 
