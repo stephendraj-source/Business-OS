@@ -397,6 +397,48 @@ function loadFieldConfig(): Record<ReportId, string[]> {
   return { ...DEFAULT_ACTIVE };
 }
 
+// ─── Custom report types & helpers ─────────────────────────────────────────────
+
+type CustomReportDef = {
+  id: string;
+  name: string;
+  description: string;
+  fields: string[];
+  createdAt: string;
+};
+
+const CUSTOM_REPORT_ALL_FIELDS: FieldDef[] = [
+  { key: 'processId',            label: 'Process ID' },
+  { key: 'category',             label: 'Category' },
+  { key: 'processName',          label: 'Process Name' },
+  { key: 'description',          label: 'Description' },
+  { key: 'aiAgent',              label: 'AI Agent' },
+  { key: 'purpose',              label: 'Purpose' },
+  { key: 'inputs',               label: 'Inputs' },
+  { key: 'outputs',              label: 'Outputs' },
+  { key: 'humanInTheLoop',       label: 'Human-in-the-Loop' },
+  { key: 'kpi',                  label: 'KPI' },
+  { key: 'target',               label: 'Target' },
+  { key: 'achievement',          label: 'Achievement' },
+  { key: 'trafficLight',         label: 'Traffic Light' },
+  { key: 'estimatedValueImpact', label: 'Value Impact' },
+  { key: 'industryBenchmark',    label: 'Benchmark' },
+  { key: 'included',             label: 'In Portfolio' },
+  { key: 'completeness',         label: 'Completeness' },
+  { key: 'status',               label: 'Status' },
+  { key: 'fieldsFilled',         label: 'Fields Filled' },
+];
+
+const CUSTOM_REPORTS_LS = 'nonprofit-os-custom-reports-v1';
+
+function loadCustomReports(): CustomReportDef[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_REPORTS_LS);
+    if (raw) return JSON.parse(raw) as CustomReportDef[];
+  } catch { /* ignore */ }
+  return [];
+}
+
 const TL_ORDER: Record<string, number> = { green: 3, orange: 2, red: 1 };
 
 function sortProcesses(ps: Process[], key: string | null, dir: 'asc' | 'desc'): Process[] {
@@ -427,13 +469,226 @@ function sortProcesses(ps: Process[], key: string | null, dir: 'asc' | 'desc'): 
   });
 }
 
+// ─── Custom report renderer ─────────────────────────────────────────────────────
+
+function renderCustomCellExport(p: Process, key: string): unknown {
+  const pct = completeness(p);
+  const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length;
+  switch (key) {
+    case 'processId':            return processId(p.number);
+    case 'category':             return p.category;
+    case 'processName':          return p.processName;
+    case 'description':          return p.processDescription;
+    case 'aiAgent':              return p.aiAgent || '';
+    case 'purpose':              return p.purpose || '';
+    case 'inputs':               return p.inputs || '';
+    case 'outputs':              return p.outputs || '';
+    case 'humanInTheLoop':       return p.humanInTheLoop || '';
+    case 'kpi':                  return p.kpi || '';
+    case 'target':               return p.target || '';
+    case 'achievement':          return p.achievement || '';
+    case 'trafficLight':         return p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '';
+    case 'estimatedValueImpact': return p.estimatedValueImpact || '';
+    case 'industryBenchmark':    return p.industryBenchmark || '';
+    case 'included':             return p.included ? 'Yes' : 'No';
+    case 'completeness':         return `${pct}%`;
+    case 'status':               return pct >= 80 ? 'Complete' : pct >= 50 ? 'Partial' : 'Sparse';
+    case 'fieldsFilled':         return `${filled}/${TRACKABLE_FIELDS.length}`;
+    default:                     return '';
+  }
+}
+
+function renderCustomCell(p: Process, key: string): React.ReactNode {
+  const pct = completeness(p);
+  const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length;
+  switch (key) {
+    case 'processId':            return <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{processId(p.number)}</span>;
+    case 'category':             return <span className="text-xs">{p.category}</span>;
+    case 'processName':          return <span className="font-medium">{p.processName}</span>;
+    case 'description':          return <span className="text-muted-foreground text-xs line-clamp-2">{p.processDescription || '—'}</span>;
+    case 'aiAgent':              return <span className="text-xs">{p.aiAgent || <em className="opacity-40">—</em>}</span>;
+    case 'purpose':              return <span className="text-xs text-muted-foreground line-clamp-2">{p.purpose || '—'}</span>;
+    case 'inputs':               return <span className="text-xs text-muted-foreground">{p.inputs || '—'}</span>;
+    case 'outputs':              return <span className="text-xs text-muted-foreground">{p.outputs || '—'}</span>;
+    case 'humanInTheLoop':       return <span className="text-xs text-muted-foreground">{p.humanInTheLoop || '—'}</span>;
+    case 'kpi':                  return <span className="text-xs">{p.kpi || '—'}</span>;
+    case 'target':               return <span className="text-xs">{p.target || '—'}</span>;
+    case 'achievement':          return <span className="text-xs">{p.achievement || '—'}</span>;
+    case 'trafficLight':         return <TrafficLightBadge value={p.trafficLight} />;
+    case 'estimatedValueImpact': return <span className="text-xs">{p.estimatedValueImpact || '—'}</span>;
+    case 'industryBenchmark':    return <span className="text-xs">{p.industryBenchmark || '—'}</span>;
+    case 'included':             return p.included ? <span className="text-xs text-green-400 font-semibold">Yes</span> : <span className="text-xs text-muted-foreground">No</span>;
+    case 'completeness':         return <CompletenessBar pct={pct} />;
+    case 'status':               return <StatusBadge pct={pct} />;
+    case 'fieldsFilled':         return <span className="text-xs text-muted-foreground">{filled}/{TRACKABLE_FIELDS.length}</span>;
+    default:                     return null;
+  }
+}
+
+function CustomReport({ report, processes, sortKey, sortDir, onSortChange, onRowClick, onReorderField }: {
+  report: CustomReportDef;
+  processes: Process[];
+  sortKey: string | null;
+  sortDir: 'asc' | 'desc';
+  onSortChange: (key: string) => void;
+  onRowClick?: (p: Process) => void;
+  onReorderField: ReorderFn;
+}) {
+  const sorted = sortProcesses(processes, sortKey, sortDir);
+  const fieldDefs = report.fields.map(k => CUSTOM_REPORT_ALL_FIELDS.find(f => f.key === k) ?? { key: k, label: k });
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 pb-1">
+        <div>
+          <h3 className="font-display font-semibold text-foreground">{report.name}</h3>
+          {report.description && <p className="text-xs text-muted-foreground mt-0.5">{report.description}</p>}
+        </div>
+        <span className="ml-auto text-xs text-muted-foreground">{sorted.length} processes</span>
+      </div>
+      <TableWrapper>
+        <thead>
+          <tr>
+            {fieldDefs.map(f => (
+              <DraggableTh key={f.key} fieldKey={f.key} onReorder={onReorderField} isActive={sortKey === f.key} sortDir={sortDir} onSort={() => onSortChange(f.key)}>
+                {f.label}
+              </DraggableTh>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(p => (
+            <tr key={p.id} className="hover:bg-secondary/30 transition-colors cursor-pointer" onClick={() => onRowClick?.(p)}>
+              {fieldDefs.map(f => <Td key={f.key}>{renderCustomCell(p, f.key)}</Td>)}
+            </tr>
+          ))}
+          {sorted.length === 0 && (
+            <tr><Td colSpan={fieldDefs.length} className="text-center text-muted-foreground/60 py-8 italic">No processes match the current filter.</Td></tr>
+          )}
+        </tbody>
+      </TableWrapper>
+    </div>
+  );
+}
+
+function NewReportModal({ onClose, onCreate }: {
+  onClose: () => void;
+  onCreate: (report: CustomReportDef) => void;
+}) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedFields, setSelectedFields] = useState<string[]>(['processId', 'category', 'processName', 'description']);
+
+  function toggleField(key: string) {
+    setSelectedFields(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+  }
+
+  function handleCreate() {
+    if (!name.trim() || selectedFields.length === 0) return;
+    onCreate({
+      id: `custom-${Date.now()}`,
+      name: name.trim(),
+      description: description.trim(),
+      fields: selectedFields,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-border flex-none">
+          <div>
+            <h3 className="font-display font-bold text-lg">New Custom Report</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Name your report and choose which columns to display</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Report Name *</label>
+            <input
+              autoFocus
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') onClose(); }}
+              placeholder="e.g. High Priority Processes"
+              className="mt-1.5 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
+            <input
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Optional description"
+              className="mt-1.5 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Columns <span className="text-primary font-bold">({selectedFields.length} selected)</span>
+              </label>
+              <div className="flex gap-3">
+                <button onClick={() => setSelectedFields(CUSTOM_REPORT_ALL_FIELDS.map(f => f.key))} className="text-xs text-primary hover:underline">All</button>
+                <button onClick={() => setSelectedFields([])} className="text-xs text-muted-foreground hover:underline">None</button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {CUSTOM_REPORT_ALL_FIELDS.map(f => {
+                const active = selectedFields.includes(f.key);
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => toggleField(f.key)}
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-1.5 rounded-lg text-left text-xs transition-all",
+                      active
+                        ? "bg-primary/10 text-primary border border-primary/20"
+                        : "bg-secondary/30 text-muted-foreground border border-transparent hover:border-border hover:text-foreground"
+                    )}
+                  >
+                    <span className={cn("w-3 h-3 rounded-sm border-2 shrink-0 flex items-center justify-center", active ? "bg-primary border-primary" : "border-muted-foreground/40")}>
+                      {active && <svg viewBox="0 0 8 7" className="w-2 h-2 fill-none stroke-white stroke-[1.5] stroke-linecap-round stroke-linejoin-round"><polyline points="1,3.5 3,5.5 7,1" /></svg>}
+                    </span>
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-border flex-none">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || selectedFields.length === 0}
+            className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            Create Report
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ReportsView ───────────────────────────────────────────────────────────
+
 export function ReportsView() {
   const { data: processes = [] } = useListProcesses();
-  const [activeReport, setActiveReport] = useState<ReportId>('coverage');
+  const [activeReport, setActiveReport] = useState<string>('coverage');
+  const [customReports, setCustomReports] = useState<CustomReportDef[]>(loadCustomReports);
+  const [showNewReport, setShowNewReport] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFieldPanel, setShowFieldPanel] = useState(false);
   const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
+
+  const isBuiltInReport = REPORT_TYPES.some(r => r.id === activeReport);
+  const activeCustomReport = isBuiltInReport ? null : customReports.find(r => r.id === activeReport) ?? null;
 
   const [detailProcess, setDetailProcess] = useState<Process | null>(null);
   const [detailGroup, setDetailGroup] = useState<{ title: string; subtitle?: string; processes: Process[] } | null>(null);
@@ -470,15 +725,23 @@ export function ReportsView() {
     return ps.sort((a, b) => a.number - b.number);
   }, [processes, categoryFilter, searchQuery]);
 
-  const reportDef = REPORT_TYPES.find(r => r.id === activeReport)!;
-  const allFieldDefs = FIELD_DEFS[activeReport];
-  const activeFields = fieldConfig[activeReport] ?? DEFAULT_ACTIVE[activeReport];
+  const reportDef = REPORT_TYPES.find(r => r.id === activeReport) ?? null;
+  const allFieldDefs = isBuiltInReport ? FIELD_DEFS[activeReport as ReportId] : CUSTOM_REPORT_ALL_FIELDS;
+  const activeFields = isBuiltInReport
+    ? (fieldConfig[activeReport as ReportId] ?? DEFAULT_ACTIVE[activeReport as ReportId])
+    : (activeCustomReport?.fields ?? []);
   const inactiveFields = allFieldDefs.filter(f => !activeFields.includes(f.key));
 
   function updateFields(newFields: string[]) {
-    const newConfig = { ...fieldConfig, [activeReport]: newFields };
-    setFieldConfig(newConfig);
-    localStorage.setItem(LS_KEY, JSON.stringify(newConfig));
+    if (isBuiltInReport) {
+      const newConfig = { ...fieldConfig, [activeReport]: newFields };
+      setFieldConfig(newConfig);
+      localStorage.setItem(LS_KEY, JSON.stringify(newConfig));
+    } else {
+      const updated = customReports.map(r => r.id === activeReport ? { ...r, fields: newFields } : r);
+      setCustomReports(updated);
+      localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
+    }
   }
 
   function addField(key: string) {
@@ -492,7 +755,24 @@ export function ReportsView() {
   }
 
   function resetFields() {
-    updateFields([...DEFAULT_ACTIVE[activeReport]]);
+    if (!isBuiltInReport) return;
+    updateFields([...DEFAULT_ACTIVE[activeReport as ReportId]]);
+  }
+
+  function createCustomReport(report: CustomReportDef) {
+    const updated = [...customReports, report];
+    setCustomReports(updated);
+    localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
+    setActiveReport(report.id);
+    setShowNewReport(false);
+    setShowFieldPanel(false);
+  }
+
+  function deleteCustomReport(id: string) {
+    const updated = customReports.filter(r => r.id !== id);
+    setCustomReports(updated);
+    localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
+    if (activeReport === id) setActiveReport('coverage');
   }
 
   function reorderField(fromKey: string, toKey: string, side: 'before' | 'after') {
@@ -621,12 +901,22 @@ export function ReportsView() {
         }
         return row;
       });
+    } else if (activeCustomReport) {
+      rows = filtered.map(p => {
+        const row: Record<string, unknown> = {};
+        for (const key of activeCustomReport.fields) {
+          const label = CUSTOM_REPORT_ALL_FIELDS.find(f => f.key === key)?.label ?? key;
+          row[label] = renderCustomCellExport(p, key);
+        }
+        return row;
+      });
     }
 
+    const sheetName = reportDef?.label ?? activeCustomReport?.name ?? 'Report';
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, reportDef.label);
-    XLSX.writeFile(wb, `${reportDef.label.replace(/\s+/g, '_')}_Report.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, `${sheetName.replace(/\s+/g, '_')}_Report.xlsx`);
   }
 
   return (
@@ -676,6 +966,48 @@ export function ReportsView() {
               </button>
             );
           })}
+
+          {/* Custom reports */}
+          {customReports.length > 0 && (
+            <>
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground px-2 mt-3 mb-1 pt-2 border-t border-border">Custom Reports</div>
+              {customReports.map(r => (
+                <div key={r.id} className="group relative">
+                  <button
+                    onClick={() => { setActiveReport(r.id); setShowFieldPanel(false); }}
+                    className={cn(
+                      "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all pr-8",
+                      activeReport === r.id
+                        ? "bg-primary/10 text-primary"
+                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <FileBarChart className={cn("w-4 h-4 mt-0.5 flex-shrink-0 shrink-0", activeReport === r.id ? "text-primary" : "text-muted-foreground")} />
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium leading-tight truncate">{r.name}</div>
+                      {r.description && <div className="text-[10px] mt-0.5 text-muted-foreground leading-tight truncate">{r.description}</div>}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => deleteCustomReport(r.id)}
+                    title="Delete report"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-red-400 transition-all p-1 rounded"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* New report button */}
+          <button
+            onClick={() => setShowNewReport(true)}
+            className="mt-3 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground transition-all border border-dashed border-border hover:border-primary/40"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Report
+          </button>
         </aside>
 
         {/* Right: Report content + optional fields panel */}
@@ -741,6 +1073,17 @@ export function ReportsView() {
               {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
               {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
               {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+              {activeCustomReport && (
+                <CustomReport
+                  report={activeCustomReport}
+                  processes={filtered}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSortChange={toggleSort}
+                  onRowClick={setDetailProcess}
+                  onReorderField={reorderField}
+                />
+              )}
             </div>
           </div>
 
@@ -754,13 +1097,15 @@ export function ReportsView() {
                   Configure Fields
                 </span>
                 <div className="flex items-center gap-1">
-                  <button
-                    onClick={resetFields}
-                    title="Reset to default"
-                    className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                  </button>
+                  {isBuiltInReport && (
+                    <button
+                      onClick={resetFields}
+                      title="Reset to default"
+                      className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowFieldPanel(false)}
                     className="p-1 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
@@ -853,6 +1198,9 @@ export function ReportsView() {
           processes={detailGroup.processes}
           onClose={() => setDetailGroup(null)}
         />
+      )}
+      {showNewReport && (
+        <NewReportModal onClose={() => setShowNewReport(false)} onCreate={createCustomReport} />
       )}
     </div>
   );
