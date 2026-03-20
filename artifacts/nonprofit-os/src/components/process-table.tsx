@@ -165,6 +165,19 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     updateProcess({ id: process.id, data: { included: !process.included } });
   };
 
+  const includedCount = useMemo(() => filteredProcesses.filter(p => p.included).length, [filteredProcesses]);
+  const allIncluded = filteredProcesses.length > 0 && includedCount === filteredProcesses.length;
+  const someIncluded = includedCount > 0 && includedCount < filteredProcesses.length;
+
+  const handleSelectAll = () => {
+    const newValue = !allIncluded;
+    filteredProcesses.forEach(p => {
+      if (p.included !== newValue) {
+        updateProcess({ id: p.id, data: { included: newValue } });
+      }
+    });
+  };
+
   const handleDelete = (id: number) => {
     if (confirmDelete === id) {
       deleteProcess({ id });
@@ -411,7 +424,8 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                     className={cn(
                       "relative select-none overflow-hidden text-ellipsis whitespace-nowrap",
                       isReorderable && "cursor-grab active:cursor-grabbing",
-                      isDragOver && "bg-primary/10"
+                      isDragOver && "bg-primary/10",
+                      col.key === 'include' && "text-center"
                     )}
                     style={{ width: widths[col.key] ?? col.defaultWidth }}
                     draggable={isReorderable}
@@ -420,12 +434,28 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                     onDrop={isReorderable ? () => onDrop(col.key) : undefined}
                     onDragEnd={isReorderable ? onDragEnd : undefined}
                   >
-                    <span className="flex items-center gap-1 pr-3">
-                      {isReorderable && (
-                        <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
-                      )}
-                      <span className="truncate">{col.label}</span>
-                    </span>
+                    {col.key === 'include' ? (
+                      <div className="flex flex-col items-center justify-center gap-1 py-0.5">
+                        <input
+                          type="checkbox"
+                          title={allIncluded ? 'Deselect all' : someIncluded ? 'Select all' : 'Select all'}
+                          checked={allIncluded}
+                          ref={el => { if (el) el.indeterminate = someIncluded; }}
+                          onChange={handleSelectAll}
+                          className="w-3.5 h-3.5 cursor-pointer accent-primary"
+                        />
+                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground/70 font-semibold leading-none">
+                          {includedCount}/{filteredProcesses.length}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="flex items-center gap-1 pr-3">
+                        {isReorderable && (
+                          <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
+                        )}
+                        <span className="truncate">{col.label}</span>
+                      </span>
+                    )}
 
                     {/* Resize handle */}
                     {col.key !== 'actions' && (
