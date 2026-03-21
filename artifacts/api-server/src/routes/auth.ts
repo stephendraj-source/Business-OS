@@ -83,13 +83,35 @@ authRouter.get('/tenants', requireAuth, requireSuperUser, async (_req, res) => {
 
 authRouter.post('/tenants', requireAuth, requireSuperUser, async (req, res) => {
   try {
-    const { name, slug } = req.body;
+    const { name, slug, firstName, lastName, preferredName } = req.body;
     if (!name || !slug) return res.status(400).json({ error: 'name and slug required' });
     const clean = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const [row] = await db.insert(tenants).values({ name, slug: clean }).returning();
+    const [row] = await db.insert(tenants).values({
+      name, slug: clean,
+      firstName: firstName || null,
+      lastName: lastName || null,
+      preferredName: preferredName || null,
+    }).returning();
     res.status(201).json(row);
   } catch (e: any) {
     if (e.message?.includes('unique')) return res.status(409).json({ error: 'Slug already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+authRouter.patch('/tenants/:id', requireAuth, requireSuperUser, async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const { name, firstName, lastName, preferredName } = req.body;
+    const updates: Record<string, any> = {};
+    if (name !== undefined) updates.name = name;
+    if (firstName !== undefined) updates.firstName = firstName || null;
+    if (lastName !== undefined) updates.lastName = lastName || null;
+    if (preferredName !== undefined) updates.preferredName = preferredName || null;
+    const [row] = await db.update(tenants).set(updates).where(eq(tenants.id, tenantId)).returning();
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    res.json(row);
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });

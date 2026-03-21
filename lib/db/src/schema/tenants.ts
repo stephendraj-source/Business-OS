@@ -7,6 +7,9 @@ export const tenants = pgTable('tenants', {
   status: text('status').notNull().default('active'),
   industryBlueprint: text('industry_blueprint'),
   credits: integer('credits').notNull().default(10000),
+  firstName: text('first_name'),
+  lastName: text('last_name'),
+  preferredName: text('preferred_name'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

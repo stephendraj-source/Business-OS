@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Building2, Plus, Users, LogOut, Check, Eye, EyeOff, Copy, BookOpen, ChevronDown } from 'lucide-react';
+import { Building2, Plus, Users, LogOut, Check, Eye, EyeOff, Copy, BookOpen, ChevronDown, Hash } from 'lucide-react';
 
 const INDUSTRY_BLUEPRINTS = [
   'Healthcare & Life Sciences',
@@ -26,6 +26,9 @@ interface Tenant {
   slug: string;
   status: string;
   industryBlueprint?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  preferredName?: string | null;
   createdAt: string;
 }
 
@@ -33,6 +36,14 @@ interface CreatedAdmin {
   user: { id: number; name: string; email: string };
   tempPassword: string;
 }
+
+const emptyTenantForm = {
+  name: '',
+  slug: '',
+  firstName: '',
+  lastName: '',
+  preferredName: '',
+};
 
 export function TenantManagementPage() {
   const { logout, fetchHeaders } = useAuth();
@@ -44,12 +55,11 @@ export function TenantManagementPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const [tenantForm, setTenantForm] = useState({ name: '', slug: '' });
+  const [tenantForm, setTenantForm] = useState(emptyTenantForm);
   const [adminForm, setAdminForm] = useState({ name: '', email: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Blueprint assignment state: tenantId → selected value
   const [blueprintSelecting, setBlueprintSelecting] = useState<Record<number, boolean>>({});
   const [blueprintSaving, setBlueprintSaving] = useState<Record<number, boolean>>({});
   const [blueprintValues, setBlueprintValues] = useState<Record<number, string>>({});
@@ -79,14 +89,20 @@ export function TenantManagementPage() {
     const r = await fetch(`${API}/auth/tenants`, {
       method: 'POST',
       headers: fetchHeaders(),
-      body: JSON.stringify({ name: tenantForm.name, slug: tenantForm.slug }),
+      body: JSON.stringify({
+        name: tenantForm.name,
+        slug: tenantForm.slug,
+        firstName: tenantForm.firstName || undefined,
+        lastName: tenantForm.lastName || undefined,
+        preferredName: tenantForm.preferredName || undefined,
+      }),
     });
     const data = await r.json();
     setSaving(false);
     if (!r.ok) { setError(data.error || 'Failed to create tenant'); return; }
     setTenants(prev => [...prev, data]);
     setBlueprintValues(prev => ({ ...prev, [data.id]: '' }));
-    setTenantForm({ name: '', slug: '' });
+    setTenantForm(emptyTenantForm);
     setShowCreateTenant(false);
   }
 
@@ -132,6 +148,12 @@ export function TenantManagementPage() {
     });
   }
 
+  function displayName(t: Tenant) {
+    const parts = [t.firstName, t.lastName].filter(Boolean);
+    if (parts.length) return parts.join(' ');
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/50 sticky top-0 z-10">
@@ -171,39 +193,82 @@ export function TenantManagementPage() {
         </div>
 
         {showCreateTenant && (
-          <div className="bg-card border border-border rounded-2xl p-6 space-y-4">
+          <div className="bg-card border border-border rounded-2xl p-6 space-y-5">
             <h3 className="font-semibold">Create New Tenant</h3>
             <form onSubmit={createTenant} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Organisation Name</label>
-                  <input
-                    type="text"
-                    value={tenantForm.name}
-                    onChange={e => {
-                      const name = e.target.value;
-                      setTenantForm({ name, slug: slugify(name) });
-                    }}
-                    placeholder="Acme Corp"
-                    required
-                    className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Slug <span className="text-muted-foreground font-normal">(URL identifier)</span></label>
-                  <input
-                    type="text"
-                    value={tenantForm.slug}
-                    onChange={e => setTenantForm(f => ({ ...f, slug: e.target.value }))}
-                    placeholder="acme-corp"
-                    required
-                    className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
-                  />
+
+              {/* Contact info */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contact Person</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">First Name</label>
+                    <input
+                      type="text"
+                      value={tenantForm.firstName}
+                      onChange={e => setTenantForm(f => ({ ...f, firstName: e.target.value }))}
+                      placeholder="Jane"
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Last Name</label>
+                    <input
+                      type="text"
+                      value={tenantForm.lastName}
+                      onChange={e => setTenantForm(f => ({ ...f, lastName: e.target.value }))}
+                      placeholder="Smith"
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Preferred Name <span className="text-muted-foreground font-normal">(optional)</span></label>
+                    <input
+                      type="text"
+                      value={tenantForm.preferredName}
+                      onChange={e => setTenantForm(f => ({ ...f, preferredName: e.target.value }))}
+                      placeholder="Jay"
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* Organisation info */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Organisation</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Organisation Name <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={tenantForm.name}
+                      onChange={e => {
+                        const name = e.target.value;
+                        setTenantForm(f => ({ ...f, name, slug: slugify(name) }));
+                      }}
+                      placeholder="Acme Corp"
+                      required
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Slug <span className="text-muted-foreground font-normal">(URL identifier)</span> <span className="text-red-500">*</span></label>
+                    <input
+                      type="text"
+                      value={tenantForm.slug}
+                      onChange={e => setTenantForm(f => ({ ...f, slug: e.target.value }))}
+                      placeholder="acme-corp"
+                      required
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {error && <p className="text-sm text-destructive">{error}</p>}
-              <div className="flex gap-2 justify-end">
-                <button type="button" onClick={() => setShowCreateTenant(false)} className="px-4 py-2 text-sm rounded-xl text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+              <div className="flex gap-2 justify-end pt-1">
+                <button type="button" onClick={() => { setShowCreateTenant(false); setTenantForm(emptyTenantForm); }} className="px-4 py-2 text-sm rounded-xl text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
                 <button type="submit" disabled={saving} className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 transition-all">
                   {saving ? 'Creating…' : 'Create Tenant'}
                 </button>
@@ -295,85 +360,106 @@ export function TenantManagementPage() {
           </div>
         ) : (
           <div className="grid gap-3">
-            {tenants.map(tenant => (
-              <div key={tenant.id} className="bg-card border border-border rounded-2xl p-5 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <Building2 className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-semibold text-sm">{tenant.name}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-                          tenant.status === 'active'
-                            ? 'bg-green-500/10 text-green-600 border-green-500/20'
-                            : 'bg-secondary text-muted-foreground border-border'
-                        }`}>{tenant.status}</span>
+            {tenants.map(tenant => {
+              const contactName = displayName(tenant);
+              const preferred = tenant.preferredName;
+              return (
+                <div key={tenant.id} className="bg-card border border-border rounded-2xl p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <Building2 className="w-5 h-5 text-primary" />
                       </div>
-                      <p className="text-xs text-muted-foreground font-mono mt-0.5">{tenant.slug}</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-sm">{tenant.name}</h3>
+                          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+                            tenant.status === 'active'
+                              ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                              : 'bg-secondary text-muted-foreground border-border'
+                          }`}>{tenant.status}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">{tenant.slug}</p>
+                        {/* Contact person row */}
+                        {contactName && (
+                          <p className="text-xs text-muted-foreground">
+                            Contact: <span className="text-foreground font-medium">{contactName}</span>
+                            {preferred && (
+                              <span className="text-muted-foreground"> · prefers <span className="text-foreground font-medium">{preferred}</span></span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {/* Read-only Tenant ID badge */}
+                      <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-muted/60 border border-border text-xs font-mono text-muted-foreground select-all" title="Tenant ID (read-only)">
+                        <Hash className="w-3 h-3" />
+                        {tenant.id}
+                      </div>
+                      <button
+                        onClick={() => { setShowCreateAdmin(tenant.id); setError(''); setAdminForm({ name: '', email: '' }); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        Add Admin
+                      </button>
                     </div>
                   </div>
-                  <button
-                    onClick={() => { setShowCreateAdmin(tenant.id); setError(''); setAdminForm({ name: '', email: '' }); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    Add Admin
-                  </button>
-                </div>
 
-                {/* Industry Blueprint row */}
-                <div className="flex items-center gap-3 pt-1 border-t border-border/50">
-                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="text-xs text-muted-foreground w-32 flex-shrink-0">Industry Blueprint:</span>
+                  {/* Industry Blueprint row */}
+                  <div className="flex items-center gap-3 pt-1 border-t border-border/50">
+                    <BookOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-xs text-muted-foreground w-32 flex-shrink-0">Industry Blueprint:</span>
 
-                  {blueprintSelecting[tenant.id] ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <select
-                        value={blueprintValues[tenant.id] ?? ''}
-                        onChange={e => setBlueprintValues(prev => ({ ...prev, [tenant.id]: e.target.value }))}
-                        className="flex-1 max-w-xs px-2 py-1 text-xs border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      >
-                        <option value="">— None —</option>
-                        {INDUSTRY_BLUEPRINTS.map(bp => (
-                          <option key={bp} value={bp}>{bp}</option>
-                        ))}
-                      </select>
+                    {blueprintSelecting[tenant.id] ? (
+                      <div className="flex items-center gap-2 flex-1">
+                        <select
+                          value={blueprintValues[tenant.id] ?? ''}
+                          onChange={e => setBlueprintValues(prev => ({ ...prev, [tenant.id]: e.target.value }))}
+                          className="flex-1 max-w-xs px-2 py-1 text-xs border border-border rounded-lg bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">— None —</option>
+                          {INDUSTRY_BLUEPRINTS.map(bp => (
+                            <option key={bp} value={bp}>{bp}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={() => saveBlueprintForTenant(tenant.id)}
+                          disabled={blueprintSaving[tenant.id]}
+                          className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors disabled:opacity-60"
+                        >
+                          <Check className="w-3 h-3" />
+                          {blueprintSaving[tenant.id] ? 'Saving…' : 'Save'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setBlueprintSelecting(prev => ({ ...prev, [tenant.id]: false }));
+                            setBlueprintValues(prev => ({ ...prev, [tenant.id]: tenant.industryBlueprint ?? '' }));
+                          }}
+                          className="px-2.5 py-1 text-xs rounded-lg text-muted-foreground hover:bg-secondary border border-border transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
                       <button
-                        onClick={() => saveBlueprintForTenant(tenant.id)}
-                        disabled={blueprintSaving[tenant.id]}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors disabled:opacity-60"
+                        onClick={() => setBlueprintSelecting(prev => ({ ...prev, [tenant.id]: true }))}
+                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group"
                       >
-                        <Check className="w-3 h-3" />
-                        {blueprintSaving[tenant.id] ? 'Saving…' : 'Save'}
+                        {tenant.industryBlueprint ? (
+                          <span className="font-medium text-foreground">{tenant.industryBlueprint}</span>
+                        ) : (
+                          <span className="italic">Not assigned</span>
+                        )}
+                        <ChevronDown className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </button>
-                      <button
-                        onClick={() => {
-                          setBlueprintSelecting(prev => ({ ...prev, [tenant.id]: false }));
-                          setBlueprintValues(prev => ({ ...prev, [tenant.id]: tenant.industryBlueprint ?? '' }));
-                        }}
-                        className="px-2.5 py-1 text-xs rounded-lg text-muted-foreground hover:bg-secondary border border-border transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setBlueprintSelecting(prev => ({ ...prev, [tenant.id]: true }))}
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group"
-                    >
-                      {tenant.industryBlueprint ? (
-                        <span className="font-medium text-foreground">{tenant.industryBlueprint}</span>
-                      ) : (
-                        <span className="italic">Not assigned</span>
-                      )}
-                      <ChevronDown className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </button>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </main>
