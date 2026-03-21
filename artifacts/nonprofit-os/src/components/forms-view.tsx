@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   ClipboardList, Plus, Trash2, Save, Edit2, Loader2, X, Check,
   GripVertical, Type, Hash, Mail, AlignLeft, ChevronDown, Calendar,
-  CheckSquare, List, Eye, Code2, Copy,
+  CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
+  GitBranch, ExternalLink, Radio, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -28,9 +29,16 @@ interface FormSummary {
   name: string;
   description: string;
   fields: string;
+  publishSlug: string | null;
+  isPublished: boolean;
+  linkedWorkflowId: number | null;
+  linkedAgentId: number | null;
   createdAt: string;
   updatedAt: string;
 }
+
+interface WorkflowItem { id: number; name: string; workflowNumber: number; }
+interface AgentItem { id: number; name: string; agentNumber: number; }
 
 const FIELD_TYPES: { value: FieldType; label: string; icon: React.ReactNode }[] = [
   { value: 'text',     label: 'Short Text',   icon: <Type className="w-3.5 h-3.5" /> },
@@ -282,12 +290,22 @@ export function FormsView() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'build' | 'preview' | 'json'>('build');
+  const [tab, setTab] = useState<'build' | 'preview' | 'json' | 'publish'>('build');
   const [copied, setCopied] = useState(false);
   const dragIndex = useRef<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<'top' | 'bottom'>('bottom');
+
+  // Publish / linking state
+  const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
+  const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [linkedWorkflowId, setLinkedWorkflowId] = useState<number | null>(null);
+  const [linkedAgentId, setLinkedAgentId] = useState<number | null>(null);
+  const [linkDirty, setLinkDirty] = useState(false);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
 
   const selectedForm = forms.find(f => f.id === selectedId) ?? null;
 
@@ -303,6 +321,18 @@ export function FormsView() {
 
   useEffect(() => { fetchForms(); }, [fetchForms]);
 
+  // Fetch workflows + agents once (for the Publish tab dropdowns)
+  useEffect(() => {
+    fetch(`${API}/workflows`, { headers: fetchHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setWorkflows(d); })
+      .catch(() => {});
+    fetch(`${API}/ai-agents`, { headers: fetchHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setAgents(d); })
+      .catch(() => {});
+  }, [fetchHeaders]);
+
   const loadForm = useCallback(async (id: number) => {
     const r = await fetch(`${API}/forms/${id}`, { headers: fetchHeaders() });
     if (r.ok) {
@@ -310,6 +340,9 @@ export function FormsView() {
       setEditName(form.name);
       setEditDesc(form.description);
       setEditNumber(form.formNumber);
+      setLinkedWorkflowId(form.linkedWorkflowId ?? null);
+      setLinkedAgentId(form.linkedAgentId ?? null);
+      setLinkDirty(false);
       try { setFields(JSON.parse(form.fields)); } catch { setFields([]); }
       setDirty(false);
     }
@@ -344,7 +377,7 @@ export function FormsView() {
     if (!selectedId) return;
     setSaving(true);
     try {
-      await fetch(`${API}/forms/${selectedId}`, {
+      const r = await fetch(`${API}/forms/${selectedId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", ...fetchHeaders() },
         body: JSON.stringify({
@@ -354,9 +387,59 @@ export function FormsView() {
           fields: JSON.stringify(fields),
         }),
       });
-      await fetchForms();
+      if (r.ok) {
+        const updated: FormSummary = await r.json();
+        setForms(prev => prev.map(f => f.id === selectedId ? { ...f, ...updated } : f));
+      }
       setDirty(false);
     } finally { setSaving(false); }
+  };
+
+  const saveLinks = async () => {
+    if (!selectedId) return;
+    setLinkSaving(true);
+    try {
+      const r = await fetch(`${API}/forms/${selectedId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
+        body: JSON.stringify({ linkedWorkflowId, linkedAgentId }),
+      });
+      if (r.ok) {
+        const updated: FormSummary = await r.json();
+        setForms(prev => prev.map(f => f.id === selectedId ? { ...f, ...updated } : f));
+        setLinkDirty(false);
+      }
+    } finally { setLinkSaving(false); }
+  };
+
+  const publishForm = async () => {
+    if (!selectedId) return;
+    setPublishing(true);
+    try {
+      const r = await fetch(`${API}/forms/${selectedId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      });
+      if (r.ok) {
+        const updated: FormSummary = await r.json();
+        setForms(prev => prev.map(f => f.id === selectedId ? { ...f, ...updated } : f));
+      }
+    } finally { setPublishing(false); }
+  };
+
+  const unpublishForm = async () => {
+    if (!selectedId) return;
+    setPublishing(true);
+    try {
+      const r = await fetch(`${API}/forms/${selectedId}/publish`, {
+        method: "DELETE",
+        headers: fetchHeaders(),
+      });
+      if (r.ok) {
+        const updated: FormSummary = await r.json();
+        setForms(prev => prev.map(f => f.id === selectedId ? { ...f, ...updated } : f));
+      }
+    } finally { setPublishing(false); }
   };
 
   const markDirty = () => setDirty(true);
@@ -494,6 +577,11 @@ export function FormsView() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs text-muted-foreground font-mono">#{form.formNumber}</span>
                     <span className="text-sm font-medium truncate">{form.name}</span>
+                    {form.isPublished && (
+                      <span title="Published" className="flex-shrink-0">
+                        <Globe className="w-3 h-3 text-green-500" />
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground truncate mt-0.5">{form.description || "No description"}</div>
                   {fieldCount > 0 && (
@@ -585,9 +673,10 @@ export function FormsView() {
           {/* Tab bar */}
           <div className="flex-none flex items-center gap-1 px-6 py-2 border-b border-border bg-card/40">
             {[
-              { key: 'build',   label: 'Build',   icon: <List className="w-3.5 h-3.5" /> },
-              { key: 'preview', label: 'Preview',  icon: <Eye className="w-3.5 h-3.5" /> },
+              { key: 'build',   label: 'Build',       icon: <List className="w-3.5 h-3.5" /> },
+              { key: 'preview', label: 'Preview',     icon: <Eye className="w-3.5 h-3.5" /> },
               { key: 'json',    label: 'JSON Output', icon: <Code2 className="w-3.5 h-3.5" /> },
+              { key: 'publish', label: 'Publish',     icon: <Globe className="w-3.5 h-3.5" /> },
             ].map(t => (
               <button
                 key={t.key}
@@ -596,10 +685,16 @@ export function FormsView() {
                   "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
                   tab === t.key
                     ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  t.key === 'publish' && selectedForm?.isPublished && tab !== 'publish'
+                    ? "text-green-500"
+                    : ""
                 )}
               >
                 {t.icon}{t.label}
+                {t.key === 'publish' && selectedForm?.isPublished && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 ml-0.5" />
+                )}
               </button>
             ))}
           </div>
@@ -711,6 +806,182 @@ export function FormsView() {
                 </div>
               </div>
             )}
+
+            {tab === 'publish' && (
+              <div className="p-6 max-w-2xl mx-auto space-y-5">
+
+                {dirty && (
+                  <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs">You have unsaved changes. Save the form before publishing.</p>
+                  </div>
+                )}
+
+                {/* Link to Workflow */}
+                <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                      <GitBranch className="w-4 h-4 text-blue-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Link to Workflow</p>
+                      <p className="text-xs text-muted-foreground">Trigger a workflow when this form is submitted.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Workflow</label>
+                    <select
+                      value={linkedWorkflowId ?? ''}
+                      onChange={e => { setLinkedWorkflowId(e.target.value ? Number(e.target.value) : null); setLinkDirty(true); }}
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">— None —</option>
+                      {workflows.map(w => (
+                        <option key={w.id} value={w.id}>#{w.workflowNumber} · {w.name}</option>
+                      ))}
+                    </select>
+                    {workflows.length === 0 && <p className="text-xs text-muted-foreground italic">No workflows created yet.</p>}
+                    {linkedWorkflowId && !linkDirty && (
+                      <p className="text-xs text-blue-500 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        Linked to <span className="font-medium">{workflows.find(w => w.id === linkedWorkflowId)?.name ?? `Workflow #${linkedWorkflowId}`}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Link to Agent */}
+                <div className="bg-card border border-border rounded-2xl p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-violet-500/10 flex items-center justify-center flex-shrink-0">
+                      <Bot className="w-4 h-4 text-violet-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">Link to AI Agent</p>
+                      <p className="text-xs text-muted-foreground">Route submissions to an AI Agent for processing.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Agent</label>
+                    <select
+                      value={linkedAgentId ?? ''}
+                      onChange={e => { setLinkedAgentId(e.target.value ? Number(e.target.value) : null); setLinkDirty(true); }}
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      <option value="">— None —</option>
+                      {agents.map(a => (
+                        <option key={a.id} value={a.id}>#{a.agentNumber} · {a.name}</option>
+                      ))}
+                    </select>
+                    {agents.length === 0 && <p className="text-xs text-muted-foreground italic">No AI agents created yet.</p>}
+                    {linkedAgentId && !linkDirty && (
+                      <p className="text-xs text-violet-500 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        Linked to <span className="font-medium">{agents.find(a => a.id === linkedAgentId)?.name ?? `Agent #${linkedAgentId}`}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Save links */}
+                {linkDirty && (
+                  <button
+                    onClick={saveLinks}
+                    disabled={linkSaving}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 border border-border rounded-xl text-sm font-medium hover:bg-secondary transition-colors disabled:opacity-60"
+                  >
+                    {linkSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+                    {linkSaving ? 'Saving…' : 'Save Link Settings'}
+                  </button>
+                )}
+
+                {/* Publish panel */}
+                <div className={cn(
+                  "bg-card border rounded-2xl p-5 space-y-4",
+                  selectedForm?.isPublished ? "border-green-500/30" : "border-border"
+                )}>
+                  <div className="flex items-center gap-3">
+                    <div className={cn("w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0",
+                      selectedForm?.isPublished ? "bg-green-500/10" : "bg-muted"
+                    )}>
+                      <Radio className={cn("w-4 h-4", selectedForm?.isPublished ? "text-green-500" : "text-muted-foreground")} />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">Publish Form</p>
+                      <p className="text-xs text-muted-foreground">Generate a unique public URL for this form.</p>
+                    </div>
+                    {selectedForm?.isPublished && (
+                      <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-green-500/10 text-green-600 border border-green-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        Live
+                      </span>
+                    )}
+                  </div>
+
+                  {selectedForm?.isPublished && selectedForm.publishSlug ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-green-500/30 bg-green-500/5 font-mono text-xs text-green-700 dark:text-green-400 overflow-hidden min-w-0">
+                          <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">{window.location.origin}/f/{selectedForm.publishSlug}</span>
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`${window.location.origin}/f/${selectedForm!.publishSlug}`);
+                            setUrlCopied(true);
+                            setTimeout(() => setUrlCopied(false), 2000);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium hover:bg-secondary transition-colors flex-shrink-0"
+                        >
+                          {urlCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          {urlCopied ? 'Copied' : 'Copy'}
+                        </button>
+                        <a
+                          href={`/f/${selectedForm.publishSlug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium hover:bg-secondary transition-colors flex-shrink-0"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          Open
+                        </a>
+                      </div>
+                      <button
+                        onClick={unpublishForm}
+                        disabled={publishing}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl border border-red-500/30 text-red-500 text-sm font-medium hover:bg-red-500/5 transition-colors disabled:opacity-60"
+                      >
+                        {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                        {publishing ? 'Unpublishing…' : 'Unpublish Form'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Optionally link to a workflow or agent above first, then publish.
+                        A unique shareable URL will be generated for this form.
+                      </p>
+                      <button
+                        onClick={publishForm}
+                        disabled={publishing || dirty || linkDirty}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60 shadow-sm"
+                      >
+                        {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                        {publishing ? 'Publishing…' : 'Publish Form'}
+                      </button>
+                      {(dirty || linkDirty) && (
+                        <p className="text-xs text-amber-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Save all changes before publishing.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+
           </div>
         </div>
       )}
