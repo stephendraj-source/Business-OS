@@ -161,23 +161,23 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         )}
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-sidebar-border">
-          <div className="flex items-center gap-3 p-2">
-            <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-bold border border-border flex-shrink-0">
+        <div className="p-3 border-t border-sidebar-border space-y-1">
+          <div className="flex items-center gap-2.5 px-2 py-1.5">
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary border border-primary/30 flex-shrink-0">
               {currentUser ? (currentUser.firstName?.[0] || currentUser.name?.[0] || '?').toUpperCase() : '?'}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{currentUser?.name || '—'}</div>
-              <div className="text-xs text-sidebar-foreground/60 truncate capitalize">{currentUser?.role || '—'}</div>
+              <div className="text-sm font-medium truncate leading-tight">{currentUser?.name || '—'}</div>
+              <div className="text-[11px] text-sidebar-foreground/50 truncate capitalize">{currentUser?.role || '—'}</div>
             </div>
-            <button
-              onClick={logout}
-              title="Sign out"
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors flex-shrink-0"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors group"
+          >
+            <LogOut className="w-3.5 h-3.5 flex-shrink-0 group-hover:text-red-400 transition-colors" />
+            <span className="group-hover:text-red-400 transition-colors">Sign out</span>
+          </button>
         </div>
 
       </aside>
