@@ -220,7 +220,57 @@ function FieldRow({
 
 // ── Form Preview ──────────────────────────────────────────────────────────────
 
-function FormPreview({ fields }: { fields: FormField[] }) {
+function FormPreview({ fields, formName }: { fields: FormField[]; formName: string }) {
+  const [values, setValues] = useState<Record<string, any>>(() => {
+    const init: Record<string, any> = {};
+    for (const f of fields) {
+      init[f.id] = f.type === 'checkbox' ? false : f.type === 'select' ? '' : '';
+    }
+    return init;
+  });
+  const [submitted, setSubmitted] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Re-initialise values when fields change
+  useEffect(() => {
+    setValues(prev => {
+      const next: Record<string, any> = {};
+      for (const f of fields) {
+        next[f.id] = prev[f.id] ?? (f.type === 'checkbox' ? false : '');
+      }
+      return next;
+    });
+    setSubmitted(false);
+    setErrors({});
+  }, [fields]);
+
+  const set = (id: string, val: any) => {
+    setValues(prev => ({ ...prev, [id]: val }));
+    if (errors[id]) setErrors(prev => { const e = { ...prev }; delete e[id]; return e; });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const newErrors: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.required) {
+        const v = values[f.id];
+        if (f.type === 'checkbox' && !v) newErrors[f.id] = 'This field is required';
+        else if (f.type !== 'checkbox' && !String(v ?? '').trim()) newErrors[f.id] = 'This field is required';
+      }
+    }
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
+    setSubmitted(true);
+  };
+
+  const reset = () => {
+    const init: Record<string, any> = {};
+    for (const f of fields) init[f.id] = f.type === 'checkbox' ? false : '';
+    setValues(init);
+    setSubmitted(false);
+    setErrors({});
+  };
+
   if (fields.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -230,49 +280,123 @@ function FormPreview({ fields }: { fields: FormField[] }) {
     );
   }
 
+  if (submitted) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-sm mx-auto">
+        <div className="w-14 h-14 rounded-full bg-green-500/15 flex items-center justify-center mb-4">
+          <Check className="w-7 h-7 text-green-500" />
+        </div>
+        <h3 className="text-base font-semibold mb-1">Submission received</h3>
+        <p className="text-sm text-muted-foreground mb-6">Your response has been recorded. Thank you!</p>
+        <button
+          onClick={reset}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+        >
+          Submit another response
+        </button>
+      </div>
+    );
+  }
+
+  const inputCls = (id: string) => cn(
+    "w-full bg-background border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors",
+    errors[id] ? "border-red-400" : "border-border hover:border-primary/40"
+  );
+
   return (
-    <div className="space-y-4 max-w-sm mx-auto py-4">
+    <form onSubmit={handleSubmit} noValidate className="space-y-5 max-w-sm mx-auto py-4">
+      {formName && <h2 className="text-base font-semibold text-foreground">{formName}</h2>}
       {fields.map(field => (
         <div key={field.id}>
-          <label className="block text-sm font-medium mb-1">
-            {field.label || <span className="italic text-muted-foreground">Untitled field</span>}
-            {field.required && <span className="text-red-400 ml-0.5">*</span>}
-          </label>
+          {field.type !== 'checkbox' && (
+            <label className="block text-sm font-medium mb-1.5">
+              {field.label || <span className="italic text-muted-foreground">Untitled field</span>}
+              {field.required && <span className="text-red-400 ml-0.5">*</span>}
+            </label>
+          )}
           {field.type === 'text' && (
-            <input readOnly placeholder={field.placeholder || "Enter text…"}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm" />
+            <input
+              type="text"
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              placeholder={field.placeholder || 'Enter text…'}
+              className={inputCls(field.id)}
+            />
           )}
           {field.type === 'textarea' && (
-            <textarea readOnly placeholder={field.placeholder || "Enter text…"} rows={3}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm resize-none" />
+            <textarea
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              placeholder={field.placeholder || 'Enter text…'}
+              rows={3}
+              className={cn(inputCls(field.id), 'resize-none')}
+            />
           )}
           {field.type === 'number' && (
-            <input readOnly type="number" placeholder={field.placeholder || "0"}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm" />
+            <input
+              type="number"
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              placeholder={field.placeholder || '0'}
+              className={inputCls(field.id)}
+            />
           )}
           {field.type === 'email' && (
-            <input readOnly type="email" placeholder={field.placeholder || "email@example.com"}
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm" />
+            <input
+              type="email"
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              placeholder={field.placeholder || 'email@example.com'}
+              className={inputCls(field.id)}
+            />
           )}
           {field.type === 'date' && (
-            <input readOnly type="date"
-              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm" />
+            <input
+              type="date"
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              className={inputCls(field.id)}
+            />
           )}
           {field.type === 'checkbox' && (
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" readOnly className="w-4 h-4 rounded" />
-              <span className="text-sm text-muted-foreground">{field.label}</span>
+            <label className="flex items-start gap-2.5 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={!!values[field.id]}
+                onChange={e => set(field.id, e.target.checked)}
+                className="w-4 h-4 mt-0.5 rounded accent-primary flex-shrink-0"
+              />
+              <span className="text-sm">
+                {field.label || <span className="italic text-muted-foreground">Untitled field</span>}
+                {field.required && <span className="text-red-400 ml-0.5">*</span>}
+              </span>
             </label>
           )}
           {field.type === 'select' && (
-            <select className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm">
+            <select
+              value={values[field.id] ?? ''}
+              onChange={e => set(field.id, e.target.value)}
+              className={inputCls(field.id)}
+            >
               <option value="">Select an option…</option>
               {field.options.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
             </select>
           )}
+          {errors[field.id] && (
+            <p className="mt-1 text-xs text-red-400 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3 flex-shrink-0" />
+              {errors[field.id]}
+            </p>
+          )}
         </div>
       ))}
-    </div>
+      <button
+        type="submit"
+        className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors mt-2"
+      >
+        Submit
+      </button>
+    </form>
   );
 }
 
@@ -748,16 +872,11 @@ export function FormsView() {
             )}
 
             {tab === 'preview' && (
-              <div className="p-6">
+              <div className="p-6 overflow-y-auto">
                 <div className="max-w-sm mx-auto bg-card border border-border rounded-2xl p-6 shadow-sm">
                   <h3 className="text-base font-semibold mb-0.5">{editName || "Untitled Form"}</h3>
                   {editDesc && <p className="text-sm text-muted-foreground mb-4">{editDesc}</p>}
-                  <FormPreview fields={fields} />
-                  {fields.length > 0 && (
-                    <button className="mt-4 w-full py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium">
-                      Submit
-                    </button>
-                  )}
+                  <FormPreview fields={fields} formName="" />
                 </div>
               </div>
             )}
