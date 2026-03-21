@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User, Key,
-  ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search, Eye, EyeOff,
-  Database, Layers, Lock,
+  Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User,
+  ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search,
+  Database, Layers, Lock, Mail, Copy, KeyRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -389,23 +389,50 @@ function UserDetailPanel({
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
-  const [form, setForm] = useState({ name: user.name, email: user.email, role: user.role, isActive: user.isActive, password: '' });
+  const initForm = () => ({ name: user.name, email: user.email, role: user.role, isActive: user.isActive });
+  const [form, setForm] = useState(initForm);
   const [saving, setSaving] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
+  const [resetResult, setResetResult] = useState<{ link: string; message: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    setForm({ name: user.name, email: user.email, role: user.role, isActive: user.isActive, password: '' });
+    setForm(initForm());
+    setResetResult(null);
   }, [user.id]);
 
   const save = async () => {
     setSaving(true);
     try {
-      const body: Record<string, unknown> = { name: form.name, email: form.email, role: form.role, isActive: form.isActive };
-      if (form.password) body.password = form.password;
-      await fetch(`${API}/users/${user.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      await fetch(`${API}/users/${user.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name, email: form.email, role: form.role, isActive: form.isActive }),
+      });
       await onSaved();
     } finally {
       setSaving(false);
+    }
+  };
+
+  const cancel = () => setForm(initForm());
+
+  const sendReset = async () => {
+    setSendingReset(true);
+    setResetResult(null);
+    try {
+      const r = await fetch(`${API}/users/${user.id}/send-password-reset`, { method: 'POST' });
+      const d = await r.json();
+      setResetResult({ link: window.location.origin + d.resetLink, message: d.message });
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
+  const copyLink = () => {
+    if (resetResult) {
+      navigator.clipboard.writeText(resetResult.link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
@@ -421,23 +448,6 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email</label>
         <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">New Password</label>
-        <div className="relative">
-          <input
-            type={showPassword ? 'text' : 'password'}
-            value={form.password}
-            onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-            placeholder="Leave blank to keep current"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-          <button type="button" onClick={() => setShowPassword(s => !s)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -470,11 +480,53 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         <Toggle checked={form.isActive} onChange={v => setForm(f => ({ ...f, isActive: v }))} />
       </div>
 
-      <button onClick={save} disabled={saving}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
-        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-        Save Changes
-      </button>
+      <div className="flex gap-3">
+        <button onClick={cancel}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">
+          <X className="w-4 h-4" />
+          Cancel
+        </button>
+        <button onClick={save} disabled={saving}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          Save Changes
+        </button>
+      </div>
+
+      <div className="border-t border-border pt-5 space-y-3">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-muted-foreground" />
+            Password Reset
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Generate a secure reset link to share with this user so they can set a new password.
+          </p>
+        </div>
+        <button onClick={sendReset} disabled={sendingReset}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-60 transition-colors">
+          {sendingReset ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+          Send Password Reset Link
+        </button>
+
+        {resetResult && (
+          <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+            <p className="text-xs text-muted-foreground">{resetResult.message}</p>
+            <div className="flex items-center gap-2">
+              <input readOnly value={resetResult.link}
+                className="flex-1 text-xs bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none font-mono truncate" />
+              <button onClick={copyLink}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                  copied ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-border text-muted-foreground hover:bg-secondary'
+                )}>
+                <Copy className="w-3.5 h-3.5" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -614,10 +666,12 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
     }
   };
 
-  const filteredProcesses = processList.filter(p =>
-    !processSearch || p.processName?.toLowerCase().includes(processSearch.toLowerCase()) ||
-    p.category?.toLowerCase().includes(processSearch.toLowerCase())
-  );
+  const filteredProcesses = processList.filter(p => {
+    const matchesSearch = !processSearch || p.processName?.toLowerCase().includes(processSearch.toLowerCase()) ||
+      p.category?.toLowerCase().includes(processSearch.toLowerCase());
+    const matchesCategory = selectedCategories.size === 0 || selectedCategories.has(p.category);
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -653,9 +707,16 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
         </div>
       </div>
 
-      {scope === 'categories' && (
+      {(scope === 'categories' || scope === 'processes') && (
         <div className="space-y-2">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Allowed Categories</div>
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            {scope === 'categories' ? 'Allowed Categories' : 'Filter by Category'}
+          </div>
+          {scope === 'processes' && (
+            <p className="text-xs text-muted-foreground -mt-1">
+              Select categories to narrow the process list below. Leave all unchecked to show all processes.
+            </p>
+          )}
           {CATEGORIES.map(cat => (
             <label key={cat} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-secondary/40 cursor-pointer transition-colors">
               <input
@@ -689,6 +750,8 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
 
           {processList.length === 0 ? (
             <div className="flex justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+          ) : filteredProcesses.length === 0 ? (
+            <div className="text-xs text-muted-foreground text-center py-4">No processes match the selected categories or search.</div>
           ) : (
             <div className="border border-border rounded-xl overflow-hidden max-h-64 overflow-y-auto">
               <table className="w-full text-xs">
@@ -855,13 +918,14 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [form, setForm] = useState({ name: '', email: '', role: 'user' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [resetLink, setResetLink] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const submit = async () => {
-    if (!form.name || !form.email || !form.password) { setError('All fields are required'); return; }
+    if (!form.name || !form.email) { setError('Name and email are required'); return; }
     setSaving(true);
     setError('');
     try {
@@ -869,11 +933,62 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed to create user'); return; }
+      const d = await r.json();
+      const link = window.location.origin + d.resetLink;
+      setResetLink(link);
       await onCreate();
     } finally {
       setSaving(false);
     }
   };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(resetLink);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (resetLink) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div className="w-[480px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+              <Check className="w-5 h-5 text-green-500" />
+            </div>
+            <div>
+              <h2 className="font-display font-bold text-lg">User Created</h2>
+              <p className="text-xs text-muted-foreground">Share this password setup link with the new user</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Mail className="w-3.5 h-3.5" />
+              <span>In production this link would be emailed automatically. Please share it manually for now.</span>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input readOnly value={resetLink}
+                className="flex-1 text-xs bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none font-mono truncate" />
+              <button onClick={copyLink}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex-shrink-0',
+                  copied ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-border text-muted-foreground hover:bg-secondary'
+                )}>
+                <Copy className="w-3.5 h-3.5" />
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          </div>
+
+          <button onClick={onClose}
+            className="w-full px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -881,6 +996,11 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
         <div className="flex items-center justify-between">
           <h2 className="font-display font-bold text-lg">Create User</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-secondary/50 text-xs text-muted-foreground">
+          <Mail className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>The user will receive a password setup link after their account is created.</span>
         </div>
 
         {error && <div className="px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
@@ -898,20 +1018,6 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
             <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               placeholder="jane@org.org"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Password</label>
-            <div className="relative">
-              <input type={showPassword ? 'text' : 'password'} value={form.password}
-                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                placeholder="••••••••"
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 pr-10 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-              <button type="button" onClick={() => setShowPassword(s => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
           </div>
 
           <div className="space-y-1">

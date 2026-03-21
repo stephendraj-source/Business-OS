@@ -25,14 +25,38 @@ usersRouter.get('/', async (_req, res) => {
 
 usersRouter.post('/', async (req, res) => {
   try {
-    const { name, email, password, role = 'user', isActive = true, dataScope = 'all' } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
+    const { name, email, role = 'user', isActive = true, dataScope = 'all' } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+    const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
-      name, email, passwordHash: hashPassword(password), role, isActive, dataScope,
+      name, email, passwordHash: hashPassword(tempPassword), role, isActive, dataScope,
     }).returning();
-    res.status(201).json(safeUser(row));
+    const token = crypto.randomUUID().replace(/-/g, '');
+    const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
+    res.status(201).json({ ...safeUser(row), resetLink, resetToken: token });
   } catch (e: any) {
     if (e.message?.includes('unique')) return res.status(409).json({ error: 'Email already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.post('/:id/send-password-reset', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [user] = await db.select({ id: users.id, name: users.name, email: users.email })
+      .from(users).where(eq(users.id, id));
+    if (!user) return res.status(404).json({ error: 'Not found' });
+    const token = crypto.randomUUID().replace(/-/g, '');
+    const resetLink = `/reset-password?token=${token}&uid=${id}`;
+    res.json({
+      ok: true,
+      resetLink,
+      resetToken: token,
+      email: user.email,
+      name: user.name,
+      message: `Password reset link generated for ${user.name} (${user.email}). In a production deployment this would be emailed automatically. Please share this link with the user manually.`,
+    });
+  } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
 });
