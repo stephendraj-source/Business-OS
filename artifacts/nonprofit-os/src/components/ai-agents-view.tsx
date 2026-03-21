@@ -19,6 +19,7 @@ interface Agent {
   name: string;
   description: string;
   instructions: string;
+  trigger: string;
   tools: string;
   createdAt: string;
   updatedAt: string;
@@ -108,12 +109,15 @@ interface ProcessMeta { id: number; processName: string; category: string; }
 type PickerMode = 'fields' | 'processes';
 
 function InstructionsEditor({
-  value, onChange, processFields, workflows = [],
+  value, onChange, processFields, workflows = [], rows = 8, placeholder, hint,
 }: {
   value: string;
   onChange: (v: string) => void;
   processFields: ProcessField[];
   workflows?: WorkflowMeta[];
+  rows?: number;
+  placeholder?: string;
+  hint?: string;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -193,13 +197,13 @@ function InstructionsEditor({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
-        rows={8}
-        placeholder={`Write the agent's instructions here.\nType / to insert a reference (process, category, AI agent, target, achievement, traffic light, portfolio, or workflow)...`}
+        rows={rows}
+        placeholder={placeholder ?? `Write the agent's instructions here.\nType / to insert a reference (process, category, AI agent, target, achievement, traffic light, portfolio, or workflow)...`}
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-primary font-mono"
       />
       <div className="flex items-center gap-2 mt-1">
         <Cpu className="w-3 h-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Type <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> to insert: process, category, AI agent, target, achievement, traffic light, portfolio, or workflow</span>
+        <span className="text-xs text-muted-foreground">{hint ?? <>Type <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> to insert: process, category, AI agent, target, achievement, traffic light, portfolio, or workflow</>}</span>
       </div>
       {showPicker && (
         <div className="fixed z-[99] w-80 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden" style={{ top: pickerPos.top, left: pickerPos.left }}>
@@ -1186,6 +1190,7 @@ export function AiAgentsView() {
 
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editTrigger, setEditTrigger] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editNumber, setEditNumber] = useState(0);
@@ -1221,6 +1226,7 @@ export function AiAgentsView() {
     if (selectedAgent) {
       setEditName(selectedAgent.name);
       setEditDesc(selectedAgent.description);
+      setEditTrigger(selectedAgent.trigger ?? "");
       setEditInstructions(selectedAgent.instructions);
       setEditNumber(selectedAgent.agentNumber);
       try { setEditTools(JSON.parse(selectedAgent.tools)); } catch { setEditTools([]); }
@@ -1261,6 +1267,7 @@ export function AiAgentsView() {
           agentNumber: editNumber,
           name: editName,
           description: editDesc,
+          trigger: editTrigger,
           instructions: editInstructions,
           tools: JSON.stringify(editTools),
         }),
@@ -1457,6 +1464,27 @@ export function AiAgentsView() {
           <div className="flex-1 overflow-y-auto p-6">
             {tab === "overview" && (
               <div className="max-w-2xl space-y-6">
+
+                {/* Trigger */}
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    Trigger
+                  </label>
+                  <div className="relative rounded-xl border border-amber-500/30 bg-amber-500/5 p-0.5">
+                    <InstructionsEditor
+                      value={editTrigger}
+                      onChange={markDirty(setEditTrigger)}
+                      processFields={processFields}
+                      workflows={workflows}
+                      rows={3}
+                      placeholder={`Describe when this agent should run…\nType / to insert a reference (e.g. "When {{process:Employee Review}} status changes to Complete")`}
+                      hint="Describe the condition or event that triggers this agent. Type / to insert a dynamic reference."
+                    />
+                  </div>
+                </div>
+
+                {/* Instructions */}
                 <div className="space-y-2">
                   <label className="block text-sm font-medium flex items-center gap-2">
                     <Cpu className="w-4 h-4 text-primary" />Instructions

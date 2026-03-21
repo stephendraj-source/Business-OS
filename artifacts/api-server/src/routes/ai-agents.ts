@@ -237,8 +237,8 @@ router.post("/ai-agents", async (req, res) => {
     const query = db.select({ val: max(aiAgentsTable.agentNumber) }).from(aiAgentsTable);
     const [maxNum] = tenantCond ? await query.where(tenantCond) : await query;
     const nextNum = (maxNum?.val ?? 0) + 1;
-    const { name = "New Agent", description = "", instructions = "", tools = "[]" } = req.body as Record<string, string>;
-    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools, createdBy: userId ?? undefined, tenantId }).returning();
+    const { name = "New Agent", description = "", instructions = "", trigger = "", tools = "[]" } = req.body as Record<string, string>;
+    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, trigger, tools, createdBy: userId ?? undefined, tenantId }).returning();
     await db.insert(agentModuleAccess).values(
       ALL_MODULES.map(module => ({ agentId: agent.id, module, hasAccess: false }))
     );
@@ -252,12 +252,13 @@ router.post("/ai-agents", async (req, res) => {
 router.put("/ai-agents/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { agentNumber, name, description, instructions, tools } = req.body as Record<string, any>;
+    const { agentNumber, name, description, instructions, trigger, tools } = req.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (agentNumber !== undefined) updates.agentNumber = Number(agentNumber);
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (instructions !== undefined) updates.instructions = instructions;
+    if (trigger !== undefined) updates.trigger = trigger;
     if (tools !== undefined) updates.tools = typeof tools === "string" ? tools : JSON.stringify(tools);
     const [agent] = await db.update(aiAgentsTable).set(updates).where(eq(aiAgentsTable.id, id)).returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
