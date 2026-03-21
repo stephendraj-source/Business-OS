@@ -15,9 +15,10 @@ import { WorkflowsView } from '@/components/workflows-view';
 import { FormsView } from '@/components/forms-view';
 import { UsersView } from '@/components/users-view';
 import { InitiativesView } from '@/components/initiatives-view';
+import { ConfigurationView } from '@/components/configuration-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -133,6 +134,11 @@ export default function Dashboard() {
         {activeView === 'initiatives' && (
           <motion.div key="initiatives" {...fadeSlide} className="w-full h-full">
             <InitiativesView />
+          </motion.div>
+        )}
+        {activeView === 'configuration' && (
+          <motion.div key="configuration" {...fadeSlide} className="w-full h-full">
+            <ConfigurationView />
           </motion.div>
         )}
       </AnimatePresence>

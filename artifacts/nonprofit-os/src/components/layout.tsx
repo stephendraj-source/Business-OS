@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +9,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -35,8 +35,9 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'ai-agents':  { label: 'AI Agents',           section: 'AI' },
   'workflows':  { label: 'Workflows',           section: 'Workflows' },
   'forms':      { label: 'Forms',               section: 'Workflows' },
-  'users':      { label: 'Users',               section: 'Admin' },
-  'initiatives':{ label: 'Initiatives',         section: 'Strategy' },
+  'users':         { label: 'Users',             section: 'Admin' },
+  'configuration': { label: 'Configuration',    section: 'Admin' },
+  'initiatives':   { label: 'Initiatives',      section: 'Strategy' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -161,12 +162,15 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             </div>
           </div>
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Admin</div>
-            <div className="space-y-1">
-              <NavItem icon={<Users />} label="Users" active={activeView === 'users'} onClick={() => onViewChange('users')} />
+          {isAdmin && (
+            <div>
+              <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Admin</div>
+              <div className="space-y-1">
+                <NavItem icon={<Users />} label="Users" active={activeView === 'users'} onClick={() => onViewChange('users')} />
+                <NavItem icon={<Settings2 />} label="Configuration" active={activeView === 'configuration'} onClick={() => onViewChange('configuration')} />
+              </div>
             </div>
-          </div>
+          )}
 
         </nav>
 
