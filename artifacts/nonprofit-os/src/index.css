@@ -196,3 +196,10 @@
   border-top: 1px solid #e2e8f0;
   margin: 1rem 0;
 }
+
+/* JSON syntax highlighting for agent output */
+.json-key  { color: #7dd3fc; }   /* sky-300  — keys   */
+.json-str  { color: #86efac; }   /* green-300 — strings */
+.json-num  { color: #fda4af; }   /* rose-300  — numbers */
+.json-bool { color: #fdba74; }   /* orange-300 — booleans */
+.json-null { color: #d1d5db; }   /* gray-300  — null  */

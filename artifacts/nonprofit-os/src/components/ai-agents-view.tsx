@@ -365,6 +365,22 @@ function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: strin
 
 type OutputFormat = "plain" | "json" | "xml" | "html";
 
+function highlightJson(json: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return esc(json).replace(
+    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    (match) => {
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) return `<span class="json-key">${match}</span>`;
+        return `<span class="json-str">${match}</span>`;
+      }
+      if (/true|false/.test(match)) return `<span class="json-bool">${match}</span>`;
+      if (/null/.test(match)) return `<span class="json-null">${match}</span>`;
+      return `<span class="json-num">${match}</span>`;
+    }
+  );
+}
+
 function formatOutput(raw: string, fmt: OutputFormat): string {
   if (!raw) return "";
   if (fmt === "json") {
@@ -542,13 +558,19 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
         ) : (
           <div
             ref={outputRef}
-            className="bg-background border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap"
+            className="bg-[#0f1117] border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap text-slate-300"
           >
-            {running && !output && <span className="text-muted-foreground animate-pulse">Executing agent…</span>}
-            {displayedOutput && <span>{displayedOutput}</span>}
+            {running && !output && <span className="text-slate-500 animate-pulse">Executing agent…</span>}
+            {displayedOutput && (
+              outputFormat === "json" ? (
+                <span dangerouslySetInnerHTML={{ __html: highlightJson(displayedOutput) }} />
+              ) : (
+                <span>{displayedOutput}</span>
+              )
+            )}
             {error && <span className="text-red-400">{'\n'}{error}</span>}
             {!running && !output && !error && (
-              <span className="text-muted-foreground/40 italic">Starting agent run…</span>
+              <span className="text-slate-600 italic">Starting agent run…</span>
             )}
           </div>
         )}
