@@ -157,6 +157,17 @@ authRouter.get('/tenants/:id/users', requireAuth, requireSuperUser, async (req, 
   }
 });
 
+authRouter.delete('/tenants/:id', requireAuth, requireSuperUser, async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const [row] = await db.delete(tenants).where(eq(tenants.id, tenantId)).returning();
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    res.json({ ok: true, id: tenantId });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 authRouter.patch('/tenants/:id/blueprint', requireAuth, requireSuperUser, async (req, res) => {
   try {
     const tenantId = parseInt(req.params.id);

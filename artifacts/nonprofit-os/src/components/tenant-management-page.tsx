@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Building2, Plus, Users, LogOut, Check, Eye, EyeOff, Copy, BookOpen, ChevronDown, Hash } from 'lucide-react';
+import { Building2, Plus, Users, LogOut, Check, Eye, EyeOff, Copy, BookOpen, ChevronDown, Hash, Trash2, AlertTriangle } from 'lucide-react';
 
 const INDUSTRY_BLUEPRINTS = [
   'Healthcare & Life Sciences',
@@ -63,6 +63,9 @@ export function TenantManagementPage() {
   const [blueprintSelecting, setBlueprintSelecting] = useState<Record<number, boolean>>({});
   const [blueprintSaving, setBlueprintSaving] = useState<Record<number, boolean>>({});
   const [blueprintValues, setBlueprintValues] = useState<Record<number, string>>({});
+
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const API = '/api';
 
@@ -138,6 +141,23 @@ export function TenantManagementPage() {
       }
     } finally {
       setBlueprintSaving(prev => ({ ...prev, [tenantId]: false }));
+    }
+  }
+
+  async function deleteTenant(tenantId: number) {
+    setDeleting(true);
+    try {
+      const r = await fetch(`${API}/auth/tenants/${tenantId}`, {
+        method: 'DELETE',
+        headers: fetchHeaders(),
+      });
+      if (r.ok) {
+        setTenants(prev => prev.filter(t => t.id !== tenantId));
+        setBlueprintValues(prev => { const next = { ...prev }; delete next[tenantId]; return next; });
+      }
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
     }
   }
 
@@ -405,6 +425,13 @@ export function TenantManagementPage() {
                         <Users className="w-3.5 h-3.5" />
                         Add Admin
                       </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(confirmDeleteId === tenant.id ? null : tenant.id)}
+                        title="Delete tenant"
+                        className="p-1.5 rounded-lg border border-border text-muted-foreground hover:text-red-500 hover:border-red-500/40 hover:bg-red-500/5 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
@@ -457,6 +484,29 @@ export function TenantManagementPage() {
                       </button>
                     )}
                   </div>
+
+                  {/* Delete confirmation */}
+                  {confirmDeleteId === tenant.id && (
+                    <div className="flex items-center gap-3 pt-3 border-t border-red-500/20 bg-red-500/5 -mx-5 -mb-5 px-5 py-3 rounded-b-2xl">
+                      <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                      <p className="text-xs text-red-600 dark:text-red-400 flex-1">
+                        Permanently delete <span className="font-semibold">{tenant.name}</span>? This cannot be undone.
+                      </p>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:bg-secondary transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => deleteTenant(tenant.id)}
+                        disabled={deleting}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-60 transition-colors"
+                      >
+                        {deleting ? 'Deleting…' : 'Delete'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
