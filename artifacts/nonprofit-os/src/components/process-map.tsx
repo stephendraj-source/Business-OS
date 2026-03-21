@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useProcessesData, useOptimisticUpdateProcess } from '@/hooks/use-app-data';
 import {
   ChevronRight, Cpu, Target, ArrowRightLeft, Users, Activity,
-  TrendingUp, Loader2, Map, BarChart3, CheckCircle2, Award, Pencil
+  TrendingUp, Loader2, Map, BarChart3, CheckCircle2, Award, Pencil,
+  Zap, Briefcase, Circle
 } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -193,6 +194,38 @@ export function ProcessMap() {
                 </div>
               </div>
 
+              {/* Status & toggle row */}
+              <div className="flex flex-wrap items-center gap-3 p-4 bg-secondary/30 rounded-xl border border-border/50">
+                {/* Traffic Light */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Status</span>
+                  <TrafficLightSelector
+                    value={liveSelectedProcess.trafficLight ?? ''}
+                    onSave={v => handleSave('trafficLight', v)}
+                  />
+                </div>
+                <div className="w-px h-5 bg-border/60" />
+                {/* AI Agent Active */}
+                <BooleanToggle
+                  icon={<Zap className="w-3.5 h-3.5" />}
+                  label="AI Agent Active"
+                  value={!!liveSelectedProcess.aiAgentActive}
+                  onToggle={() => updateProcess({ id: liveSelectedProcess.id, data: { aiAgentActive: !liveSelectedProcess.aiAgentActive } })}
+                  activeColor="text-violet-400"
+                  activeBg="bg-violet-500/10 border-violet-500/30"
+                />
+                <div className="w-px h-5 bg-border/60" />
+                {/* In Portfolio */}
+                <BooleanToggle
+                  icon={<Briefcase className="w-3.5 h-3.5" />}
+                  label="In Portfolio"
+                  value={!!liveSelectedProcess.included}
+                  onToggle={() => updateProcess({ id: liveSelectedProcess.id, data: { included: !liveSelectedProcess.included } })}
+                  activeColor="text-emerald-400"
+                  activeBg="bg-emerald-500/10 border-emerald-500/30"
+                />
+              </div>
+
               {/* KPI Performance Panel */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <EditableKpiCard
@@ -271,12 +304,6 @@ export function ProcessMap() {
                   title="Estimated Value Impact"
                   value={liveSelectedProcess.estimatedValueImpact ?? ''}
                   onSave={v => handleSave('estimatedValueImpact', v)}
-                />
-                <EditableDetailSection
-                  icon={<BarChart3 />}
-                  title="Industry Benchmark (detail)"
-                  value={liveSelectedProcess.industryBenchmark ?? ''}
-                  onSave={v => handleSave('industryBenchmark', v)}
                 />
               </div>
 
@@ -515,6 +542,70 @@ function EditableDetailSection({
         </p>
       )}
     </div>
+  );
+}
+
+// ── Traffic Light Selector ───────────────────────────────────────────────────
+
+const TRAFFIC_LIGHTS = [
+  { value: '',      label: 'Not Set', dot: 'bg-slate-400/40 border-slate-400/30',  text: 'text-slate-400' },
+  { value: 'green', label: 'Green',   dot: 'bg-emerald-500 border-emerald-400',     text: 'text-emerald-400' },
+  { value: 'amber', label: 'Amber',   dot: 'bg-amber-500 border-amber-400',         text: 'text-amber-400' },
+  { value: 'red',   label: 'Red',     dot: 'bg-red-500 border-red-400',             text: 'text-red-400' },
+];
+
+function TrafficLightSelector({ value, onSave }: { value: string; onSave: (v: string) => void }) {
+  const current = TRAFFIC_LIGHTS.find(t => t.value === value) ?? TRAFFIC_LIGHTS[0];
+  const next = () => {
+    const idx = TRAFFIC_LIGHTS.findIndex(t => t.value === value);
+    const nextItem = TRAFFIC_LIGHTS[(idx + 1) % TRAFFIC_LIGHTS.length];
+    onSave(nextItem.value);
+  };
+  return (
+    <button
+      onClick={next}
+      className={cn(
+        "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all hover:opacity-90",
+        current.text,
+        current.value === '' ? "bg-secondary/50 border-border/50" : "border-current/30 bg-current/5"
+      )}
+      title="Click to cycle status"
+    >
+      <span className={cn("w-2.5 h-2.5 rounded-full border shrink-0", current.dot)} />
+      {current.label}
+    </button>
+  );
+}
+
+// ── Boolean Toggle ────────────────────────────────────────────────────────────
+
+function BooleanToggle({
+  icon, label, value, onToggle, activeColor, activeBg,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: boolean;
+  onToggle: () => void;
+  activeColor: string;
+  activeBg: string;
+}) {
+  return (
+    <button
+      onClick={onToggle}
+      className={cn(
+        "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all",
+        value
+          ? cn(activeColor, activeBg)
+          : "text-muted-foreground bg-secondary/30 border-border/50 hover:border-border"
+      )}
+    >
+      <span className={cn("w-3.5 h-3.5 shrink-0", value ? activeColor : "text-muted-foreground")}>{icon}</span>
+      {label}
+      <span className={cn(
+        "w-4 h-2 rounded-full transition-colors shrink-0",
+        value ? "bg-current" : "bg-border"
+      )} />
+    </button>
   );
 }
 
