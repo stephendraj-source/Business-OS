@@ -758,11 +758,12 @@ function SubmissionsTab({ formId, fields, getFetchHeaders }: {
 
 // ── Data Entry Fill Panel ─────────────────────────────────────────────────────
 
-function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName }: {
+function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName, agents = [] }: {
   form: FormSummary;
   fields: FormField[];
   getFetchHeaders: () => Record<string, string>;
   currentUserName: string;
+  agents?: AgentItem[];
 }) {
   const initValues = () => {
     const init: Record<string, any> = {};
@@ -863,6 +864,12 @@ function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName }: 
             <div className="text-xs text-muted-foreground font-mono mb-1">#{form.formNumber}</div>
             <h2 className="text-xl font-bold">{form.name}</h2>
             {form.description && <p className="text-sm text-muted-foreground mt-1">{form.description}</p>}
+            {form.linkedAgentId && (
+              <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full text-xs font-medium bg-violet-500/10 text-violet-600 dark:text-violet-400 border border-violet-500/20">
+                <Bot className="w-3.5 h-3.5" />
+                AI Agent: {agents.find(a => a.id === form.linkedAgentId)?.name ?? `Agent #${form.linkedAgentId}`} will process your submission
+              </div>
+            )}
           </div>
 
           {submitSuccess ? (
@@ -1590,6 +1597,7 @@ export function FormsView() {
               fields={fields}
               getFetchHeaders={fetchHeaders}
               currentUserName={currentUserName}
+              agents={agents}
             />
           </div>
         </div>

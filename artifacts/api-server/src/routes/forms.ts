@@ -1,9 +1,155 @@
 import { Router, type IRouter } from "express";
-import { db, formsTable, formFoldersTable, formSubmissionsTable } from "@workspace/db";
+import fs from "fs";
+import {
+  db, formsTable, formFoldersTable, formSubmissionsTable,
+  aiAgentsTable, agentKnowledgeUrlsTable, agentKnowledgeFilesTable, agentRunLogsTable, processesTable,
+} from "@workspace/db";
 import { eq, max, and, desc } from "drizzle-orm";
 import crypto from "crypto";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
+
+// ── Agent trigger helper ──────────────────────────────────────────────────────
+
+async function fetchUrlContent(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return `[Failed to fetch ${url}: HTTP ${res.status}]`;
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("json")) {
+      const json = await res.json();
+      return `URL: ${url}\n${JSON.stringify(json, null, 2).slice(0, 4000)}`;
+    }
+    const text = await res.text();
+    return `URL: ${url}\n${text.slice(0, 4000)}`;
+  } catch {
+    return `[Could not fetch ${url}]`;
+  }
+}
+
+function readFileContent(filePath: string, mimeType: string, originalName: string): string {
+  try {
+    if (!fs.existsSync(filePath)) return `[File not found: ${originalName}]`;
+    if (mimeType.includes("text") || originalName.endsWith(".txt") || originalName.endsWith(".md") || originalName.endsWith(".csv")) {
+      return `File: ${originalName}\n${fs.readFileSync(filePath, "utf8").slice(0, 5000)}`;
+    }
+    return `File: ${originalName} [Binary file, ${mimeType}]`;
+  } catch {
+    return `[Error reading ${originalName}]`;
+  }
+}
+
+async function resolveInstructions(instructions: string): Promise<string> {
+  if (!instructions) return instructions;
+  let resolved = instructions;
+  const processNameMatches = instructions.match(/\{\{process:([^}]+)\}\}/g);
+  if (processNameMatches) {
+    const processes = await db.select().from(processesTable).orderBy(processesTable.number);
+    const uniqueNames = [...new Set(processNameMatches.map((m: string) => m.slice(10, -2).trim()))];
+    for (const name of uniqueNames) {
+      const proc = processes.find((p: any) =>
+        p.processName?.toLowerCase() === name.toLowerCase() ||
+        p.processDescription?.toLowerCase() === name.toLowerCase()
+      );
+      if (proc) {
+        const summary = [
+          `Process: ${proc.processName || proc.processDescription}`,
+          (proc as any).purpose ? `Purpose: ${(proc as any).purpose}` : null,
+          (proc as any).inputs ? `Inputs: ${(proc as any).inputs}` : null,
+          (proc as any).outputs ? `Outputs: ${(proc as any).outputs}` : null,
+          (proc as any).kpi ? `KPI: ${(proc as any).kpi}` : null,
+        ].filter(Boolean).join("\n");
+        resolved = resolved.replaceAll(`{{process:${name}}}`, `[Process data for "${name}":\n${summary}]`);
+      } else {
+        resolved = resolved.replaceAll(`{{process:${name}}}`, `[Process "${name}" not found]`);
+      }
+    }
+  }
+  const fieldMatches = resolved.match(/\{\{(\w+)\}\}/g);
+  if (fieldMatches && fieldMatches.length > 0) {
+    const processes = await db.select().from(processesTable).orderBy(processesTable.number).limit(50);
+    const allFields = [...new Set(fieldMatches.map((m: string) => m.slice(2, -2)))];
+    for (const field of allFields) {
+      const values = processes.map((p: any) => p[field]).filter(Boolean);
+      const sample = values.slice(0, 10).join("; ");
+      resolved = resolved.replaceAll(`{{${field}}}`, `[${field} data: ${sample}]`);
+    }
+  }
+  return resolved;
+}
+
+async function triggerAgentWithSubmission(
+  agentId: number,
+  formName: string,
+  submissionData: string,
+  submittedByName: string,
+  tenantId: number | null,
+): Promise<void> {
+  const [agent] = await db.select().from(aiAgentsTable).where(eq(aiAgentsTable.id, agentId));
+  if (!agent) return;
+
+  const urls = await db.select().from(agentKnowledgeUrlsTable).where(eq(agentKnowledgeUrlsTable.agentId, agentId));
+  const files = await db.select().from(agentKnowledgeFilesTable).where(eq(agentKnowledgeFilesTable.agentId, agentId));
+
+  const urlContents = await Promise.all(urls.map((u: any) => fetchUrlContent(u.url)));
+  const fileContents = files.map((f: any) => readFileContent(f.filePath, f.mimeType, f.originalName));
+  const resolvedInstructions = await resolveInstructions(agent.instructions ?? "");
+  const toolsList = (() => { try { return JSON.parse(agent.tools ?? "[]"); } catch { return []; } })();
+  const knowledgeSection = [...urlContents, ...fileContents].filter(Boolean).join("\n\n---\n\n");
+
+  const systemPrompt = `You are an AI Agent named "${agent.name}".
+
+## Your Instructions
+${resolvedInstructions || "No specific instructions provided."}
+
+## Your Tools
+${toolsList.length > 0 ? toolsList.join(", ") : "No specific tools configured."}
+
+## Knowledge Base
+${knowledgeSection || "No knowledge sources configured."}
+
+A new form submission has arrived. Process it according to your instructions and provide a detailed, structured output.`;
+
+  let parsedData: Record<string, any> = {};
+  try { parsedData = JSON.parse(submissionData); } catch { /* ignore */ }
+  const fieldLines = Object.entries(parsedData)
+    .map(([k, v]) => `- ${k.replace(/_/g, " ")}: ${v}`)
+    .join("\n");
+
+  const userMessage = `A new submission has been received for the form "${formName}".
+
+Submitted by: ${submittedByName || "Anonymous"}
+Submitted at: ${new Date().toISOString()}
+
+## Form Data
+${fieldLines || "(no fields captured)"}
+
+Please process this submission according to your instructions.`;
+
+  const [logEntry] = await db.insert(agentRunLogsTable).values({
+    agentId,
+    status: "running",
+    output: "",
+  }).returning();
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    });
+    const output = message.content.map((c: any) => c.type === "text" ? c.text : "").join("");
+    await db.update(agentRunLogsTable)
+      .set({ status: "success", output, completedAt: new Date() })
+      .where(eq(agentRunLogsTable.id, logEntry.id));
+  } catch (err: any) {
+    await db.update(agentRunLogsTable)
+      .set({ status: "error", error: err?.message ?? String(err), completedAt: new Date() })
+      .where(eq(agentRunLogsTable.id, logEntry.id));
+  }
+}
 
 // ── Form Folders ─────────────────────────────────────────────────────────────
 
@@ -253,6 +399,20 @@ router.post("/forms/:id/submissions", async (req, res) => {
       submittedByName: String(submittedByName),
       submissionData: dataStr,
     }).returning();
+
+    // Fire-and-forget: trigger linked agent if configured
+    const [form] = await db.select({ linkedAgentId: formsTable.linkedAgentId, name: formsTable.name })
+      .from(formsTable).where(eq(formsTable.id, formId));
+    if (form?.linkedAgentId) {
+      triggerAgentWithSubmission(
+        form.linkedAgentId,
+        form.name,
+        dataStr,
+        String(submittedByName),
+        tenantId,
+      ).catch((err: any) => console.error("[form-agent-trigger]", err?.message ?? err));
+    }
+
     res.status(201).json(submission);
   } catch (err) {
     req.log.error(err);
