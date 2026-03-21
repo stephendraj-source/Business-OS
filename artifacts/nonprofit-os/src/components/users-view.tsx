@@ -794,18 +794,44 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
 
       {scope === 'processes' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-shrink-0">
               Allowed Processes ({processAccess.size} selected)
             </div>
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                value={processSearch}
-                onChange={e => setProcessSearch(e.target.value)}
-                placeholder="Filter…"
-                className="pl-7 pr-2 py-1 text-xs bg-secondary/60 rounded-lg border border-transparent focus:outline-none focus:border-primary"
-              />
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => {
+                  setProcessAccess(m => {
+                    const next = new Map(m);
+                    filteredProcesses.forEach(p => { if (!next.has(p.id)) next.set(p.id, false); });
+                    return next;
+                  });
+                }}
+                className="text-[10px] px-2 py-0.5 rounded bg-secondary hover:bg-secondary/80 text-muted-foreground font-medium transition-colors"
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => {
+                  setProcessAccess(m => {
+                    const next = new Map(m);
+                    filteredProcesses.forEach(p => next.delete(p.id));
+                    return next;
+                  });
+                }}
+                className="text-[10px] px-2 py-0.5 rounded bg-secondary hover:bg-secondary/80 text-muted-foreground font-medium transition-colors"
+              >
+                Deselect All
+              </button>
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input
+                  value={processSearch}
+                  onChange={e => setProcessSearch(e.target.value)}
+                  placeholder="Filter…"
+                  className="pl-7 pr-2 py-1 text-xs bg-secondary/60 rounded-lg border border-transparent focus:outline-none focus:border-primary"
+                />
+              </div>
             </div>
           </div>
 
