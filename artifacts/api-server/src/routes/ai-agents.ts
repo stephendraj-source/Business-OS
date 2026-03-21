@@ -141,6 +141,12 @@ async function runAgentExecution(agentId: number, scheduleId?: number): Promise<
   const agent = await getAgentFull(agentId);
   if (!agent) throw new Error("Agent not found");
 
+  // Deduct 1 credit for scheduled agent runs (uses tenant from the agent record)
+  if (agent.tenantId) {
+    const credit = await useCredit(agent.tenantId);
+    if (!credit.ok) throw new Error("Insufficient credits for scheduled agent run");
+  }
+
   const urlContents = await Promise.all(agent.urls.map(u => fetchUrlContent(u.url)));
   const fileContents = agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName));
   const resolvedInstructions = await resolveInstructions(agent.instructions);

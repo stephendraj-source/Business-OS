@@ -4,6 +4,7 @@ import { eq, desc, max, and } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { useCredit } from "../lib/credits";
 
 function tenantFilter(req: any) {
   const tenantId = req.auth?.tenantId;
@@ -150,6 +151,15 @@ router.post("/processes/:id/evaluate", async (req, res) => {
     const [process] = await db.select().from(processesTable).where(eq(processesTable.id, id));
     if (!process) { res.status(404).json({ error: "Process not found" }); return; }
 
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
+
     const name = process.processName || process.processDescription;
     const kpi = process.kpi || "Not specified";
     const target = process.target || "Not specified";
@@ -217,6 +227,15 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const [process] = await db.select().from(processesTable).where(eq(processesTable.id, id));
     if (!process) { res.status(404).json({ error: "Process not found" }); return; }
+
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
 
     const name = process.processName || process.processDescription;
     const prompt = `You are an expert nonprofit operations advisor. For the following nonprofit process, populate ALL the blank fields with realistic, specific, and actionable content tailored to a modern nonprofit organization.

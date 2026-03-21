@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,15 @@ router.post("/governance/ai-populate", async (req, res) => {
   try {
     const { complianceName } = req.body as { complianceName: string };
     if (!complianceName?.trim()) { res.status(400).json({ error: "complianceName required" }); return; }
+
+    const tenantId = (req as any).auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
 
     const prompt = `You are an expert in regulatory compliance and governance frameworks. Given this compliance standard or regulation name: "${complianceName}", provide the following as a JSON object:
 {
