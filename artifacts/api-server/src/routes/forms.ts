@@ -4,7 +4,7 @@ import {
   db, formsTable, formFoldersTable, formSubmissionsTable,
   aiAgentsTable, agentKnowledgeUrlsTable, agentKnowledgeFilesTable, agentRunLogsTable, processesTable,
 } from "@workspace/db";
-import { eq, max, and, desc } from "drizzle-orm";
+import { eq, max, and, desc, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
@@ -153,9 +153,38 @@ Please process this submission according to your instructions.`;
 
 // ── Form Folders ─────────────────────────────────────────────────────────────
 
+const MASTER_CATALOGUE_CATEGORIES = [
+  "Finance & Compliance",
+  "Fundraising & Donor Management",
+  "Grant Management",
+  "HR, Volunteers & Talent",
+  "Marketing, Brand & Communications",
+  "Program Delivery & Operations",
+  "Strategy & Governance",
+  "Technology & Data",
+];
+
+async function seedCategoryFolders(tenantId: number | null) {
+  const rootCond = tenantId !== null
+    ? and(eq(formFoldersTable.tenantId, tenantId), isNull(formFoldersTable.parentId))
+    : isNull(formFoldersTable.parentId);
+  const existing = await db.select({ name: formFoldersTable.name }).from(formFoldersTable).where(rootCond);
+  const existingNames = new Set(existing.map(r => r.name));
+  const missing = MASTER_CATALOGUE_CATEGORIES.filter(cat => !existingNames.has(cat));
+  if (missing.length > 0) {
+    await db.insert(formFoldersTable).values(
+      missing.map(name => ({ name, parentId: null, tenantId: tenantId ?? null }))
+    );
+  }
+}
+
 router.get("/form-folders", async (req, res) => {
   try {
     const auth = (req as any).auth;
+    // Auto-seed master category folders for this tenant if any are missing
+    if (auth?.tenantId !== undefined) {
+      await seedCategoryFolders(auth.tenantId ?? null);
+    }
     const query = db.select().from(formFoldersTable);
     const folders = auth?.tenantId
       ? await query.where(eq(formFoldersTable.tenantId, auth.tenantId)).orderBy(formFoldersTable.createdAt)
