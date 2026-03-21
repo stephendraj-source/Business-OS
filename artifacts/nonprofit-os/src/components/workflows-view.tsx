@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
-  ChevronDown, ChevronRight, Play, AlertCircle, X, Check,
-  ArrowDown, Code2, Workflow,
+  Play, AlertCircle, X, Check, ChevronRight,
+  ArrowRight, Code2, Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 const API = '/api';
 
@@ -200,7 +201,7 @@ function FieldPickerTextarea({
         onKeyDown={handleKeyDown}
         rows={rows}
         placeholder={placeholder}
-        className={cn("w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary", className)}
+        className={cn("w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none", className)}
       />
       {showPicker && (
         <div className="fixed z-[99] w-64 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden" style={{ top: pickerPos.top, left: pickerPos.left }}>
@@ -266,78 +267,292 @@ function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition') => voi
   );
 }
 
-// ── Action Step Card ──────────────────────────────────────────────────────────
+// ── Inline Editable Action Step Card ─────────────────────────────────────────
 
-function ActionStepCard({ step, selected, onClick, onDelete }: {
-  step: WStep; selected: boolean; onClick: () => void; onDelete: () => void;
+function ActionStepCard({ step, onUpdate, onDelete, processFields }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+  processFields: ProcessField[];
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [draftDesc, setDraftDesc] = useState(step.description);
+  const labelRef = useRef<HTMLInputElement>(null);
+
+  // sync from parent if not editing
+  useEffect(() => {
+    if (!editing) {
+      setDraftLabel(step.label);
+      setDraftDesc(step.description);
+    }
+  }, [step.label, step.description, editing]);
+
+  const startEdit = () => {
+    setDraftLabel(step.label);
+    setDraftDesc(step.description);
+    setEditing(true);
+    setTimeout(() => labelRef.current?.focus(), 0);
+  };
+
+  const commitEdit = () => {
+    onUpdate({ label: draftLabel, description: draftDesc });
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraftLabel(step.label);
+    setDraftDesc(step.description);
+    setEditing(false);
+  };
+
   return (
-    <div
-      onClick={onClick}
-      className={cn(
-        "relative mx-auto w-full max-w-xs rounded-xl border-2 px-4 py-3 cursor-pointer transition-all shadow-sm group",
-        selected ? "border-primary bg-primary/5 shadow-md" : "border-border bg-card hover:border-primary/50"
+    <div className={cn(
+      "relative mx-auto w-full max-w-xs rounded-xl border-2 transition-all shadow-sm",
+      editing ? "border-primary bg-primary/5 shadow-md" : "border-border bg-card hover:border-primary/50"
+    )}>
+      {editing ? (
+        /* ── Edit mode ── */
+        <div className="px-4 pt-3 pb-3 space-y-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded-md bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+              <Play className="w-2.5 h-2.5 text-blue-400" />
+            </div>
+            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Action</span>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Label</label>
+            <input
+              ref={labelRef}
+              value={draftLabel}
+              onChange={e => setDraftLabel(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') cancelEdit(); }}
+              placeholder="Step label…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
+              Description <span className="normal-case font-normal">(/ for fields)</span>
+            </label>
+            <FieldPickerTextarea
+              value={draftDesc}
+              onChange={setDraftDesc}
+              processFields={processFields}
+              rows={2}
+              placeholder="Describe this step…"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={cancelEdit}
+              className="px-3 py-1 rounded-lg text-xs border border-border hover:bg-secondary transition-colors text-muted-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={commitEdit}
+              className="px-3 py-1 rounded-lg text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1"
+            >
+              <Check className="w-3 h-3" />Apply
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* ── View mode ── */
+        <div className="flex items-start gap-2 px-4 py-3 group">
+          <div className="w-6 h-6 rounded-md bg-blue-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Play className="w-3 h-3 text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-0.5">Action</div>
+            <div className="text-sm font-medium truncate">
+              {step.label || <span className="text-muted-foreground italic">Untitled action</span>}
+            </div>
+            {step.description && (
+              <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{step.description}</div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={startEdit}
+              className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              title="Edit step"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              title="Delete step"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
       )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="w-6 h-6 rounded-md bg-blue-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <Play className="w-3 h-3 text-blue-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-0.5">Action</div>
-          <div className="text-sm font-medium truncate">{step.label || <span className="text-muted-foreground italic">Untitled action</span>}</div>
-          {step.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{step.description}</div>}
-        </div>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
     </div>
   );
 }
 
-// ── Condition Step Card ───────────────────────────────────────────────────────
+// ── Inline Editable Condition Step Card ───────────────────────────────────────
 
-function ConditionStepCard({ step, selected, onClick, onDelete }: {
-  step: WStep; selected: boolean; onClick: () => void; onDelete: () => void;
+function ConditionStepCard({ step, onUpdate, onDelete, processFields }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+  processFields: ProcessField[];
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [draftCond, setDraftCond] = useState<WCondition>(
+    step.condition ?? { field: '', operator: 'equals', value: '' }
+  );
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftLabel(step.label);
+      setDraftCond(step.condition ?? { field: '', operator: 'equals', value: '' });
+    }
+  }, [step.label, step.condition, editing]);
+
+  const commitEdit = () => {
+    onUpdate({ label: draftLabel, condition: draftCond });
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraftLabel(step.label);
+    setDraftCond(step.condition ?? { field: '', operator: 'equals', value: '' });
+    setEditing(false);
+  };
+
   const op = OPERATORS.find(o => o.value === step.condition?.operator)?.label ?? step.condition?.operator ?? '?';
-  const noOp = ['is_empty', 'is_not_empty'].includes(step.condition?.operator ?? '');
+  const noOpValue = ['is_empty', 'is_not_empty'].includes(step.condition?.operator ?? '');
+  const draftNoOpValue = ['is_empty', 'is_not_empty'].includes(draftCond.operator);
+
   return (
-    <div
-      onClick={onClick}
-      className={cn(
-        "relative mx-auto w-full max-w-xs rounded-xl border-2 px-4 py-3 cursor-pointer transition-all shadow-sm group",
-        selected ? "border-orange-400 bg-orange-400/5 shadow-md" : "border-border bg-card hover:border-orange-400/50"
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="w-6 h-6 rounded-md bg-orange-500/15 flex items-center justify-center flex-shrink-0 mt-0.5 rotate-45">
-          <GitBranch className="-rotate-45 w-3 h-3 text-orange-400" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-0.5">If Condition</div>
-          {step.condition?.field ? (
-            <div className="text-xs font-mono text-foreground">
-              <span className="text-primary">{step.condition.field}</span>
-              {' '}<span className="text-muted-foreground">{op}</span>
-              {!noOp && step.condition.value && <> <span className="text-green-400">"{step.condition.value}"</span></>}
+    <div className={cn(
+      "relative mx-auto w-full max-w-xs rounded-xl border-2 transition-all shadow-sm",
+      editing ? "border-orange-400 bg-orange-400/5 shadow-md" : "border-border bg-card hover:border-orange-400/50"
+    )}>
+      {editing ? (
+        /* ── Edit mode ── */
+        <div className="px-4 pt-3 pb-3 space-y-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded-md bg-orange-500/15 flex items-center justify-center flex-shrink-0 rotate-45">
+              <GitBranch className="-rotate-45 w-2.5 h-2.5 text-orange-400" />
             </div>
-          ) : (
-            <div className="text-xs text-muted-foreground italic">No condition set</div>
+            <span className="text-xs font-semibold text-orange-400 uppercase tracking-wider">If Condition</span>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Label (optional)</label>
+            <input
+              value={draftLabel}
+              onChange={e => setDraftLabel(e.target.value)}
+              placeholder="Condition label…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
+              If field <span className="normal-case font-normal">(/ for picker)</span>
+            </label>
+            <FieldPickerTextarea
+              value={draftCond.field}
+              onChange={v => setDraftCond(c => ({ ...c, field: v }))}
+              processFields={processFields}
+              rows={1}
+              placeholder="{{fieldName}} or field…"
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Operator</label>
+            <select
+              value={draftCond.operator}
+              onChange={e => setDraftCond(c => ({ ...c, operator: e.target.value }))}
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+
+          {!draftNoOpValue && (
+            <div>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">
+                Value <span className="normal-case font-normal">(/ for fields)</span>
+              </label>
+              <FieldPickerTextarea
+                value={draftCond.value}
+                onChange={v => setDraftCond(c => ({ ...c, value: v }))}
+                processFields={processFields}
+                rows={1}
+                placeholder="Value or {{fieldName}}…"
+              />
+            </div>
           )}
-          {step.label && <div className="text-sm font-medium mt-1 truncate">{step.label}</div>}
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button
+              onClick={cancelEdit}
+              className="px-3 py-1 rounded-lg text-xs border border-border hover:bg-secondary transition-colors text-muted-foreground"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={commitEdit}
+              className="px-3 py-1 rounded-lg text-xs bg-orange-500 text-white hover:bg-orange-600 transition-colors flex items-center gap-1"
+            >
+              <Check className="w-3 h-3" />Apply
+            </button>
+          </div>
         </div>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      ) : (
+        /* ── View mode ── */
+        <div className="flex items-start gap-2 px-4 py-3 group">
+          <div className="w-6 h-6 rounded-md bg-orange-500/15 flex items-center justify-center flex-shrink-0 mt-0.5 rotate-45">
+            <GitBranch className="-rotate-45 w-3 h-3 text-orange-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-orange-400 uppercase tracking-wider mb-0.5">If Condition</div>
+            {step.condition?.field ? (
+              <div className="text-xs font-mono text-foreground">
+                <span className="text-primary">{step.condition.field}</span>
+                {' '}<span className="text-muted-foreground">{op}</span>
+                {!noOpValue && step.condition.value && (
+                  <> <span className="text-green-400">"{step.condition.value}"</span></>
+                )}
+              </div>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">No condition set — click Edit</div>
+            )}
+            {step.label && <div className="text-sm font-medium mt-1 truncate">{step.label}</div>}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={() => setEditing(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
+              title="Edit condition"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              title="Delete step"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -345,12 +560,11 @@ function ConditionStepCard({ step, selected, onClick, onDelete }: {
 // ── Recursive Step Branch Renderer ────────────────────────────────────────────
 
 function StepBranch({
-  steps, branchKey, selectedId, onSelect, onDelete, onAdd, processFields,
+  steps, branchKey, onUpdate, onDelete, onAdd, processFields,
 }: {
   steps: WStep[];
   branchKey: string;
-  selectedId: string | null;
-  onSelect: (id: string) => void;
+  onUpdate: (id: string, updates: Partial<WStep>) => void;
   onDelete: (id: string) => void;
   onAdd: (branchKey: string, afterId: string | null, type: 'action' | 'condition') => void;
   processFields: ProcessField[];
@@ -358,15 +572,15 @@ function StepBranch({
   return (
     <div className="flex flex-col items-center">
       <AddStepButton onAdd={type => onAdd(branchKey, null, type)} />
-      {steps.map((step, i) => (
+      {steps.map((step) => (
         <div key={step.id} className="w-full flex flex-col items-center">
           {step.type === 'action' ? (
             <div className="w-full px-2">
               <ActionStepCard
                 step={step}
-                selected={selectedId === step.id}
-                onClick={() => onSelect(step.id)}
+                onUpdate={updates => onUpdate(step.id, updates)}
                 onDelete={() => onDelete(step.id)}
+                processFields={processFields}
               />
             </div>
           ) : (
@@ -374,9 +588,9 @@ function StepBranch({
               <div className="w-full px-2">
                 <ConditionStepCard
                   step={step}
-                  selected={selectedId === step.id}
-                  onClick={() => onSelect(step.id)}
+                  onUpdate={updates => onUpdate(step.id, updates)}
                   onDelete={() => onDelete(step.id)}
+                  processFields={processFields}
                 />
               </div>
               {/* Branches */}
@@ -390,8 +604,7 @@ function StepBranch({
                   <StepBranch
                     steps={step.thenSteps ?? []}
                     branchKey={`${step.id}:then`}
-                    selectedId={selectedId}
-                    onSelect={onSelect}
+                    onUpdate={onUpdate}
                     onDelete={onDelete}
                     onAdd={onAdd}
                     processFields={processFields}
@@ -407,8 +620,7 @@ function StepBranch({
                   <StepBranch
                     steps={step.elseSteps ?? []}
                     branchKey={`${step.id}:else`}
-                    selectedId={selectedId}
-                    onSelect={onSelect}
+                    onUpdate={onUpdate}
                     onDelete={onDelete}
                     onAdd={onAdd}
                     processFields={processFields}
@@ -425,125 +637,6 @@ function StepBranch({
   );
 }
 
-// ── Step Editor Panel ─────────────────────────────────────────────────────────
-
-function StepEditorPanel({
-  step, onUpdate, onClose, processFields,
-}: {
-  step: WStep;
-  onUpdate: (updates: Partial<WStep>) => void;
-  onClose: () => void;
-  processFields: ProcessField[];
-}) {
-  const noOpValue = ['is_empty', 'is_not_empty'].includes(step.condition?.operator ?? '');
-
-  return (
-    <div className="h-full flex flex-col border-l border-border bg-card">
-      {/* Editor header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-none">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          {step.type === 'action'
-            ? <Play className="w-4 h-4 text-blue-400" />
-            : <GitBranch className="w-4 h-4 text-orange-400" />}
-          Edit {step.type === 'action' ? 'Action' : 'Condition'}
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Type toggle */}
-          <button
-            onClick={() => onUpdate({
-              type: step.type === 'action' ? 'condition' : 'action',
-              condition: step.type === 'action' ? { field: '', operator: 'equals', value: '' } : undefined,
-              thenSteps: step.type === 'action' ? [] : undefined,
-              elseSteps: step.type === 'action' ? [] : undefined,
-            })}
-            className="text-xs px-2 py-1 rounded-md border border-border hover:bg-secondary transition-colors text-muted-foreground"
-            title="Switch type"
-          >
-            Switch to {step.type === 'action' ? 'Condition' : 'Action'}
-          </button>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Label */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Label</label>
-          <input
-            value={step.label}
-            onChange={e => onUpdate({ label: e.target.value })}
-            placeholder="Step label…"
-            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-          />
-        </div>
-
-        {/* Description */}
-        <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Description <span className="text-muted-foreground/60 font-normal">(type / for field picker)</span>
-          </label>
-          <FieldPickerTextarea
-            value={step.description}
-            onChange={v => onUpdate({ description: v })}
-            processFields={processFields}
-            rows={3}
-            placeholder="Describe this step…"
-          />
-        </div>
-
-        {/* Condition config */}
-        {step.type === 'condition' && (
-          <div className="space-y-3 pt-2 border-t border-border">
-            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Condition</div>
-
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                If field <span className="text-muted-foreground/60">(type / for picker)</span>
-              </label>
-              <FieldPickerTextarea
-                value={step.condition?.field ?? ''}
-                onChange={v => onUpdate({ condition: { ...(step.condition ?? { operator: 'equals', value: '' }), field: v } })}
-                processFields={processFields}
-                rows={1}
-                placeholder="{{fieldName}} or field name…"
-                className="font-mono text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Operator</label>
-              <select
-                value={step.condition?.operator ?? 'equals'}
-                onChange={e => onUpdate({ condition: { ...(step.condition ?? { field: '', value: '' }), operator: e.target.value } })}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-              >
-                {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-            </div>
-
-            {!noOpValue && (
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">
-                  Value <span className="text-muted-foreground/60">(type / for field picker)</span>
-                </label>
-                <FieldPickerTextarea
-                  value={step.condition?.value ?? ''}
-                  onChange={v => onUpdate({ condition: { ...(step.condition ?? { field: '', operator: 'equals' }), value: v } })}
-                  processFields={processFields}
-                  rows={1}
-                  placeholder="Value or {{fieldName}}…"
-                />
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ── Workflow Designer ─────────────────────────────────────────────────────────
 
 function WorkflowDesigner({
@@ -553,20 +646,6 @@ function WorkflowDesigner({
   onChange: (steps: WStep[]) => void;
   processFields: ProcessField[];
 }) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selectedStep = selectedId ? findStep(steps, selectedId) : null;
-
-  function findStep(steps: WStep[], id: string): WStep | null {
-    for (const s of steps) {
-      if (s.id === id) return s;
-      if (s.type === 'condition') {
-        const found = findStep(s.thenSteps ?? [], id) ?? findStep(s.elseSteps ?? [], id);
-        if (found) return found;
-      }
-    }
-    return null;
-  }
-
   const handleAdd = (branchKey: string, afterId: string | null, type: 'action' | 'condition') => {
     const newStep: WStep = {
       id: uid(),
@@ -580,12 +659,10 @@ function WorkflowDesigner({
       } : {}),
     };
     onChange(addStepToBranch(steps, branchKey, afterId, newStep));
-    setSelectedId(newStep.id);
   };
 
   const handleDelete = (id: string) => {
     onChange(deleteStepFromTree(steps, id));
-    if (selectedId === id) setSelectedId(null);
   };
 
   const handleUpdate = (id: string, updates: Partial<WStep>) => {
@@ -595,7 +672,7 @@ function WorkflowDesigner({
   return (
     <div className="flex h-full">
       {/* Canvas */}
-      <div className="flex-1 overflow-auto p-6" onClick={e => { if (e.target === e.currentTarget) setSelectedId(null); }}>
+      <div className="flex-1 overflow-auto p-6">
         {/* START node */}
         <div className="flex flex-col items-center">
           <div className="mx-auto px-6 py-2 bg-green-500/15 border-2 border-green-500/40 rounded-xl text-xs font-bold text-green-400 uppercase tracking-widest">
@@ -607,8 +684,7 @@ function WorkflowDesigner({
         <StepBranch
           steps={steps}
           branchKey="root"
-          selectedId={selectedId}
-          onSelect={setSelectedId}
+          onUpdate={handleUpdate}
           onDelete={handleDelete}
           onAdd={handleAdd}
           processFields={processFields}
@@ -628,18 +704,6 @@ function WorkflowDesigner({
           </div>
         )}
       </div>
-
-      {/* Step editor */}
-      {selectedStep && (
-        <div className="w-80 flex-shrink-0">
-          <StepEditorPanel
-            step={selectedStep}
-            onUpdate={updates => handleUpdate(selectedStep.id, updates)}
-            onClose={() => setSelectedId(null)}
-            processFields={processFields}
-          />
-        </div>
-      )}
     </div>
   );
 }
@@ -647,6 +711,7 @@ function WorkflowDesigner({
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export function WorkflowsView() {
+  const { fetchHeaders } = useAuth();
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -664,22 +729,22 @@ export function WorkflowsView() {
   const fetchWorkflows = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/workflows`);
+      const r = await fetch(`${API}/workflows`, { headers: fetchHeaders() });
       const data = await r.json();
       if (Array.isArray(data)) setWorkflows(data);
     } catch {}
     finally { setLoading(false); }
-  }, []);
+  }, [fetchHeaders]);
 
   const fetchFields = useCallback(async () => {
-    const r = await fetch(`${API}/ai-agents/meta/process-fields`);
+    const r = await fetch(`${API}/ai-agents/meta/process-fields`, { headers: fetchHeaders() });
     if (r.ok) setProcessFields(await r.json());
-  }, []);
+  }, [fetchHeaders]);
 
   useEffect(() => { fetchWorkflows(); fetchFields(); }, [fetchWorkflows, fetchFields]);
 
   const loadWorkflow = useCallback(async (id: number) => {
-    const r = await fetch(`${API}/workflows/${id}`);
+    const r = await fetch(`${API}/workflows/${id}`, { headers: fetchHeaders() });
     if (r.ok) {
       const w: WorkflowFull = await r.json();
       setEditName(w.name);
@@ -688,7 +753,7 @@ export function WorkflowsView() {
       try { setSteps(JSON.parse(w.steps)); } catch { setSteps([]); }
       setDirty(false);
     }
-  }, []);
+  }, [fetchHeaders]);
 
   useEffect(() => {
     if (selectedId) loadWorkflow(selectedId);
@@ -697,7 +762,7 @@ export function WorkflowsView() {
   const createWorkflow = async () => {
     const r = await fetch(`${API}/workflows`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
       body: JSON.stringify({}),
     });
     if (r.ok) {
@@ -710,7 +775,7 @@ export function WorkflowsView() {
   const deleteWorkflow = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this workflow? This cannot be undone.")) return;
-    await fetch(`${API}/workflows/${id}`, { method: "DELETE" });
+    await fetch(`${API}/workflows/${id}`, { method: "DELETE", headers: fetchHeaders() });
     if (selectedId === id) { setSelectedId(null); setSteps([]); }
     fetchWorkflows();
   };
@@ -721,7 +786,7 @@ export function WorkflowsView() {
     try {
       await fetch(`${API}/workflows/${selectedId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
         body: JSON.stringify({
           workflowNumber: editNumber,
           name: editName,
@@ -813,7 +878,7 @@ export function WorkflowsView() {
           <div>
             <h2 className="text-lg font-semibold mb-1">Workflow Designer</h2>
             <p className="text-sm text-muted-foreground max-w-sm">
-              Design automated workflows with if/then/else logic. Reference any database field using the <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> command.
+              Design automated workflows with if/then/else logic. Hover over any step and click the <Edit2 className="inline w-3 h-3" /> pencil icon to edit it. Use <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> in any text field to insert process fields.
             </p>
           </div>
           <button
@@ -859,16 +924,18 @@ export function WorkflowsView() {
                 placeholder="Description…"
               />
             </div>
-            {dirty && (
-              <button
-                onClick={save}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm flex-shrink-0"
-              >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                Save
-              </button>
-            )}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {dirty && (
+                <button
+                  onClick={save}
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Designer */}
