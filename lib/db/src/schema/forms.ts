@@ -30,3 +30,15 @@ export const formsTable = pgTable("forms", {
 });
 
 export type Form = typeof formsTable.$inferSelect;
+
+export const formSubmissionsTable = pgTable("form_submissions", {
+  id: serial("id").primaryKey(),
+  formId: integer("form_id").notNull().references(() => formsTable.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  submittedBy: integer("submitted_by"),
+  submittedByName: text("submitted_by_name").notNull().default(""),
+  submissionData: text("submission_data").notNull().default("{}"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type FormSubmissionRow = typeof formSubmissionsTable.$inferSelect;

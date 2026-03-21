@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, formsTable, formFoldersTable } from "@workspace/db";
-import { eq, max, and, isNull } from "drizzle-orm";
+import { db, formsTable, formFoldersTable, formSubmissionsTable } from "@workspace/db";
+import { eq, max, and, desc } from "drizzle-orm";
 import crypto from "crypto";
 
 const router: IRouter = Router();
@@ -215,6 +215,59 @@ router.delete("/forms/:id", async (req, res) => {
       ? and(eq(formsTable.id, id), eq(formsTable.tenantId, auth.tenantId))
       : eq(formsTable.id, id);
     await db.delete(formsTable).where(cond);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Form Submissions ───────────────────────────────────────────────────────────
+
+router.get("/forms/:id/submissions", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const formId = Number(req.params.id);
+    const cond = auth?.tenantId
+      ? and(eq(formSubmissionsTable.formId, formId), eq(formSubmissionsTable.tenantId, auth.tenantId))
+      : eq(formSubmissionsTable.formId, formId);
+    const submissions = await db.select().from(formSubmissionsTable).where(cond).orderBy(desc(formSubmissionsTable.createdAt));
+    res.json(submissions);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/forms/:id/submissions", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const formId = Number(req.params.id);
+    const tenantId = auth?.tenantId ?? null;
+    const { submissionData = "{}", submittedByName = "" } = req.body as Record<string, any>;
+    const dataStr = typeof submissionData === "string" ? submissionData : JSON.stringify(submissionData);
+    const [submission] = await db.insert(formSubmissionsTable).values({
+      formId,
+      tenantId,
+      submittedBy: auth?.userId ?? null,
+      submittedByName: String(submittedByName),
+      submissionData: dataStr,
+    }).returning();
+    res.status(201).json(submission);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/forms/:id/submissions/:submissionId", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const submissionId = Number(req.params.submissionId);
+    const cond = auth?.tenantId
+      ? and(eq(formSubmissionsTable.id, submissionId), eq(formSubmissionsTable.tenantId, auth.tenantId))
+      : eq(formSubmissionsTable.id, submissionId);
+    await db.delete(formSubmissionsTable).where(cond);
     res.json({ ok: true });
   } catch (err) {
     req.log.error(err);

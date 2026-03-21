@@ -5,6 +5,9 @@
 Nonprofit Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
 
 ## Recent Features Added
+- **Forms module restructured**: The Forms section now has two modes — "Report Templates" (the template designer) and "Data Entry" (form fill-in with stored submissions). Submissions stored in `form_submissions` DB table (form_id, tenant_id, submitted_by, submitted_by_name, submission_data jsonb, created_at). Template builder now has a 5th "Submissions" tab to view/delete all responses. Data Entry mode shows a split panel: fill-in form on the left + submission history sidebar on the right.
+- **Phone field in forms**: `phone` field type with country selector (30+ countries, Singapore default) in both form builder and public forms
+- **User phone field**: `phone` column on `users` table, editable via CreateUserModal and ProfileTab
 - **Workflow step data sources**: Action steps can declare "Receives Data From" (Agent or Form) — shown as a badge in view mode
 - **Workflow step types**: Call Another Workflow (cyan) and Run AI Agent (emerald) — new step types in the designer alongside Action, Condition, Form
 - **AI Evaluation on processes**: Every process detail panel has an "Evaluation" section with an "Evaluate with AI" button — calls Claude to compare Achievement vs Target, returns score (1–10), rating badge, analysis, gaps, and recommendation; stored as JSON in `processes.evaluation` column; updates React Query cache directly (no double PUT)

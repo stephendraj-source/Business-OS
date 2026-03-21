@@ -5,6 +5,7 @@ import {
   CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
   GitBranch, ExternalLink, Radio, AlertCircle, Phone,
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
+  Database, RefreshCw, PenLine, Inbox,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -55,6 +56,16 @@ interface FolderTreeNode extends FormFolder {
 
 interface WorkflowItem { id: number; name: string; workflowNumber: number; }
 interface AgentItem { id: number; name: string; agentNumber: number; }
+
+interface FormSubmission {
+  id: number;
+  formId: number;
+  tenantId: number | null;
+  submittedBy: number | null;
+  submittedByName: string;
+  submissionData: string;
+  createdAt: string;
+}
 
 const FIELD_TYPES: { value: FieldType; label: string; icon: React.ReactNode }[] = [
   { value: 'text',     label: 'Short Text',   icon: <Type className="w-3.5 h-3.5" /> },
@@ -633,10 +644,389 @@ function FormPreview({ fields, formName }: { fields: FormField[]; formName: stri
   );
 }
 
+// ── Submissions Tab ───────────────────────────────────────────────────────────
+
+function SubmissionsTab({ formId, fields, getFetchHeaders }: {
+  formId: number;
+  fields: FormField[];
+  getFetchHeaders: () => Record<string, string>;
+}) {
+  const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState<number | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/forms/${formId}/submissions`, { headers: getFetchHeaders() });
+      if (r.ok) { const d = await r.json(); setSubmissions(Array.isArray(d) ? d : []); }
+    } finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, [formId]);
+
+  const del = async (id: number) => {
+    if (!confirm("Delete this submission? This cannot be undone.")) return;
+    setDeleting(id);
+    await fetch(`${API}/forms/${formId}/submissions/${id}`, { method: "DELETE", headers: getFetchHeaders() });
+    setSubmissions(prev => prev.filter(s => s.id !== id));
+    setDeleting(null);
+  };
+
+  const toggle = (id: number) => setExpanded(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  if (loading) {
+    return <div className="flex justify-center py-12"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="p-6 space-y-3 max-w-2xl mx-auto">
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-muted-foreground font-medium">
+          {submissions.length} submission{submissions.length !== 1 ? 's' : ''}
+        </p>
+        <button onClick={load} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-lg hover:bg-secondary">
+          <RefreshCw className="w-3 h-3" />Refresh
+        </button>
+      </div>
+
+      {submissions.length === 0 ? (
+        <div className="text-center py-16">
+          <Inbox className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">No submissions yet</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">
+            Submissions appear here when users fill out this form in Data Entry mode
+          </p>
+        </div>
+      ) : (
+        submissions.map((sub, i) => {
+          let data: Record<string, any> = {};
+          try { data = typeof sub.submissionData === 'string' ? JSON.parse(sub.submissionData) : sub.submissionData; } catch {}
+          const isOpen = expanded.has(sub.id);
+          return (
+            <div key={sub.id} className="border border-border rounded-xl overflow-hidden bg-card">
+              <div
+                className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/30 transition-colors"
+                onClick={() => toggle(sub.id)}
+              >
+                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-primary">
+                  {submissions.length - i}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{sub.submittedByName || "Anonymous"}</div>
+                  <div className="text-xs text-muted-foreground">{new Date(sub.createdAt).toLocaleString()}</div>
+                </div>
+                <button
+                  onClick={e => { e.stopPropagation(); del(sub.id); }}
+                  disabled={deleting === sub.id}
+                  className="p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all flex-shrink-0"
+                >
+                  {deleting === sub.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                </button>
+                <ChevronDown className={cn("w-4 h-4 text-muted-foreground transition-transform flex-shrink-0", isOpen && "rotate-180")} />
+              </div>
+              {isOpen && (
+                <div className="px-4 py-3 border-t border-border bg-background/50 space-y-2">
+                  {fields.length > 0 ? fields.map(field => {
+                    const key = (field.label || field.id).toLowerCase().replace(/\s+/g, '_');
+                    const val = data[key];
+                    return (
+                      <div key={field.id} className="grid grid-cols-2 gap-3">
+                        <span className="text-xs font-medium text-muted-foreground truncate">{field.label || field.id}</span>
+                        <span className="text-xs">
+                          {val !== undefined && val !== '' && val !== null
+                            ? String(val)
+                            : <span className="text-muted-foreground/40 italic">—</span>}
+                        </span>
+                      </div>
+                    );
+                  }) : (
+                    <pre className="text-xs text-muted-foreground whitespace-pre-wrap font-mono">{JSON.stringify(data, null, 2)}</pre>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+// ── Data Entry Fill Panel ─────────────────────────────────────────────────────
+
+function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName }: {
+  form: FormSummary;
+  fields: FormField[];
+  getFetchHeaders: () => Record<string, string>;
+  currentUserName: string;
+}) {
+  const initValues = () => {
+    const init: Record<string, any> = {};
+    for (const f of fields) { init[f.id] = f.type === 'checkbox' ? false : ''; }
+    return init;
+  };
+
+  const [values, setValues] = useState<Record<string, any>>(initValues);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [submissions, setSubmissions] = useState<FormSubmission[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState<Set<number>>(new Set());
+  const [deleting, setDeleting] = useState<number | null>(null);
+
+  const set = (id: string, val: any) => {
+    setValues(prev => ({ ...prev, [id]: val }));
+    setErrors(prev => { const n = { ...prev }; delete n[id]; return n; });
+  };
+
+  const loadHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const r = await fetch(`${API}/forms/${form.id}/submissions`, { headers: getFetchHeaders() });
+      if (r.ok) { const d = await r.json(); setSubmissions(Array.isArray(d) ? d : []); }
+    } finally { setLoadingHistory(false); }
+  };
+
+  useEffect(() => {
+    setValues(initValues());
+    setErrors({});
+    setSubmitSuccess(false);
+    loadHistory();
+  }, [form.id]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const errs: Record<string, string> = {};
+    for (const field of fields) {
+      if (field.required) {
+        const val = values[field.id];
+        if (val === '' || val === undefined || val === null || (field.type === 'checkbox' && !val)) {
+          errs[field.id] = `${field.label || 'This field'} is required`;
+        }
+      }
+    }
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+
+    const data: Record<string, any> = {};
+    for (const f of fields) {
+      const key = (f.label || f.id).toLowerCase().replace(/\s+/g, '_');
+      data[key] = values[f.id];
+    }
+
+    setSubmitting(true);
+    try {
+      const r = await fetch(`${API}/forms/${form.id}/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getFetchHeaders() },
+        body: JSON.stringify({ submissionData: JSON.stringify(data), submittedByName: currentUserName }),
+      });
+      if (r.ok) {
+        setSubmitSuccess(true);
+        setTimeout(() => {
+          setSubmitSuccess(false);
+          setValues(initValues());
+          setErrors({});
+          loadHistory();
+        }, 2000);
+      }
+    } finally { setSubmitting(false); }
+  };
+
+  const delSub = async (id: number) => {
+    if (!confirm("Delete this submission?")) return;
+    setDeleting(id);
+    await fetch(`${API}/forms/${form.id}/submissions/${id}`, { method: "DELETE", headers: getFetchHeaders() });
+    setSubmissions(prev => prev.filter(s => s.id !== id));
+    setDeleting(null);
+  };
+
+  const toggleHistory = (id: number) => setHistoryExpanded(prev => {
+    const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  const inputCls = (id: string) => cn(
+    "w-full bg-background border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 transition-colors",
+    errors[id] ? "border-red-400" : "border-border hover:border-primary/40"
+  );
+
+  return (
+    <div className="flex h-full">
+      {/* Form fill area */}
+      <div className="flex-1 min-w-0 overflow-auto p-6">
+        <div className="max-w-xl mx-auto">
+          <div className="mb-6">
+            <div className="text-xs text-muted-foreground font-mono mb-1">#{form.formNumber}</div>
+            <h2 className="text-xl font-bold">{form.name}</h2>
+            {form.description && <p className="text-sm text-muted-foreground mt-1">{form.description}</p>}
+          </div>
+
+          {submitSuccess ? (
+            <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-10 text-center">
+              <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-3">
+                <Check className="w-6 h-6 text-green-500" />
+              </div>
+              <p className="font-semibold text-green-700 dark:text-green-400">Submitted successfully!</p>
+              <p className="text-sm text-muted-foreground mt-1">The form will reset shortly.</p>
+            </div>
+          ) : fields.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-10 text-center">
+              <ClipboardList className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">This template has no fields yet.</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Switch to Report Templates mode to add fields.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+              {fields.map(field => (
+                <div key={field.id} className="space-y-1.5">
+                  <label className="text-sm font-medium block">
+                    {field.label || <span className="italic text-muted-foreground">Untitled field</span>}
+                    {field.required && <span className="text-red-500 ml-0.5">*</span>}
+                  </label>
+                  {field.type === 'text' && (
+                    <input type="text" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      placeholder={field.placeholder} className={inputCls(field.id)} />
+                  )}
+                  {field.type === 'textarea' && (
+                    <textarea rows={3} value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      placeholder={field.placeholder} className={cn(inputCls(field.id), "resize-y")} />
+                  )}
+                  {field.type === 'number' && (
+                    <input type="number" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      placeholder={field.placeholder || '0'} className={inputCls(field.id)} />
+                  )}
+                  {field.type === 'email' && (
+                    <input type="email" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      placeholder={field.placeholder || 'email@example.com'} className={inputCls(field.id)} />
+                  )}
+                  {field.type === 'phone' && (
+                    <PhoneInput value={values[field.id] ?? ''} onChange={val => set(field.id, val)}
+                      placeholder={field.placeholder || 'Phone number'} error={!!errors[field.id]} />
+                  )}
+                  {field.type === 'date' && (
+                    <input type="date" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      className={inputCls(field.id)} />
+                  )}
+                  {field.type === 'checkbox' && (
+                    <label className="flex items-center gap-2.5 cursor-pointer">
+                      <input type="checkbox" checked={!!values[field.id]} onChange={e => set(field.id, e.target.checked)}
+                        className="w-4 h-4 rounded accent-primary flex-shrink-0" />
+                      <span className="text-sm text-muted-foreground">{field.placeholder || 'Check this box'}</span>
+                    </label>
+                  )}
+                  {field.type === 'select' && (
+                    <select value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
+                      className={inputCls(field.id)}>
+                      <option value="">Select an option…</option>
+                      {field.options.map((opt, i) => <option key={i} value={opt}>{opt}</option>)}
+                    </select>
+                  )}
+                  {errors[field.id] && (
+                    <p className="text-xs text-red-500 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />{errors[field.id]}
+                    </p>
+                  )}
+                </div>
+              ))}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors flex items-center justify-center gap-2 mt-4"
+              >
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Submit
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+
+      {/* Submission history sidebar */}
+      <div className="w-72 flex-shrink-0 border-l border-border flex flex-col bg-sidebar/30">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Database className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-sm font-semibold">Submissions</span>
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{submissions.length}</span>
+          </div>
+          <button onClick={loadHistory} title="Refresh" className="p-1.5 hover:bg-secondary rounded-lg transition-colors">
+            <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loadingHistory ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+          ) : submissions.length === 0 ? (
+            <div className="text-center px-4 py-12">
+              <Database className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-xs text-muted-foreground">No submissions yet</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {submissions.map((sub, i) => {
+                let data: Record<string, any> = {};
+                try { data = typeof sub.submissionData === 'string' ? JSON.parse(sub.submissionData) : sub.submissionData; } catch {}
+                const isOpen = historyExpanded.has(sub.id);
+                return (
+                  <div key={sub.id}>
+                    <div
+                      className="flex items-start gap-2.5 px-4 py-3 hover:bg-secondary/30 cursor-pointer transition-colors"
+                      onClick={() => toggleHistory(sub.id)}
+                    >
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary flex-shrink-0 mt-0.5">
+                        {submissions.length - i}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium truncate">{sub.submittedByName || "Anonymous"}</div>
+                        <div className="text-xs text-muted-foreground">{new Date(sub.createdAt).toLocaleString()}</div>
+                        {Object.entries(data).slice(0, 2).map(([key, val]) => (
+                          <div key={key} className="text-xs text-muted-foreground truncate mt-0.5">
+                            <span className="font-medium">{key}:</span> {String(val)}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={e => { e.stopPropagation(); delSub(sub.id); }}
+                          disabled={deleting === sub.id}
+                          className="p-1 text-muted-foreground hover:text-red-400 transition-colors"
+                        >
+                          {deleting === sub.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                        </button>
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", isOpen && "rotate-180")} />
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <div className="px-4 pb-3 pt-2 border-t border-border/50 bg-background/40 space-y-1.5">
+                        {Object.entries(data).map(([key, val]) => (
+                          <div key={key} className="text-xs">
+                            <span className="font-medium text-muted-foreground">{key}: </span>
+                            <span>{String(val)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Forms View ───────────────────────────────────────────────────────────
 
 export function FormsView() {
-  const { fetchHeaders } = useAuth();
+  const { fetchHeaders, currentUser } = useAuth();
+  const currentUserName = (currentUser as any)?.name || (currentUser as any)?.email || "User";
+  const [mode, setMode] = useState<'templates' | 'entry'>('templates');
   const [forms, setForms] = useState<FormSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -647,7 +1037,7 @@ export function FormsView() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'build' | 'preview' | 'json' | 'publish'>('build');
+  const [tab, setTab] = useState<'build' | 'preview' | 'json' | 'publish' | 'submissions'>('build');
   const [copied, setCopied] = useState(false);
   const dragIndex = useRef<number | null>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
@@ -979,7 +1369,32 @@ export function FormsView() {
   };
 
   return (
-    <div className="flex h-full bg-background">
+    <div className="flex flex-col h-full bg-background">
+
+      {/* Mode toggle bar */}
+      <div className="flex-none px-5 py-2 border-b border-border bg-card/60 flex items-center gap-2">
+        <span className="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
+        {([
+          { key: 'templates', label: 'Report Templates', icon: <ClipboardList className="w-3.5 h-3.5" /> },
+          { key: 'entry',     label: 'Data Entry',        icon: <PenLine className="w-3.5 h-3.5" /> },
+        ] as const).map(m => (
+          <button
+            key={m.key}
+            onClick={() => setMode(m.key)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+              mode === m.key
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+            )}
+          >
+            {m.icon}{m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Main content — left panel + right panel */}
+      <div className="flex-1 min-h-0 flex">
 
       {/* Left panel — form list with folder tree */}
       {(() => {
@@ -996,9 +1411,12 @@ export function FormsView() {
             <div className="px-3 py-3 border-b border-border flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-primary flex-shrink-0" />
-                <span className="text-sm font-semibold">Forms</span>
+                <span className="text-sm font-semibold">
+                  {mode === 'templates' ? 'Report Templates' : 'Templates'}
+                </span>
                 <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length}</span>
               </div>
+              {mode === 'templates' && (
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => createFolder(null)}
@@ -1014,6 +1432,7 @@ export function FormsView() {
                   <Plus className="w-3.5 h-3.5" />New
                 </button>
               </div>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto py-1">
@@ -1109,7 +1528,7 @@ export function FormsView() {
             </div>
 
             {/* Folder selector hint: assign form to folder inline */}
-            {selectedId && (
+            {selectedId && mode === 'templates' && (
               <div className="border-t border-border px-3 py-2 bg-card/40">
                 <div className="flex items-center gap-2">
                   <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
@@ -1136,20 +1555,43 @@ export function FormsView() {
       {!selectedForm ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
-            <ClipboardList className="w-8 h-8 text-primary/60" />
+            {mode === 'entry' ? <PenLine className="w-8 h-8 text-primary/60" /> : <ClipboardList className="w-8 h-8 text-primary/60" />}
           </div>
           <div>
-            <h2 className="text-lg font-semibold mb-1">Form Builder</h2>
+            <h2 className="text-lg font-semibold mb-1">
+              {mode === 'entry' ? 'Select a Template' : 'Report Template Builder'}
+            </h2>
             <p className="text-sm text-muted-foreground max-w-sm">
-              Create forms to collect structured data. Each form sends its responses as JSON to workflow steps, enabling seamless data handoff between processes.
+              {mode === 'entry'
+                ? 'Choose a report template from the left to fill in data. All submissions are stored and can be viewed by administrators.'
+                : 'Create report templates to collect structured data. Templates define the fields users will fill in during Data Entry.'}
             </p>
           </div>
-          <button
-            onClick={createForm}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            <Plus className="w-4 h-4" />Create First Form
-          </button>
+          {mode === 'templates' && (
+            <button
+              onClick={createForm}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />Create First Template
+            </button>
+          )}
+        </div>
+      ) : mode === 'entry' ? (
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-none px-6 py-3 border-b border-border bg-card/60 flex items-center gap-3">
+            <PenLine className="w-4 h-4 text-primary" />
+            <span className="text-sm font-semibold">Data Entry</span>
+            <span className="text-xs text-muted-foreground">·</span>
+            <span className="text-sm text-muted-foreground truncate">{selectedForm.name}</span>
+          </div>
+          <div className="flex-1 min-h-0">
+            <DataEntryFillPanel
+              form={selectedForm}
+              fields={fields}
+              getFetchHeaders={fetchHeaders}
+              currentUserName={currentUserName}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex-1 flex flex-col min-w-0">
@@ -1203,10 +1645,11 @@ export function FormsView() {
           {/* Tab bar */}
           <div className="flex-none flex items-center gap-1 px-6 py-2 border-b border-border bg-card/40">
             {[
-              { key: 'build',   label: 'Build',       icon: <List className="w-3.5 h-3.5" /> },
-              { key: 'preview', label: 'Preview',     icon: <Eye className="w-3.5 h-3.5" /> },
-              { key: 'json',    label: 'JSON Output', icon: <Code2 className="w-3.5 h-3.5" /> },
-              { key: 'publish', label: 'Publish',     icon: <Globe className="w-3.5 h-3.5" /> },
+              { key: 'build',       label: 'Build',       icon: <List className="w-3.5 h-3.5" /> },
+              { key: 'preview',     label: 'Preview',     icon: <Eye className="w-3.5 h-3.5" /> },
+              { key: 'json',        label: 'JSON Output', icon: <Code2 className="w-3.5 h-3.5" /> },
+              { key: 'publish',     label: 'Publish',     icon: <Globe className="w-3.5 h-3.5" /> },
+              { key: 'submissions', label: 'Submissions', icon: <Database className="w-3.5 h-3.5" /> },
             ].map(t => (
               <button
                 key={t.key}
@@ -1507,9 +1950,18 @@ export function FormsView() {
               </div>
             )}
 
+            {tab === 'submissions' && selectedForm && (
+              <SubmissionsTab
+                formId={selectedForm.id}
+                fields={fields}
+                getFetchHeaders={fetchHeaders}
+              />
+            )}
+
           </div>
         </div>
       )}
+      </div>{/* /flex-1 min-h-0 flex */}
     </div>
   );
 }
