@@ -70,6 +70,39 @@ authRouter.post('/logout', (_req, res) => {
   res.json({ ok: true });
 });
 
+authRouter.post('/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const [user] = await db.select().from(users).where(eq(users.email, email.trim().toLowerCase()));
+    if (!user) return res.status(404).json({ error: 'No account found with that email address' });
+    if (!user.isActive) return res.status(403).json({ error: 'Account is inactive. Contact your administrator.' });
+
+    // Generate a readable temp password
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const tempPassword = Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    await db.update(users).set({ passwordHash: hashPassword(tempPassword) }).where(eq(users.id, user.id));
+    res.json({ tempPassword, name: user.firstName || user.name });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+authRouter.post('/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'currentPassword and newPassword required' });
+    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    const [user] = await db.select().from(users).where(eq(users.id, req.auth!.userId));
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!verifyPassword(currentPassword, user.passwordHash)) return res.status(401).json({ error: 'Current password is incorrect' });
+    await db.update(users).set({ passwordHash: hashPassword(newPassword) }).where(eq(users.id, user.id));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Tenant Management (superuser only) ─────────────────────────────────────────
 
 authRouter.get('/tenants', requireAuth, requireSuperUser, async (_req, res) => {

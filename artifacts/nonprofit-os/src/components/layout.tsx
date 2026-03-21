@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -43,8 +43,50 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const orgName = useOrgName();
   const meta = VIEW_META[activeView];
   const { currentUser } = useUser();
-  const { logout, isSuperUser, isAdmin } = useAuth();
+  const { logout, isSuperUser, isAdmin, fetchHeaders } = useAuth();
   const { credits } = useCredits();
+
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [showCurrentPw, setShowCurrentPw] = useState(false);
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [pwSaving, setPwSaving] = useState(false);
+  const [pwError, setPwError] = useState('');
+  const [pwSuccess, setPwSuccess] = useState(false);
+
+  async function handleChangePw(e: React.FormEvent) {
+    e.preventDefault();
+    if (newPw !== confirmPw) { setPwError('New passwords do not match'); return; }
+    if (newPw.length < 6) { setPwError('New password must be at least 6 characters'); return; }
+    setPwError(''); setPwSaving(true);
+    try {
+      const r = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setPwError(data.error || 'Failed to change password'); return; }
+      setPwSuccess(true);
+      setTimeout(() => {
+        setShowChangePw(false);
+        setCurrentPw(''); setNewPw(''); setConfirmPw('');
+        setPwSuccess(false); setPwError('');
+      }, 1500);
+    } catch {
+      setPwError('Network error — please try again');
+    } finally {
+      setPwSaving(false);
+    }
+  }
+
+  function closePwModal() {
+    setShowChangePw(false);
+    setCurrentPw(''); setNewPw(''); setConfirmPw('');
+    setPwError(''); setPwSuccess(false);
+  }
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
@@ -172,6 +214,13 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             </div>
           </div>
           <button
+            onClick={() => { setShowChangePw(true); setPwError(''); setPwSuccess(false); }}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
+          >
+            <KeyRound className="w-3.5 h-3.5 flex-shrink-0" />
+            Change password
+          </button>
+          <button
             onClick={logout}
             className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors group"
           >
@@ -181,6 +230,100 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </div>
 
       </aside>
+
+      {/* Change Password Modal */}
+      {showChangePw && (
+        <>
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={closePwModal} />
+          <div className="fixed z-50 inset-0 flex items-center justify-center p-4 pointer-events-none">
+            <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm pointer-events-auto">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold text-sm">Change Password</h3>
+                </div>
+                <button onClick={closePwModal} className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {pwSuccess ? (
+                <div className="px-6 py-8 text-center space-y-2">
+                  <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-500/10 mb-1">
+                    <Check className="w-5 h-5 text-green-500" />
+                  </div>
+                  <p className="text-sm font-medium">Password changed successfully</p>
+                </div>
+              ) : (
+                <form onSubmit={handleChangePw} className="px-6 py-5 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Password</label>
+                    <div className="relative">
+                      <input
+                        type={showCurrentPw ? 'text' : 'password'}
+                        value={currentPw}
+                        onChange={e => setCurrentPw(e.target.value)}
+                        placeholder="••••••••"
+                        required
+                        autoFocus
+                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <button type="button" onClick={() => setShowCurrentPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        {showCurrentPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">New Password</label>
+                    <div className="relative">
+                      <input
+                        type={showNewPw ? 'text' : 'password'}
+                        value={newPw}
+                        onChange={e => setNewPw(e.target.value)}
+                        placeholder="At least 6 characters"
+                        required
+                        minLength={6}
+                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                      />
+                      <button type="button" onClick={() => setShowNewPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        {showNewPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Confirm New Password</label>
+                    <input
+                      type="password"
+                      value={confirmPw}
+                      onChange={e => setConfirmPw(e.target.value)}
+                      placeholder="Repeat new password"
+                      required
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    />
+                  </div>
+
+                  {pwError && (
+                    <div className="px-3 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive">
+                      {pwError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2 pt-1">
+                    <button type="button" onClick={closePwModal} className="flex-1 px-4 py-2 text-sm rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={pwSaving} className="flex-1 px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 transition-all">
+                      {pwSaving ? 'Saving…' : 'Update Password'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 bg-background relative shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.5)]">
