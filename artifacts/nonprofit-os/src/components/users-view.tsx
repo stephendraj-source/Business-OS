@@ -9,6 +9,13 @@ import { cn, copyToClipboard } from '@/lib/utils';
 import { PhoneInput } from '@/components/phone-input';
 
 const API = '/api';
+const TOKEN_KEY = 'nonprofit-os-auth-token';
+function authedFetch(url: string, options: RequestInit = {}) {
+  const token = localStorage.getItem(TOKEN_KEY);
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}) };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(url, { ...options, headers });
+}
 
 const MODULES = [
   { key: 'table',       label: 'Master Catalogue' },
@@ -188,7 +195,7 @@ function UsersListView() {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/users`);
+      const r = await authedFetch(`${API}/users`);
       if (r.ok) setUsers(await r.json());
     } finally {
       setLoading(false);
@@ -198,7 +205,7 @@ function UsersListView() {
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const openUser = async (u: UserRow) => {
-    const r = await fetch(`${API}/users/${u.id}`);
+    const r = await authedFetch(`${API}/users/${u.id}`);
     if (r.ok) {
       const detail: UserDetail = await r.json();
       setSelectedUser(detail);
@@ -210,7 +217,7 @@ function UsersListView() {
 
   const handleDelete = async (id: number) => {
     if (confirmDelete !== id) { setConfirmDelete(id); return; }
-    await fetch(`${API}/users/${id}`, { method: 'DELETE' });
+    await authedFetch(`${API}/users/${id}`, { method: 'DELETE' });
     setConfirmDelete(null);
     fetchUsers();
     if (selectedUser?.id === id) closePanel();
@@ -336,7 +343,7 @@ function UsersListView() {
           onClose={closePanel}
           onSaved={async () => {
             await fetchUsers();
-            const r = await fetch(`${API}/users/${selectedUser.id}`);
+            const r = await authedFetch(`${API}/users/${selectedUser.id}`);
             if (r.ok) setSelectedUser(await r.json());
           }}
         />
@@ -481,7 +488,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/users/${user.id}`, {
+      await authedFetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, isActive: form.isActive }),
       });
@@ -497,7 +504,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     setSendingReset(true);
     setResetResult(null);
     try {
-      const r = await fetch(`${API}/users/${user.id}/send-password-reset`, { method: 'POST' });
+      const r = await authedFetch(`${API}/users/${user.id}/send-password-reset`, { method: 'POST' });
       const d = await r.json();
       setResetResult({ link: window.location.origin + d.resetLink, message: d.message });
     } finally {
@@ -674,7 +681,7 @@ function ModulesTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     setSaving(true);
     try {
       const modules = MODULES.map(m => ({ module: m.key, hasAccess: access[m.key] ?? true }));
-      await fetch(`${API}/users/${user.id}/modules`, {
+      await authedFetch(`${API}/users/${user.id}/modules`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ modules }),
       });
       await onSaved();
@@ -736,7 +743,7 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
 
   useEffect(() => {
     if (scope === 'processes' && processList.length === 0) {
-      fetch(`${API}/processes`).then(r => r.json()).then(data => setProcessList(data));
+      authedFetch(`${API}/processes`).then(r => r.json()).then(data => setProcessList(data));
     }
   }, [scope]);
 
@@ -767,15 +774,15 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/users/${user.id}`, {
+      await authedFetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataScope: scope }),
       });
-      await fetch(`${API}/users/${user.id}/categories`, {
+      await authedFetch(`${API}/users/${user.id}/categories`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ categories: Array.from(selectedCategories) }),
       });
       const processes = Array.from(processAccess.entries()).map(([processId, canEdit]) => ({ processId, canEdit }));
-      await fetch(`${API}/users/${user.id}/processes`, {
+      await authedFetch(`${API}/users/${user.id}/processes`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ processes }),
       });
       await onSaved();
@@ -991,7 +998,7 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
         const [catalogueType, fieldKey] = key.split(':');
         return { catalogueType, fieldKey, canView: val.canView, canEdit: val.canEdit };
       });
-      await fetch(`${API}/users/${user.id}/field-permissions`, {
+      await authedFetch(`${API}/users/${user.id}/field-permissions`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ permissions }),
       });
       await onSaved();
@@ -1090,7 +1097,7 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
     setSaving(true);
     setError('');
     try {
-      const r = await fetch(`${API}/users`, {
+      const r = await authedFetch(`${API}/users`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, name: resolvedName, phone: form.phone }),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed to create user'); return; }
@@ -1269,12 +1276,12 @@ function OrgTab({ userId }: { userId: number }) {
 
   const load = useCallback(async () => {
     const [ug, ag, ubu, abu, ur, ar] = await Promise.all([
-      fetch(`${API}/org/users/${userId}/groups`).then(x => x.json()),
-      fetch(`${API}/org/groups`).then(x => x.json()),
-      fetch(`${API}/org/users/${userId}/business-units`).then(x => x.json()),
-      fetch(`${API}/org/business-units`).then(x => x.json()),
-      fetch(`${API}/org/users/${userId}/regions`).then(x => x.json()),
-      fetch(`${API}/org/regions`).then(x => x.json()),
+      authedFetch(`${API}/org/users/${userId}/groups`).then(x => x.json()),
+      authedFetch(`${API}/org/groups`).then(x => x.json()),
+      authedFetch(`${API}/org/users/${userId}/business-units`).then(x => x.json()),
+      authedFetch(`${API}/org/business-units`).then(x => x.json()),
+      authedFetch(`${API}/org/users/${userId}/regions`).then(x => x.json()),
+      authedFetch(`${API}/org/regions`).then(x => x.json()),
     ]);
     setUserGroups(ug);
     setAllGroups(ag);
@@ -1291,15 +1298,15 @@ function OrgTab({ userId }: { userId: number }) {
     setSaving(true);
     try {
       await Promise.all([
-        fetch(`${API}/org/users/${userId}/groups`, {
+        authedFetch(`${API}/org/users/${userId}/groups`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ groupIds: Array.from(groupIds) }),
         }),
-        fetch(`${API}/org/users/${userId}/business-units`, {
+        authedFetch(`${API}/org/users/${userId}/business-units`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ businessUnitIds: Array.from(buIds) }),
         }),
-        fetch(`${API}/org/users/${userId}/regions`, {
+        authedFetch(`${API}/org/users/${userId}/regions`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ regionIds: Array.from(regionIds) }),
         }),
@@ -1414,7 +1421,7 @@ function RoleModulesTab({ roleId }: { roleId: number }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+    authedFetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
       const map: Record<string, boolean> = Object.fromEntries(MODULES.map(m => [m.key, true]));
       p.modules.forEach((m: any) => { map[m.module] = m.hasAccess; });
       setAccess(map);
@@ -1424,7 +1431,7 @@ function RoleModulesTab({ roleId }: { roleId: number }) {
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/org/roles/${roleId}/modules`, {
+      await authedFetch(`${API}/org/roles/${roleId}/modules`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ modules: MODULES.map(m => ({ module: m.key, hasAccess: access[m.key] ?? true })) }),
       });
@@ -1465,7 +1472,7 @@ function RoleDataAccessTab({ roleId }: { roleId: number }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+    authedFetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
       setSelectedCategories(new Set(p.categories.map((c: any) => c.category)));
       setProcessAccess(new Map(p.processes.map((pr: any) => [pr.processId, pr.canEdit])));
     });
@@ -1473,17 +1480,17 @@ function RoleDataAccessTab({ roleId }: { roleId: number }) {
 
   useEffect(() => {
     if (scope === 'processes' && processList.length === 0)
-      fetch(`${API}/processes`).then(r => r.json()).then(setProcessList);
+      authedFetch(`${API}/processes`).then(r => r.json()).then(setProcessList);
   }, [scope]);
 
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/org/roles/${roleId}/categories`, {
+      await authedFetch(`${API}/org/roles/${roleId}/categories`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ categories: scope === 'categories' ? Array.from(selectedCategories) : [] }),
       });
-      await fetch(`${API}/org/roles/${roleId}/processes`, {
+      await authedFetch(`${API}/org/roles/${roleId}/processes`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ processes: scope === 'processes' ? Array.from(processAccess.entries()).map(([processId, canEdit]) => ({ processId, canEdit })) : [] }),
       });
@@ -1578,7 +1585,7 @@ function RoleFieldsTab({ roleId }: { roleId: number }) {
   const allFields = Object.entries(CATALOGUE_FIELDS).flatMap(([type, fs]) => fs.map(f => ({ type, ...f })));
 
   useEffect(() => {
-    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+    authedFetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
       const m: Record<string, { canView: boolean; canEdit: boolean }> = {};
       allFields.forEach(f => { m[`${f.type}:${f.key}`] = { canView: true, canEdit: true }; });
       p.fields.forEach((f: any) => { m[`${f.catalogueType}:${f.fieldKey}`] = { canView: f.canView, canEdit: f.canEdit }; });
@@ -1593,7 +1600,7 @@ function RoleFieldsTab({ roleId }: { roleId: number }) {
         const v = fields[`${f.type}:${f.key}`] ?? { canView: true, canEdit: true };
         return { catalogueType: f.type, fieldKey: f.key, canView: v.canView, canEdit: v.canEdit };
       });
-      await fetch(`${API}/org/roles/${roleId}/field-permissions`, {
+      await authedFetch(`${API}/org/roles/${roleId}/field-permissions`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissions }),
       });
@@ -1657,8 +1664,8 @@ function RolesView() {
     setLoading(true);
     try {
       const [r, g] = await Promise.all([
-        fetch(`${API}/org/roles`).then(x => x.json()),
-        fetch(`${API}/org/groups`).then(x => x.json()),
+        authedFetch(`${API}/org/roles`).then(x => x.json()),
+        authedFetch(`${API}/org/groups`).then(x => x.json()),
       ]);
       setRoles(r);
       setAllGroups(g);
@@ -1671,14 +1678,14 @@ function RolesView() {
     setSelectedRole(role);
     setRoleTab('overview');
     setForm({ name: role.name, description: role.description, color: role.color });
-    const gs = await fetch(`${API}/org/roles/${role.id}/groups`).then(x => x.json());
+    const gs = await authedFetch(`${API}/org/roles/${role.id}/groups`).then(x => x.json());
     setRoleGroupIds(new Set(gs.map((g: any) => g.id)));
   };
 
   const closeRole = () => { setSelectedRole(null); setForm(null); };
 
   const createRole = async () => {
-    const row = await fetch(`${API}/org/roles`, {
+    const row = await authedFetch(`${API}/org/roles`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New Role' }),
     }).then(x => x.json());
     await load();
@@ -1689,10 +1696,10 @@ function RolesView() {
     if (!selectedRole || !form) return;
     setSaving(true);
     try {
-      await fetch(`${API}/org/roles/${selectedRole.id}`, {
+      await authedFetch(`${API}/org/roles/${selectedRole.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
-      await fetch(`${API}/org/roles/${selectedRole.id}/groups`, {
+      await authedFetch(`${API}/org/roles/${selectedRole.id}/groups`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ groupIds: Array.from(roleGroupIds) }),
       });
@@ -1702,7 +1709,7 @@ function RolesView() {
 
   const deleteRole = async (id: number) => {
     if (confirmDelete !== id) { setConfirmDelete(id); return; }
-    await fetch(`${API}/org/roles/${id}`, { method: 'DELETE' });
+    await authedFetch(`${API}/org/roles/${id}`, { method: 'DELETE' });
     setConfirmDelete(null);
     if (selectedRole?.id === id) closeRole();
     await load();
@@ -1925,10 +1932,10 @@ function OrgEntityManageView({
     setLoading(true);
     try {
       const [it, u, g, r] = await Promise.all([
-        fetch(`${API}/org/${entityType}`).then(x => x.json()),
-        fetch(`${API}/users`).then(x => x.json()),
-        fetch(`${API}/org/groups`).then(x => x.json()),
-        fetch(`${API}/org/roles`).then(x => x.json()),
+        authedFetch(`${API}/org/${entityType}`).then(x => x.json()),
+        authedFetch(`${API}/users`).then(x => x.json()),
+        authedFetch(`${API}/org/groups`).then(x => x.json()),
+        authedFetch(`${API}/org/roles`).then(x => x.json()),
       ]);
       setItems(it);
       setAllUsers(u);
@@ -1943,9 +1950,9 @@ function OrgEntityManageView({
     setSelected(item);
     setEditForm({ name: item.name, description: item.description, color: item.color });
     const [uRows, gRows, rRows] = await Promise.all([
-      fetch(`${API}/org/${entityType}/${item.id}/users`).then(x => x.json()),
-      fetch(`${API}/org/${entityType}/${item.id}/groups`).then(x => x.json()),
-      fetch(`${API}/org/${entityType}/${item.id}/roles`).then(x => x.json()),
+      authedFetch(`${API}/org/${entityType}/${item.id}/users`).then(x => x.json()),
+      authedFetch(`${API}/org/${entityType}/${item.id}/groups`).then(x => x.json()),
+      authedFetch(`${API}/org/${entityType}/${item.id}/roles`).then(x => x.json()),
     ]);
     setMemberUserIds(new Set(uRows.map((x: any) => x.id)));
     setMemberGroupIds(new Set(gRows.map((x: any) => x.id)));
@@ -1959,18 +1966,18 @@ function OrgEntityManageView({
     setSaving(true);
     try {
       await Promise.all([
-        fetch(`${API}/org/${entityType}/${selected.id}`, {
+        authedFetch(`${API}/org/${entityType}/${selected.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
         }),
-        fetch(`${API}/org/${entityType}/${selected.id}/users`, {
+        authedFetch(`${API}/org/${entityType}/${selected.id}/users`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userIds: Array.from(memberUserIds) }),
         }),
-        fetch(`${API}/org/${entityType}/${selected.id}/groups`, {
+        authedFetch(`${API}/org/${entityType}/${selected.id}/groups`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ groupIds: Array.from(memberGroupIds) }),
         }),
-        fetch(`${API}/org/${entityType}/${selected.id}/roles`, {
+        authedFetch(`${API}/org/${entityType}/${selected.id}/roles`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roleIds: Array.from(memberRoleIds) }),
         }),
@@ -1981,7 +1988,7 @@ function OrgEntityManageView({
 
   const deleteItem = async (id: number) => {
     if (confirmDelete !== id) { setConfirmDelete(id); return; }
-    await fetch(`${API}/org/${entityType}/${id}`, { method: 'DELETE' });
+    await authedFetch(`${API}/org/${entityType}/${id}`, { method: 'DELETE' });
     setConfirmDelete(null);
     if (selected?.id === id) closeItem();
     await load();
@@ -1991,7 +1998,7 @@ function OrgEntityManageView({
     if (!createForm.name) return;
     setSaving(true);
     try {
-      const row = await fetch(`${API}/org/${entityType}`, {
+      const row = await authedFetch(`${API}/org/${entityType}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createForm),
       }).then(x => x.json());
       setCreating(false);
@@ -2245,11 +2252,11 @@ function GroupsManageView() {
     setLoading(true);
     try {
       const [g, u, r, bu, reg] = await Promise.all([
-        fetch(`${API}/org/groups`).then(x => x.json()),
-        fetch(`${API}/users`).then(x => x.json()),
-        fetch(`${API}/org/roles`).then(x => x.json()),
-        fetch(`${API}/org/business-units`).then(x => x.json()),
-        fetch(`${API}/org/regions`).then(x => x.json()),
+        authedFetch(`${API}/org/groups`).then(x => x.json()),
+        authedFetch(`${API}/users`).then(x => x.json()),
+        authedFetch(`${API}/org/roles`).then(x => x.json()),
+        authedFetch(`${API}/org/business-units`).then(x => x.json()),
+        authedFetch(`${API}/org/regions`).then(x => x.json()),
       ]);
       setGroups(g); setAllUsers(u); setAllRoles(r); setAllBUs(bu); setAllRegions(reg);
     } finally { setLoading(false); }
@@ -2261,10 +2268,10 @@ function GroupsManageView() {
     setSelectedGroup(group);
     setEditForm({ name: group.name, description: group.description, color: group.color });
     const [members, roles, bus, regs] = await Promise.all([
-      fetch(`${API}/org/groups/${group.id}/members`).then(x => x.json()),
-      fetch(`${API}/org/groups/${group.id}/roles`).then(x => x.json()),
-      fetch(`${API}/org/groups/${group.id}/business-units`).then(x => x.json()),
-      fetch(`${API}/org/groups/${group.id}/regions`).then(x => x.json()),
+      authedFetch(`${API}/org/groups/${group.id}/members`).then(x => x.json()),
+      authedFetch(`${API}/org/groups/${group.id}/roles`).then(x => x.json()),
+      authedFetch(`${API}/org/groups/${group.id}/business-units`).then(x => x.json()),
+      authedFetch(`${API}/org/groups/${group.id}/regions`).then(x => x.json()),
     ]);
     setGroupMemberIds(new Set(members.map((u: any) => u.id)));
     setGroupRoleIds(new Set(roles.map((r: any) => r.id)));
@@ -2279,22 +2286,22 @@ function GroupsManageView() {
     setSaving(true);
     try {
       await Promise.all([
-        fetch(`${API}/org/groups/${selectedGroup.id}`, {
+        authedFetch(`${API}/org/groups/${selectedGroup.id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
         }),
-        fetch(`${API}/org/groups/${selectedGroup.id}/members`, {
+        authedFetch(`${API}/org/groups/${selectedGroup.id}/members`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userIds: Array.from(groupMemberIds) }),
         }),
-        fetch(`${API}/org/groups/${selectedGroup.id}/roles`, {
+        authedFetch(`${API}/org/groups/${selectedGroup.id}/roles`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roleIds: Array.from(groupRoleIds) }),
         }),
-        fetch(`${API}/org/groups/${selectedGroup.id}/business-units`, {
+        authedFetch(`${API}/org/groups/${selectedGroup.id}/business-units`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ businessUnitIds: Array.from(groupBUIds) }),
         }),
-        fetch(`${API}/org/groups/${selectedGroup.id}/regions`, {
+        authedFetch(`${API}/org/groups/${selectedGroup.id}/regions`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ regionIds: Array.from(groupRegionIds) }),
         }),
@@ -2305,7 +2312,7 @@ function GroupsManageView() {
 
   const deleteGroup = async (id: number) => {
     if (confirmDelete !== id) { setConfirmDelete(id); return; }
-    await fetch(`${API}/org/groups/${id}`, { method: 'DELETE' });
+    await authedFetch(`${API}/org/groups/${id}`, { method: 'DELETE' });
     setConfirmDelete(null);
     if (selectedGroup?.id === id) closeGroup();
     await load();
@@ -2315,7 +2322,7 @@ function GroupsManageView() {
     if (!createForm.name) return;
     setSaving(true);
     try {
-      const row = await fetch(`${API}/org/groups`, {
+      const row = await authedFetch(`${API}/org/groups`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(createForm),
       }).then(x => x.json());
