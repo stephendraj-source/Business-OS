@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, Trash2, Upload, ExternalLink, Edit2, Check, X, Download, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 
 const API = '/api';
 
@@ -102,6 +103,7 @@ export function GovernanceView() {
       setAiPopulateError('AI could not populate fields. Please try again.');
     } finally {
       setAiPopulating(false);
+      dispatchCreditsRefresh();
     }
   }
 

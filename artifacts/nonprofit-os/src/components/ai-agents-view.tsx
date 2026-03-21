@@ -6,6 +6,7 @@ import {
   Shield, Search, Share2,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
+import { dispatchCreditsRefresh } from "@/hooks/use-credits";
 import { useUser } from "@/contexts/UserContext";
 import { ShareModal } from "./share-modal";
 
@@ -483,6 +484,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
       setError(e.message);
     } finally {
       setRunning(false);
+      dispatchCreditsRefresh();
       fetchLogs();
     }
   }, [agentId, fetchLogs]);

@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 
 interface Message {
   id: number;
@@ -192,6 +193,7 @@ export function Chatbot() {
       setStreamingPrompt('');
     } finally {
       setStreaming(false);
+      dispatchCreditsRefresh();
       inputRef.current?.focus();
     }
   }, [input, streaming, activeConvId]);

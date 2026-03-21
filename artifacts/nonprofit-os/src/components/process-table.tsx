@@ -7,6 +7,7 @@ import { getListProcessesQueryKey } from '@workspace/api-client-react';
 import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck, Star, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
+import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import type { Process } from '@workspace/api-client-react';
 
 const API = '/api';
@@ -270,6 +271,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
       setEvalError(err.message || 'Something went wrong');
     } finally {
       setEvaluating(false);
+      dispatchCreditsRefresh();
     }
   }
 
