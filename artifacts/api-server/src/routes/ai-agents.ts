@@ -258,12 +258,13 @@ router.post("/ai-agents", async (req, res) => {
 router.put("/ai-agents/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { agentNumber, name, description, instructions, trigger, tools } = req.body as Record<string, any>;
+    const { agentNumber, name, description, instructions, runMode, trigger, tools } = req.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (agentNumber !== undefined) updates.agentNumber = Number(agentNumber);
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (instructions !== undefined) updates.instructions = instructions;
+    if (runMode !== undefined) updates.runMode = runMode;
     if (trigger !== undefined) updates.trigger = trigger;
     if (tools !== undefined) updates.tools = typeof tools === "string" ? tools : JSON.stringify(tools);
     const [agent] = await db.update(aiAgentsTable).set(updates).where(eq(aiAgentsTable.id, id)).returning();

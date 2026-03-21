@@ -14,12 +14,15 @@ const API = '/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type RunMode = 'adhoc' | 'scheduled' | 'trigger';
+
 interface Agent {
   id: number;
   agentNumber: number;
   name: string;
   description: string;
   instructions: string;
+  runMode: RunMode;
   trigger: string;
   tools: string;
   createdAt: string;
@@ -1193,6 +1196,7 @@ export function AiAgentsView() {
 
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editRunMode, setEditRunMode] = useState<RunMode>("adhoc");
   const [editTrigger, setEditTrigger] = useState("");
   const [editInstructions, setEditInstructions] = useState("");
   const [editTools, setEditTools] = useState<string[]>([]);
@@ -1229,6 +1233,7 @@ export function AiAgentsView() {
     if (selectedAgent) {
       setEditName(selectedAgent.name);
       setEditDesc(selectedAgent.description);
+      setEditRunMode((selectedAgent.runMode ?? "adhoc") as RunMode);
       setEditTrigger(selectedAgent.trigger ?? "");
       setEditInstructions(selectedAgent.instructions);
       setEditNumber(selectedAgent.agentNumber);
@@ -1270,6 +1275,7 @@ export function AiAgentsView() {
           agentNumber: editNumber,
           name: editName,
           description: editDesc,
+          runMode: editRunMode,
           trigger: editTrigger,
           instructions: editInstructions,
           tools: JSON.stringify(editTools),
@@ -1354,7 +1360,20 @@ export function AiAgentsView() {
                   <span className="text-sm font-medium truncate">{agent.name}</span>
                 </div>
                 <div className="text-xs text-muted-foreground truncate mt-0.5">{agent.description || "No description"}</div>
-                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
+                  {(() => {
+                    const mode = agent.runMode ?? 'adhoc';
+                    const cfg = {
+                      adhoc:     { label: 'Ad-hoc',    cls: 'text-blue-500   bg-blue-500/10   border-blue-500/20',   icon: <Cpu className="inline w-3 h-3 mr-0.5" /> },
+                      scheduled: { label: 'Scheduled',  cls: 'text-violet-500 bg-violet-500/10 border-violet-500/20', icon: <Calendar className="inline w-3 h-3 mr-0.5" /> },
+                      trigger:   { label: 'Trigger',    cls: 'text-amber-500  bg-amber-500/10  border-amber-500/20',  icon: <Zap className="inline w-3 h-3 mr-0.5" /> },
+                    }[mode as RunMode] ?? { label: mode, cls: '', icon: null };
+                    return (
+                      <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-medium", cfg.cls)}>
+                        {cfg.icon}{cfg.label}
+                      </span>
+                    );
+                  })()}
                   {(agent.urlCount ?? 0) > 0 && <span><Link2 className="inline w-3 h-3 mr-0.5" />{agent.urlCount}</span>}
                   {(agent.fileCount ?? 0) > 0 && <span><FileText className="inline w-3 h-3 mr-0.5" />{agent.fileCount}</span>}
                   {(agent.scheduleCount ?? 0) > 0 && <span><Clock className="inline w-3 h-3 mr-0.5" />{agent.scheduleCount}</span>}
@@ -1467,11 +1486,86 @@ export function AiAgentsView() {
             {tab === "overview" && (
               <div className="max-w-2xl space-y-6">
 
-                {/* Trigger */}
+                {/* Run Mode selector */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-primary" />
+                    Run Mode
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      {
+                        value: 'adhoc' as RunMode,
+                        label: 'Ad-hoc',
+                        sublabel: 'Manually triggered via the Run tab',
+                        icon: <Cpu className="w-4 h-4" />,
+                        color: 'blue',
+                      },
+                      {
+                        value: 'scheduled' as RunMode,
+                        label: 'Scheduled',
+                        sublabel: 'Runs automatically on a set schedule',
+                        icon: <Calendar className="w-4 h-4" />,
+                        color: 'violet',
+                      },
+                      {
+                        value: 'trigger' as RunMode,
+                        label: 'Trigger',
+                        sublabel: 'Activated by a form, workflow, or event',
+                        icon: <Zap className="w-4 h-4" />,
+                        color: 'amber',
+                      },
+                    ] as const).map(opt => {
+                      const active = editRunMode === opt.value;
+                      const colorMap = {
+                        blue:   { border: 'border-blue-500',   bg: 'bg-blue-500/10',   text: 'text-blue-500',   ring: 'ring-blue-500/30' },
+                        violet: { border: 'border-violet-500', bg: 'bg-violet-500/10', text: 'text-violet-500', ring: 'ring-violet-500/30' },
+                        amber:  { border: 'border-amber-500',  bg: 'bg-amber-500/10',  text: 'text-amber-500',  ring: 'ring-amber-500/30' },
+                      };
+                      const c = colorMap[opt.color];
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => { setEditRunMode(opt.value); setDirty(true); }}
+                          className={cn(
+                            "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all",
+                            active
+                              ? `${c.border} ${c.bg} ring-2 ${c.ring}`
+                              : "border-border bg-secondary/30 hover:border-border/70 hover:bg-secondary/50"
+                          )}
+                        >
+                          <div className={cn("flex items-center gap-1.5 font-medium text-sm", active ? c.text : "text-foreground")}>
+                            {opt.icon}
+                            {opt.label}
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-tight">{opt.sublabel}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Contextual hints per mode */}
+                  {editRunMode === 'adhoc' && (
+                    <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-xs text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                      <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
+                      Switch to the <strong>Run</strong> tab to execute this agent on demand.
+                    </div>
+                  )}
+                  {editRunMode === 'scheduled' && (
+                    <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 text-xs text-violet-600 dark:text-violet-400 flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+                      Configure run times in the <strong>Schedule</strong> tab.
+                    </div>
+                  )}
+                </div>
+
+                {/* Trigger condition — only shown when run mode is "trigger" */}
+                {editRunMode === 'trigger' && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-400" />
-                    Trigger
+                    Trigger Condition
                   </label>
                   <div className="relative rounded-xl border border-amber-500/30 bg-amber-500/5 p-0.5">
                     <InstructionsEditor
@@ -1485,6 +1579,7 @@ export function AiAgentsView() {
                     />
                   </div>
                 </div>
+                )}
 
                 {/* Instructions */}
                 <div className="space-y-2">

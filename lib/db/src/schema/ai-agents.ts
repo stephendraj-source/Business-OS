@@ -7,6 +7,7 @@ export const aiAgentsTable = pgTable("ai_agents", {
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   instructions: text("instructions").notNull().default(""),
+  runMode: text("run_mode").notNull().default("adhoc"),
   trigger: text("trigger").notNull().default(""),
   tools: text("tools").notNull().default("[]"),
   createdBy: integer("created_by"),
