@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, processesTable, auditLogsTable } from "@workspace/db";
+import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, aiAgentsTable, workflowsTable } from "@workspace/db";
 import { eq, desc, max } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -372,6 +372,56 @@ router.delete("/processes/:id", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error(err, "Failed to delete process");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// --- Process Links (agents + workflows) ---
+
+router.get("/processes/:id/links", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const agentLinks = await db
+      .select({ id: aiAgentsTable.id, agentNumber: aiAgentsTable.agentNumber, name: aiAgentsTable.name })
+      .from(processLinkedAgents)
+      .innerJoin(aiAgentsTable, eq(processLinkedAgents.agentId, aiAgentsTable.id))
+      .where(eq(processLinkedAgents.processId, id));
+
+    const workflowLinks = await db
+      .select({ id: workflowsTable.id, name: workflowsTable.name })
+      .from(processLinkedWorkflows)
+      .innerJoin(workflowsTable, eq(processLinkedWorkflows.workflowId, workflowsTable.id))
+      .where(eq(processLinkedWorkflows.processId, id));
+
+    res.json({ agents: agentLinks, workflows: workflowLinks });
+  } catch (err) {
+    req.log.error(err, "Failed to get process links");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/processes/:id/links", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const { agentIds = [], workflowIds = [] } = req.body as { agentIds?: number[]; workflowIds?: number[] };
+
+    await db.delete(processLinkedAgents).where(eq(processLinkedAgents.processId, id));
+    await db.delete(processLinkedWorkflows).where(eq(processLinkedWorkflows.processId, id));
+
+    if (agentIds.length > 0) {
+      await db.insert(processLinkedAgents).values(agentIds.map(agentId => ({ processId: id, agentId })));
+    }
+    if (workflowIds.length > 0) {
+      await db.insert(processLinkedWorkflows).values(workflowIds.map(workflowId => ({ processId: id, workflowId })));
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error(err, "Failed to update process links");
     res.status(500).json({ error: "Internal server error" });
   }
 });

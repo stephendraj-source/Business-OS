@@ -2,10 +2,15 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2 } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
+
+const API = '/api';
+
+interface LinkedAgent { id: number; agentNumber: number; name: string }
+interface LinkedWorkflow { id: number; name: string }
 
 type GovStandard = { id: number; complianceName: string };
 type GovMap = Record<number, number[]>;
@@ -123,6 +128,72 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
   const { data: categories = [] } = useCategoriesData();
 
+  const [linkedAgents, setLinkedAgents] = useState<LinkedAgent[]>([]);
+  const [linkedWorkflows, setLinkedWorkflows] = useState<LinkedWorkflow[]>([]);
+  const [allAgents, setAllAgents] = useState<LinkedAgent[]>([]);
+  const [allWorkflows, setAllWorkflows] = useState<LinkedWorkflow[]>([]);
+  const [showAgentPicker, setShowAgentPicker] = useState(false);
+  const [showWorkflowPicker, setShowWorkflowPicker] = useState(false);
+  const [linksSaving, setLinksSaving] = useState(false);
+
+  const fetchLinks = useCallback(async () => {
+    const r = await fetch(`${API}/processes/${initialProcess.id}/links`);
+    if (r.ok) {
+      const data = await r.json();
+      setLinkedAgents(data.agents || []);
+      setLinkedWorkflows(data.workflows || []);
+    }
+  }, [initialProcess.id]);
+
+  const fetchAllOptions = useCallback(async () => {
+    const [ar, wr] = await Promise.all([
+      fetch(`${API}/ai-agents`),
+      fetch(`${API}/workflows`),
+    ]);
+    if (ar.ok) setAllAgents(await ar.json());
+    if (wr.ok) setAllWorkflows(await wr.json());
+  }, []);
+
+  useEffect(() => { fetchLinks(); fetchAllOptions(); }, [fetchLinks, fetchAllOptions]);
+
+  const saveLinks = useCallback(async (agents: LinkedAgent[], workflows: LinkedWorkflow[]) => {
+    setLinksSaving(true);
+    await fetch(`${API}/processes/${initialProcess.id}/links`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentIds: agents.map(a => a.id), workflowIds: workflows.map(w => w.id) }),
+    });
+    setLinksSaving(false);
+  }, [initialProcess.id]);
+
+  const addAgent = async (agent: LinkedAgent) => {
+    if (linkedAgents.find(a => a.id === agent.id)) return;
+    const updated = [...linkedAgents, agent];
+    setLinkedAgents(updated);
+    setShowAgentPicker(false);
+    await saveLinks(updated, linkedWorkflows);
+  };
+
+  const removeAgent = async (id: number) => {
+    const updated = linkedAgents.filter(a => a.id !== id);
+    setLinkedAgents(updated);
+    await saveLinks(updated, linkedWorkflows);
+  };
+
+  const addWorkflow = async (wf: LinkedWorkflow) => {
+    if (linkedWorkflows.find(w => w.id === wf.id)) return;
+    const updated = [...linkedWorkflows, wf];
+    setLinkedWorkflows(updated);
+    setShowWorkflowPicker(false);
+    await saveLinks(linkedAgents, updated);
+  };
+
+  const removeWorkflow = async (id: number) => {
+    const updated = linkedWorkflows.filter(w => w.id !== id);
+    setLinkedWorkflows(updated);
+    await saveLinks(linkedAgents, updated);
+  };
+
   const pid = `PRO-${String(process.number).padStart(3, '0')}`;
   const CYCLE = ['', 'green', 'orange', 'red'] as const;
   const tlColorMap: Record<string, { bg: string; glow: string; label: string }> = {
@@ -232,6 +303,101 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             <PanelTextField label="Achievement"        value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
             <PanelTextField label="Est. Value Impact"  value={process.estimatedValueImpact ?? ''} onSave={v => save('estimatedValueImpact', v)} />
             <PanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''}    onSave={v => save('industryBenchmark', v)} />
+          </div>
+
+          {/* Linked Agents & Workflows */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
+              <Link2 className="w-3.5 h-3.5" />
+              Linked Agents & Workflows
+              {linksSaving && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
+            </div>
+
+            {/* Linked Agents */}
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                <Bot className="w-3 h-3" />AI Agents
+              </div>
+              {linkedAgents.length === 0 && !showAgentPicker && (
+                <p className="text-xs text-muted-foreground/50 italic">No agents linked yet.</p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {linkedAgents.map(a => (
+                  <span key={a.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+                    <Bot className="w-3 h-3 shrink-0" />
+                    {a.name || `Agent #${a.agentNumber}`}
+                    <button onClick={() => removeAgent(a.id)} className="ml-0.5 hover:text-red-400 transition-colors"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+              {showAgentPicker ? (
+                <div className="rounded-lg border border-border bg-background shadow-md overflow-hidden">
+                  {allAgents.filter(a => !linkedAgents.find(la => la.id === a.id)).length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">All agents already linked.</div>
+                  ) : allAgents.filter(a => !linkedAgents.find(la => la.id === a.id)).map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => addAgent(a)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary/60 transition-colors text-left"
+                    >
+                      <Bot className="w-3.5 h-3.5 text-primary shrink-0" />
+                      {a.name || `Agent #${a.agentNumber}`}
+                    </button>
+                  ))}
+                  <button onClick={() => setShowAgentPicker(false)} className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary/40 border-t border-border transition-colors">Cancel</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAgentPicker(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                >
+                  <Plus className="w-3 h-3" />Link an agent
+                </button>
+              )}
+            </div>
+
+            {/* Linked Workflows */}
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                <GitBranch className="w-3 h-3" />Workflows
+              </div>
+              {linkedWorkflows.length === 0 && !showWorkflowPicker && (
+                <p className="text-xs text-muted-foreground/50 italic">No workflows linked yet.</p>
+              )}
+              <div className="flex flex-wrap gap-1.5">
+                {linkedWorkflows.map(w => (
+                  <span key={w.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-violet-500/10 text-violet-400 text-xs font-medium border border-violet-500/20">
+                    <GitBranch className="w-3 h-3 shrink-0" />
+                    {w.name}
+                    <button onClick={() => removeWorkflow(w.id)} className="ml-0.5 hover:text-red-400 transition-colors"><X className="w-3 h-3" /></button>
+                  </span>
+                ))}
+              </div>
+              {showWorkflowPicker ? (
+                <div className="rounded-lg border border-border bg-background shadow-md overflow-hidden">
+                  {allWorkflows.filter(w => !linkedWorkflows.find(lw => lw.id === w.id)).length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-muted-foreground">All workflows already linked.</div>
+                  ) : allWorkflows.filter(w => !linkedWorkflows.find(lw => lw.id === w.id)).map(w => (
+                    <button
+                      key={w.id}
+                      onClick={() => addWorkflow(w)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary/60 transition-colors text-left"
+                    >
+                      <GitBranch className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                      {w.name}
+                    </button>
+                  ))}
+                  <button onClick={() => setShowWorkflowPicker(false)} className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary/40 border-t border-border transition-colors">Cancel</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowWorkflowPicker(true)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+                >
+                  <Plus className="w-3 h-3" />Link a workflow
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

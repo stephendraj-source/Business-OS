@@ -82,16 +82,46 @@ function readFileContent(filePath: string, mimeType: string, originalName: strin
 // ── Helper: resolve {{field}} placeholders in instructions ───────────────────
 
 async function resolveInstructions(instructions: string): Promise<string> {
-  const fieldMatches = instructions.match(/\{\{(\w+)\}\}/g);
-  if (!fieldMatches || fieldMatches.length === 0) return instructions;
-  const processes = await db.select().from(processesTable).orderBy(processesTable.number).limit(50);
+  if (!instructions) return instructions;
   let resolved = instructions;
-  const allFields = [...new Set(fieldMatches.map(m => m.slice(2, -2)))];
-  for (const field of allFields) {
-    const values = processes.map((p: any) => p[field]).filter(Boolean);
-    const sample = values.slice(0, 10).join("; ");
-    resolved = resolved.replaceAll(`{{${field}}}`, `[${field} data: ${sample}]`);
+
+  // Resolve {{process:ProcessName}} — inject data for a specific named process
+  const processNameMatches = instructions.match(/\{\{process:([^}]+)\}\}/g);
+  if (processNameMatches) {
+    const processes = await db.select().from(processesTable).orderBy(processesTable.number);
+    const uniqueNames = [...new Set(processNameMatches.map(m => m.slice(10, -2).trim()))];
+    for (const name of uniqueNames) {
+      const proc = processes.find(p =>
+        p.processName?.toLowerCase() === name.toLowerCase() ||
+        p.processDescription?.toLowerCase() === name.toLowerCase()
+      );
+      if (proc) {
+        const summary = [
+          `Process: ${proc.processName || proc.processDescription}`,
+          proc.purpose ? `Purpose: ${proc.purpose}` : null,
+          proc.inputs ? `Inputs: ${proc.inputs}` : null,
+          proc.outputs ? `Outputs: ${proc.outputs}` : null,
+          proc.kpi ? `KPI: ${proc.kpi}` : null,
+        ].filter(Boolean).join("\n");
+        resolved = resolved.replaceAll(`{{process:${name}}}`, `[Process data for "${name}":\n${summary}]`);
+      } else {
+        resolved = resolved.replaceAll(`{{process:${name}}}`, `[Process "${name}" not found]`);
+      }
+    }
   }
+
+  // Resolve {{fieldName}} — inject sampled values across all processes
+  const fieldMatches = resolved.match(/\{\{(\w+)\}\}/g);
+  if (fieldMatches && fieldMatches.length > 0) {
+    const processes = await db.select().from(processesTable).orderBy(processesTable.number).limit(50);
+    const allFields = [...new Set(fieldMatches.map(m => m.slice(2, -2)))];
+    for (const field of allFields) {
+      const values = processes.map((p: any) => p[field]).filter(Boolean);
+      const sample = values.slice(0, 10).join("; ");
+      resolved = resolved.replaceAll(`{{${field}}}`, `[${field} data: ${sample}]`);
+    }
+  }
+
   return resolved;
 }
 

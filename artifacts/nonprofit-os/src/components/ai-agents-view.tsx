@@ -363,12 +363,31 @@ function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: strin
 
 // ── Run Panel ─────────────────────────────────────────────────────────────────
 
-function RunPanel({ agentId }: { agentId: number }) {
+type OutputFormat = "plain" | "json" | "xml";
+
+function formatOutput(raw: string, fmt: OutputFormat): string {
+  if (!raw) return "";
+  if (fmt === "json") {
+    const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+    const candidate = match ? match[1].trim() : raw.trim();
+    try { return JSON.stringify(JSON.parse(candidate), null, 2); } catch { return raw; }
+  }
+  if (fmt === "xml") {
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const lines = raw.trim().split("\n");
+    return `<output>\n${lines.map(l => `  <line>${esc(l)}</line>`).join("\n")}\n</output>`;
+  }
+  return raw;
+}
+
+function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () => Promise<void> }) {
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
   const [logs, setLogs] = useState<RunLog[]>([]);
   const [expandedLog, setExpandedLog] = useState<number | null>(null);
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>("plain");
+  const [copied, setCopied] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
 
   const fetchLogs = useCallback(async () => {
@@ -384,7 +403,15 @@ function RunPanel({ agentId }: { agentId: number }) {
     }
   }, [output]);
 
+  const copyOutput = async () => {
+    const text = formatOutput(output, outputFormat);
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const run = async () => {
+    if (onBeforeRun) await onBeforeRun();
     setRunning(true);
     setOutput("");
     setError("");
@@ -414,6 +441,8 @@ function RunPanel({ agentId }: { agentId: number }) {
     }
   };
 
+  const displayedOutput = formatOutput(output, outputFormat);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -432,18 +461,46 @@ function RunPanel({ agentId }: { agentId: number }) {
         </button>
       </div>
 
-      {(output || error || running) && (
-        <div className="space-y-1">
-          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Live Output</div>
-          <div
-            ref={outputRef}
-            className="bg-background border border-border rounded-xl p-4 font-mono text-xs leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap"
-          >
-            {output || (running ? <span className="text-muted-foreground animate-pulse">Executing agent…</span> : null)}
-            {error && <span className="text-red-400">{error}</span>}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Output</div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg overflow-hidden border border-border text-xs">
+              {(["plain", "json", "xml"] as OutputFormat[]).map(fmt => (
+                <button
+                  key={fmt}
+                  onClick={() => setOutputFormat(fmt)}
+                  className={cn(
+                    "px-2.5 py-1 font-medium uppercase transition-colors",
+                    outputFormat === fmt ? "bg-primary text-primary-foreground" : "bg-secondary/30 text-muted-foreground hover:bg-secondary/60"
+                  )}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+            {output && (
+              <button
+                onClick={copyOutput}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-border bg-secondary/30 text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+              >
+                {copied ? <><Check className="w-3 h-3 text-green-500" />Copied</> : <><Link2 className="w-3 h-3" />Copy</>}
+              </button>
+            )}
           </div>
         </div>
-      )}
+        <div
+          ref={outputRef}
+          className="bg-background border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap"
+        >
+          {running && !output && <span className="text-muted-foreground animate-pulse">Executing agent…</span>}
+          {displayedOutput && <span>{displayedOutput}</span>}
+          {error && <span className="text-red-400">{'\n'}{error}</span>}
+          {!running && !output && !error && (
+            <span className="text-muted-foreground/40 italic">Output will appear here after you run the agent.</span>
+          )}
+        </div>
+      </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -1050,7 +1107,7 @@ export function AiAgentsView() {
             )}
             {tab === "run" && (
               <div className="max-w-2xl">
-                <RunPanel agentId={selectedAgent.id} />
+                <RunPanel agentId={selectedAgent.id} onBeforeRun={save} />
               </div>
             )}
           </div>
