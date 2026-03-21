@@ -1180,6 +1180,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
 type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions" | "shares";
 
 export function AiAgentsView() {
+  const { fetchHeaders, currentUser } = useUser();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -1203,22 +1204,22 @@ export function AiAgentsView() {
   const fetchAgents = useCallback(async () => {
     setLoadingAgents(true);
     try {
-      const r = await fetch(`${API}/ai-agents`);
+      const r = await fetch(`${API}/ai-agents`, { headers: fetchHeaders() });
       const data = await r.json();
       if (Array.isArray(data)) setAgents(data);
     } catch {}
     finally { setLoadingAgents(false); }
-  }, []);
+  }, [fetchHeaders]);
 
   const fetchFields = useCallback(async () => {
-    const r = await fetch(`${API}/ai-agents/meta/process-fields`);
+    const r = await fetch(`${API}/ai-agents/meta/process-fields`, { headers: fetchHeaders() });
     if (r.ok) setProcessFields(await r.json());
-  }, []);
+  }, [fetchHeaders]);
 
   const fetchWorkflows = useCallback(async () => {
-    const r = await fetch(`${API}/workflows`);
+    const r = await fetch(`${API}/workflows`, { headers: fetchHeaders() });
     if (r.ok) setWorkflows(await r.json());
-  }, []);
+  }, [fetchHeaders]);
 
   useEffect(() => { fetchAgents(); fetchFields(); fetchWorkflows(); }, [fetchAgents, fetchFields, fetchWorkflows]);
 
@@ -1237,7 +1238,7 @@ export function AiAgentsView() {
   const createAgent = async () => {
     const r = await fetch(`${API}/ai-agents`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
       body: JSON.stringify({}),
     });
     if (r.ok) {
@@ -1251,7 +1252,7 @@ export function AiAgentsView() {
   const deleteAgent = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this agent? This cannot be undone.")) return;
-    await fetch(`${API}/ai-agents/${id}`, { method: "DELETE" });
+    await fetch(`${API}/ai-agents/${id}`, { method: "DELETE", headers: fetchHeaders() });
     if (selectedId === id) setSelectedId(null);
     fetchAgents();
   };
@@ -1262,7 +1263,7 @@ export function AiAgentsView() {
     try {
       await fetch(`${API}/ai-agents/${selectedId}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
         body: JSON.stringify({
           agentNumber: editNumber,
           name: editName,
@@ -1291,7 +1292,6 @@ export function AiAgentsView() {
     setter(v); setDirty(true);
   };
 
-  const { currentUser } = useUser();
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Overview", icon: <Wrench className="w-3.5 h-3.5" /> },
     { id: "knowledge", label: "Knowledge", icon: <FileText className="w-3.5 h-3.5" /> },
