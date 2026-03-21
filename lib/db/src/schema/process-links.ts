@@ -2,6 +2,7 @@ import { pgTable, serial, integer } from 'drizzle-orm/pg-core';
 import { processesTable } from './processes';
 import { aiAgentsTable } from './ai-agents';
 import { workflowsTable } from './workflows';
+import { users } from './users';
 
 export const processLinkedAgents = pgTable('process_linked_agents', {
   id: serial('id').primaryKey(),
@@ -13,4 +14,10 @@ export const processLinkedWorkflows = pgTable('process_linked_workflows', {
   id: serial('id').primaryKey(),
   processId: integer('process_id').notNull().references(() => processesTable.id, { onDelete: 'cascade' }),
   workflowId: integer('workflow_id').notNull().references(() => workflowsTable.id, { onDelete: 'cascade' }),
+});
+
+export const processAssignees = pgTable('process_assignees', {
+  id: serial('id').primaryKey(),
+  processId: integer('process_id').notNull().references(() => processesTable.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
 });

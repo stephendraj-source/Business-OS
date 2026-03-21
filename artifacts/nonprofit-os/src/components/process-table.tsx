@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -11,6 +11,7 @@ const API = '/api';
 
 interface LinkedAgent { id: number; agentNumber: number; name: string }
 interface LinkedWorkflow { id: number; name: string }
+interface AssignedUser { id: number; name: string; email: string; role: string }
 
 type GovStandard = { id: number; complianceName: string };
 type GovMap = Record<number, number[]>;
@@ -136,6 +137,11 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   const [showWorkflowPicker, setShowWorkflowPicker] = useState(false);
   const [linksSaving, setLinksSaving] = useState(false);
 
+  const [assignedUsers, setAssignedUsers] = useState<AssignedUser[]>([]);
+  const [allUsers, setAllUsers] = useState<AssignedUser[]>([]);
+  const [showUserPicker, setShowUserPicker] = useState(false);
+  const [assigneesSaving, setAssigneesSaving] = useState(false);
+
   const fetchLinks = useCallback(async () => {
     const r = await fetch(`${API}/processes/${initialProcess.id}/links`);
     if (r.ok) {
@@ -145,16 +151,23 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
     }
   }, [initialProcess.id]);
 
+  const fetchAssignees = useCallback(async () => {
+    const r = await fetch(`${API}/processes/${initialProcess.id}/assignees`);
+    if (r.ok) setAssignedUsers(await r.json());
+  }, [initialProcess.id]);
+
   const fetchAllOptions = useCallback(async () => {
-    const [ar, wr] = await Promise.all([
+    const [ar, wr, ur] = await Promise.all([
       fetch(`${API}/ai-agents`),
       fetch(`${API}/workflows`),
+      fetch(`${API}/users`),
     ]);
     if (ar.ok) setAllAgents(await ar.json());
     if (wr.ok) setAllWorkflows(await wr.json());
+    if (ur.ok) setAllUsers(await ur.json());
   }, []);
 
-  useEffect(() => { fetchLinks(); fetchAllOptions(); }, [fetchLinks, fetchAllOptions]);
+  useEffect(() => { fetchLinks(); fetchAssignees(); fetchAllOptions(); }, [fetchLinks, fetchAssignees, fetchAllOptions]);
 
   const saveLinks = useCallback(async (agents: LinkedAgent[], workflows: LinkedWorkflow[]) => {
     setLinksSaving(true);
@@ -192,6 +205,30 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
     const updated = linkedWorkflows.filter(w => w.id !== id);
     setLinkedWorkflows(updated);
     await saveLinks(linkedAgents, updated);
+  };
+
+  const saveAssignees = useCallback(async (next: AssignedUser[]) => {
+    setAssigneesSaving(true);
+    await fetch(`${API}/processes/${initialProcess.id}/assignees`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userIds: next.map(u => u.id) }),
+    });
+    setAssigneesSaving(false);
+  }, [initialProcess.id]);
+
+  const addAssignee = async (user: AssignedUser) => {
+    if (assignedUsers.find(u => u.id === user.id)) return;
+    const updated = [...assignedUsers, user];
+    setAssignedUsers(updated);
+    setShowUserPicker(false);
+    await saveAssignees(updated);
+  };
+
+  const removeAssignee = async (id: number) => {
+    const updated = assignedUsers.filter(u => u.id !== id);
+    setAssignedUsers(updated);
+    await saveAssignees(updated);
   };
 
   const pid = `PRO-${String(process.number).padStart(3, '0')}`;
@@ -398,6 +435,55 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
                 </button>
               )}
             </div>
+          </div>
+
+          {/* Assigned Users */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
+              <UserCheck className="w-3.5 h-3.5" />
+              Assigned Users
+              {assigneesSaving && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
+            </div>
+            {assignedUsers.length === 0 && !showUserPicker && (
+              <p className="text-xs text-muted-foreground/50 italic">No users assigned yet.</p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {assignedUsers.map(u => (
+                <span key={u.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">
+                  <UserCheck className="w-3 h-3 shrink-0" />
+                  {u.name}
+                  <button onClick={() => removeAssignee(u.id)} className="ml-0.5 hover:text-red-400 transition-colors"><X className="w-3 h-3" /></button>
+                </span>
+              ))}
+            </div>
+            {showUserPicker ? (
+              <div className="rounded-lg border border-border bg-background shadow-md overflow-hidden">
+                {allUsers.filter(u => !assignedUsers.find(au => au.id === u.id)).length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">All users already assigned.</div>
+                ) : allUsers.filter(u => !assignedUsers.find(au => au.id === u.id)).map(u => (
+                  <button
+                    key={u.id}
+                    onClick={() => addAssignee(u)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary/60 transition-colors text-left"
+                  >
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="font-medium text-foreground">{u.name}</span>
+                      <span className="text-muted-foreground/60 ml-1.5">{u.email}</span>
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/50 capitalize shrink-0">{u.role}</span>
+                  </button>
+                ))}
+                <button onClick={() => setShowUserPicker(false)} className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary/40 border-t border-border transition-colors">Cancel</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowUserPicker(true)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
+              >
+                <Plus className="w-3 h-3" />Assign a user
+              </button>
+            )}
           </div>
         </div>
       </div>

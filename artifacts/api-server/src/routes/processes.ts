@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, aiAgentsTable, workflowsTable } from "@workspace/db";
+import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, processAssignees, aiAgentsTable, workflowsTable, users } from "@workspace/db";
 import { eq, desc, max } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -422,6 +422,46 @@ router.put("/processes/:id/links", async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     req.log.error(err, "Failed to update process links");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// --- Process Assignees ---
+
+router.get("/processes/:id/assignees", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const rows = await db
+      .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+      .from(processAssignees)
+      .innerJoin(users, eq(processAssignees.userId, users.id))
+      .where(eq(processAssignees.processId, id));
+
+    res.json(rows);
+  } catch (err) {
+    req.log.error(err, "Failed to get process assignees");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/processes/:id/assignees", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+    const { userIds = [] } = req.body as { userIds?: number[] };
+
+    await db.delete(processAssignees).where(eq(processAssignees.processId, id));
+
+    if (userIds.length > 0) {
+      await db.insert(processAssignees).values(userIds.map(userId => ({ processId: id, userId })));
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    req.log.error(err, "Failed to update process assignees");
     res.status(500).json({ error: "Internal server error" });
   }
 });
