@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 
 export const auditLogsTable = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
@@ -12,6 +12,7 @@ export const auditLogsTable = pgTable("audit_logs", {
   newValue: text("new_value"),
   user: text("user").notNull().default("Jane Doe"),
   description: text("description"),
+  userId: integer("user_id"),
 });
 
 export type AuditLog = typeof auditLogsTable.$inferSelect;

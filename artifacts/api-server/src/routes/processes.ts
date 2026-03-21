@@ -24,6 +24,7 @@ async function writeAuditLog(data: {
   newValue?: string;
   description?: string;
   user?: string;
+  userId?: number | null;
 }) {
   try {
     await db.insert(auditLogsTable).values({
@@ -35,7 +36,8 @@ async function writeAuditLog(data: {
       oldValue: data.oldValue,
       newValue: data.newValue,
       description: data.description,
-      user: data.user ?? "Jane Doe",
+      user: data.user ?? "System",
+      userId: data.userId ?? null,
     });
   } catch { /* non-critical */ }
 }
@@ -74,7 +76,7 @@ router.get("/processes/export", async (req, res) => {
     XLSX.utils.book_append_sheet(wb, ws, "Processes");
     const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
-    await writeAuditLog({ action: "export", entityType: "process", description: `Exported ${processes.length} processes to Excel` });
+    await writeAuditLog({ action: "export", entityType: "process", description: `Exported ${processes.length} processes to Excel`, userId: req.auth?.userId });
 
     res.setHeader("Content-Disposition", "attachment; filename=nonprofit-processes.xlsx");
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -131,7 +133,7 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
       }
     }
 
-    await writeAuditLog({ action: "import", entityType: "process", description: `Imported ${inserted} new, ${updated} updated processes from Excel` });
+    await writeAuditLog({ action: "import", entityType: "process", description: `Imported ${inserted} new, ${updated} updated processes from Excel`, userId: req.auth?.userId });
 
     res.json({ inserted, updated, total: inserted + updated });
   } catch (err) {
@@ -198,6 +200,7 @@ Return ONLY a valid JSON object with exactly these keys:
       entityId: String(id),
       entityName: name,
       description: `AI evaluated "${name}" — score: ${evaluation.score}/10, rating: ${evaluation.rating}`,
+      userId: req.auth?.userId,
     });
 
     res.json(updated);
@@ -279,6 +282,7 @@ Return ONLY a valid JSON object with these exact keys (include ALL keys, keep ex
       entityId: String(id),
       entityName: name,
       description: `AI populated ${Object.keys(updateData).length} blank fields for "${name}"`,
+      userId: req.auth?.userId,
     });
 
     res.json(updated);
@@ -339,6 +343,7 @@ router.post("/processes", async (req, res) => {
       entityId: String(created.id),
       entityName: created.processName || created.processDescription,
       description: `Created new process #${created.number}: "${created.processName || created.processDescription}" in ${created.category}`,
+      userId: req.auth?.userId,
     });
 
     res.status(201).json(created);
@@ -417,6 +422,7 @@ router.put("/processes/:id", async (req, res) => {
           oldValue: oldVal.length > 200 ? oldVal.slice(0, 197) + "..." : oldVal,
           newValue: newVal.length > 200 ? newVal.slice(0, 197) + "..." : newVal,
           description: `Updated "${field}" on process #${before.number}`,
+          userId: req.auth?.userId,
         });
       }
     }
@@ -444,6 +450,7 @@ router.delete("/processes/:id", async (req, res) => {
       entityId: String(id),
       entityName: before?.processName || before?.processDescription,
       description: `Deleted process #${before?.number}: "${before?.processName || before?.processDescription}"`,
+      userId: req.auth?.userId,
     });
 
     res.json({ success: true });

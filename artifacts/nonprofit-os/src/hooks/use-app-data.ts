@@ -1,16 +1,16 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { 
   useListProcesses, 
   useUpdateProcess,
   useDeleteProcess,
   useCreateProcess,
   useAiPopulateProcess,
-  useListAuditLogs,
   useListCategories,
   getListProcessesQueryKey,
   getListAuditLogsQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/AuthContext";
 
 export function useProcessesData() {
   return useListProcesses();
@@ -21,7 +21,15 @@ export function useCategoriesData() {
 }
 
 export function useAuditLogsData(limit = 200) {
-  return useListAuditLogs({ limit });
+  const { fetchHeaders } = useUser();
+  return useQuery({
+    queryKey: [...getListAuditLogsQueryKey(), limit],
+    queryFn: async () => {
+      const res = await fetch(`/api/audit-logs?limit=${limit}`, { headers: fetchHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
 }
 
 export function useOptimisticUpdateProcess() {

@@ -1,18 +1,37 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { auditLogsTable } from "@workspace/db";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth.js";
 
 const router: IRouter = Router();
 
 router.get("/audit-logs", async (req, res) => {
   try {
     const limit = Math.min(parseInt(String(req.query.limit ?? "200"), 10), 500);
-    const logs = await db
-      .select()
-      .from(auditLogsTable)
-      .orderBy(desc(auditLogsTable.timestamp))
-      .limit(limit);
+    const role = req.auth?.role;
+    const userId = req.auth?.userId;
+
+    if (!req.auth) {
+      return res.json([]);
+    }
+
+    let logs;
+    if (role === 'admin' || role === 'superuser') {
+      logs = await db
+        .select()
+        .from(auditLogsTable)
+        .orderBy(desc(auditLogsTable.timestamp))
+        .limit(limit);
+    } else {
+      logs = await db
+        .select()
+        .from(auditLogsTable)
+        .where(eq(auditLogsTable.userId, userId!))
+        .orderBy(desc(auditLogsTable.timestamp))
+        .limit(limit);
+    }
+
     res.json(logs);
   } catch (err) {
     req.log.error(err, "Failed to list audit logs");
@@ -41,8 +60,9 @@ router.post("/audit-logs", async (req, res) => {
       fieldChanged: body.fieldChanged,
       oldValue: body.oldValue,
       newValue: body.newValue,
-      user: body.user ?? "Jane Doe",
+      user: body.user ?? "System",
       description: body.description,
+      userId: req.auth?.userId ?? null,
     }).returning();
     res.status(201).json(log);
   } catch (err) {
