@@ -7,6 +7,7 @@ import {
   db, processesTable,
   aiAgentsTable, agentKnowledgeUrlsTable, agentKnowledgeFilesTable,
   agentSchedulesTable, agentRunLogsTable,
+  agentModuleAccess, agentAllowedCategories, agentAllowedProcesses, agentFieldPermissions,
 } from "@workspace/db";
 import { eq, desc, max, sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -534,5 +535,68 @@ async function runScheduler() {
 }
 
 setInterval(runScheduler, 60_000);
+
+// ── Agent Permissions ──────────────────────────────────────────────────────────
+
+router.get("/:id/permissions", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [modules, categories, procs, fields] = await Promise.all([
+      db.select().from(agentModuleAccess).where(eq(agentModuleAccess.agentId, id)),
+      db.select().from(agentAllowedCategories).where(eq(agentAllowedCategories.agentId, id)),
+      db.select().from(agentAllowedProcesses).where(eq(agentAllowedProcesses.agentId, id)),
+      db.select().from(agentFieldPermissions).where(eq(agentFieldPermissions.agentId, id)),
+    ]);
+    res.json({ modules, categories, processes: procs, fields });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/:id/permissions/modules", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { modules } = req.body as { modules: { module: string; hasAccess: boolean }[] };
+    await db.delete(agentModuleAccess).where(eq(agentModuleAccess.agentId, id));
+    if (modules?.length) {
+      await db.insert(agentModuleAccess).values(modules.map(m => ({ agentId: id, module: m.module, hasAccess: m.hasAccess })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/:id/permissions/categories", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { categories } = req.body as { categories: string[] };
+    await db.delete(agentAllowedCategories).where(eq(agentAllowedCategories.agentId, id));
+    if (categories?.length) {
+      await db.insert(agentAllowedCategories).values(categories.map(c => ({ agentId: id, category: c })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/:id/permissions/processes", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { processes } = req.body as { processes: { processId: number; canEdit: boolean }[] };
+    await db.delete(agentAllowedProcesses).where(eq(agentAllowedProcesses.agentId, id));
+    if (processes?.length) {
+      await db.insert(agentAllowedProcesses).values(processes.map(p => ({ agentId: id, processId: p.processId, canEdit: p.canEdit })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/:id/permissions/field-permissions", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { permissions } = req.body as { permissions: { catalogueType: string; fieldKey: string; canView: boolean; canEdit: boolean }[] };
+    await db.delete(agentFieldPermissions).where(eq(agentFieldPermissions.agentId, id));
+    if (permissions?.length) {
+      await db.insert(agentFieldPermissions).values(permissions.map(p => ({ agentId: id, catalogueType: p.catalogueType, fieldKey: p.fieldKey, canView: p.canView, canEdit: p.canEdit })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
 
 export default router;

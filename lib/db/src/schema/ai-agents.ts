@@ -52,6 +52,37 @@ export const agentRunLogsTable = pgTable("agent_run_logs", {
   error: text("error"),
 });
 
+// ── Agent Permissions ──────────────────────────────────────────────────────────
+
+export const agentModuleAccess = pgTable('agent_module_access', {
+  id: serial('id').primaryKey(),
+  agentId: integer('agent_id').notNull().references(() => aiAgentsTable.id, { onDelete: 'cascade' }),
+  module: text('module').notNull(),
+  hasAccess: boolean('has_access').notNull().default(true),
+});
+
+export const agentAllowedCategories = pgTable('agent_allowed_categories', {
+  id: serial('id').primaryKey(),
+  agentId: integer('agent_id').notNull().references(() => aiAgentsTable.id, { onDelete: 'cascade' }),
+  category: text('category').notNull(),
+});
+
+export const agentAllowedProcesses = pgTable('agent_allowed_processes', {
+  id: serial('id').primaryKey(),
+  agentId: integer('agent_id').notNull().references(() => aiAgentsTable.id, { onDelete: 'cascade' }),
+  processId: integer('process_id').notNull(),
+  canEdit: boolean('can_edit').notNull().default(false),
+});
+
+export const agentFieldPermissions = pgTable('agent_field_permissions', {
+  id: serial('id').primaryKey(),
+  agentId: integer('agent_id').notNull().references(() => aiAgentsTable.id, { onDelete: 'cascade' }),
+  catalogueType: text('catalogue_type').notNull(),
+  fieldKey: text('field_key').notNull(),
+  canView: boolean('can_view').notNull().default(true),
+  canEdit: boolean('can_edit').notNull().default(true),
+});
+
 export type AiAgent = typeof aiAgentsTable.$inferSelect;
 export type AgentKnowledgeUrl = typeof agentKnowledgeUrlsTable.$inferSelect;
 export type AgentKnowledgeFile = typeof agentKnowledgeFilesTable.$inferSelect;

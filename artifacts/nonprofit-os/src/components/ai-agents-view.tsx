@@ -3,6 +3,7 @@ import {
   Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
+  Shield, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -886,7 +887,291 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-type Tab = "overview" | "knowledge" | "schedule" | "run";
+// ── Permission constants ───────────────────────────────────────────────────────
+
+const AP_MODULES = [
+  { key: 'table',       label: 'Master Catalogue' },
+  { key: 'tree',        label: 'Master Map' },
+  { key: 'portfolio',   label: 'Process Catalogue' },
+  { key: 'process-map', label: 'Process Map' },
+  { key: 'governance',  label: 'Governance' },
+  { key: 'workflows',   label: 'Workflows' },
+  { key: 'ai-agents',   label: 'AI Agents' },
+  { key: 'connectors',  label: 'Connectors' },
+  { key: 'dashboards',  label: 'Dashboards' },
+  { key: 'reports',     label: 'Reports' },
+  { key: 'audit-logs',  label: 'Audit & Logs' },
+  { key: 'settings',    label: 'Settings' },
+  { key: 'users',       label: 'Admin: Users' },
+];
+
+const AP_CATEGORIES = [
+  'Strategy & Governance', 'Technology & Data', 'Programs & Services',
+  'Finance & Compliance', 'HR & Talent', 'Fundraising & Development',
+  'Marketing & Communications', 'Operations & Facilities',
+];
+
+const AP_FIELDS: Record<string, { key: string; label: string }[]> = {
+  master: [
+    { key: 'number', label: 'Number' }, { key: 'category', label: 'Category' },
+    { key: 'processName', label: 'Process Name' }, { key: 'processDescription', label: 'Description' },
+    { key: 'aiAgent', label: 'AI Agent' }, { key: 'aiAgentActive', label: 'AI Agent Active' },
+    { key: 'purpose', label: 'Purpose' }, { key: 'inputs', label: 'Inputs' },
+    { key: 'outputs', label: 'Outputs' }, { key: 'humanInTheLoop', label: 'Human in the Loop' },
+    { key: 'kpi', label: 'KPI' }, { key: 'estimatedValueImpact', label: 'Value Impact' },
+    { key: 'industryBenchmark', label: 'Benchmark' }, { key: 'included', label: 'Included' },
+    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Achievement' },
+    { key: 'trafficLight', label: 'Traffic Light' },
+  ],
+  process: [
+    { key: 'number', label: 'Number' }, { key: 'category', label: 'Category' },
+    { key: 'processName', label: 'Process Name' }, { key: 'processDescription', label: 'Description' },
+    { key: 'aiAgent', label: 'AI Agent' }, { key: 'included', label: 'Included' },
+    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Achievement' },
+    { key: 'trafficLight', label: 'Traffic Light' },
+  ],
+};
+
+function AgentToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button type="button" onClick={() => onChange(!checked)}
+      className={cn('relative inline-flex h-5 w-9 rounded-full border-2 border-transparent transition-colors focus:outline-none', checked ? 'bg-primary' : 'bg-muted')}>
+      <span className={cn('inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform', checked ? 'translate-x-4' : 'translate-x-0')} />
+    </button>
+  );
+}
+
+type AgentPermTab = 'modules' | 'data-access' | 'fields';
+
+interface ProcessMetaAP { id: number; processName: string; category: string; }
+
+function AgentPermissionsPanel({ agentId }: { agentId: number }) {
+  const [permTab, setPermTab] = useState<AgentPermTab>('modules');
+  const [moduleAccess, setModuleAccess] = useState<Record<string, boolean>>({});
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [scope, setScope] = useState<'all' | 'categories' | 'processes'>('all');
+  const [processList, setProcessList] = useState<ProcessMetaAP[]>([]);
+  const [processAccess, setProcessAccess] = useState<Map<number, boolean>>(new Map());
+  const [processSearch, setProcessSearch] = useState('');
+  const [fieldPerms, setFieldPerms] = useState<Record<string, { canView: boolean; canEdit: boolean }>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  useEffect(() => {
+    fetch(`${API}/ai-agents/${agentId}/permissions`).then(r => r.json()).then(p => {
+      const mmap: Record<string, boolean> = Object.fromEntries(AP_MODULES.map(m => [m.key, true]));
+      p.modules.forEach((m: any) => { mmap[m.module] = m.hasAccess; });
+      setModuleAccess(mmap);
+      setSelectedCategories(new Set(p.categories.map((c: any) => c.category)));
+      setProcessAccess(new Map(p.processes.map((pr: any) => [pr.processId, pr.canEdit])));
+      const allFields = Object.entries(AP_FIELDS).flatMap(([type, fs]) => fs.map(f => ({ type, ...f })));
+      const fmap: Record<string, { canView: boolean; canEdit: boolean }> = {};
+      allFields.forEach(f => { fmap[`${f.type}:${f.key}`] = { canView: true, canEdit: true }; });
+      p.fields.forEach((f: any) => { fmap[`${f.catalogueType}:${f.fieldKey}`] = { canView: f.canView, canEdit: f.canEdit }; });
+      setFieldPerms(fmap);
+    });
+  }, [agentId]);
+
+  useEffect(() => {
+    if (scope === 'processes' && processList.length === 0)
+      fetch(`${API}/processes`).then(r => r.json()).then(setProcessList);
+  }, [scope]);
+
+  const saveModules = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/ai-agents/${agentId}/permissions/modules`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modules: AP_MODULES.map(m => ({ module: m.key, hasAccess: moduleAccess[m.key] ?? true })) }),
+      });
+      setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);
+    } finally { setSaving(false); }
+  };
+
+  const saveDataAccess = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/ai-agents/${agentId}/permissions/categories`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: scope === 'categories' ? Array.from(selectedCategories) : [] }),
+      });
+      await fetch(`${API}/ai-agents/${agentId}/permissions/processes`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ processes: scope === 'processes' ? Array.from(processAccess.entries()).map(([processId, canEdit]) => ({ processId, canEdit })) : [] }),
+      });
+      setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);
+    } finally { setSaving(false); }
+  };
+
+  const saveFields = async () => {
+    setSaving(true);
+    try {
+      const allFields = Object.entries(AP_FIELDS).flatMap(([type, fs]) => fs.map(f => ({ type, ...f })));
+      const permissions = allFields.map(f => {
+        const v = fieldPerms[`${f.type}:${f.key}`] ?? { canView: true, canEdit: true };
+        return { catalogueType: f.type, fieldKey: f.key, canView: v.canView, canEdit: v.canEdit };
+      });
+      await fetch(`${API}/ai-agents/${agentId}/permissions/field-permissions`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions }),
+      });
+      setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);
+    } finally { setSaving(false); }
+  };
+
+  const visProcs = processList.filter(p =>
+    !processSearch || p.processName.toLowerCase().includes(processSearch.toLowerCase()) || p.category.toLowerCase().includes(processSearch.toLowerCase())
+  );
+  const catProcs = (cat: string) => visProcs.filter(p => p.category === cat);
+
+  return (
+    <div className="space-y-4">
+      {/* Permission subtabs */}
+      <div className="flex items-center gap-1">
+        {(['modules', 'data-access', 'fields'] as AgentPermTab[]).map(t => (
+          <button key={t} onClick={() => setPermTab(t)}
+            className={cn('px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors capitalize', permTab === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary')}>
+            {t === 'data-access' ? 'Data Access' : t.charAt(0).toUpperCase() + t.slice(1)}
+          </button>
+        ))}
+        {saveMsg && <span className="ml-3 text-xs text-green-400 font-medium">{saveMsg}</span>}
+      </div>
+
+      {/* Modules tab */}
+      {permTab === 'modules' && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            <button onClick={() => setModuleAccess(Object.fromEntries(AP_MODULES.map(m => [m.key, true])))}
+              className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 font-medium">All On</button>
+            <button onClick={() => setModuleAccess(Object.fromEntries(AP_MODULES.map(m => [m.key, false])))}
+              className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-muted-foreground font-medium">All Off</button>
+          </div>
+          <div className="border border-border rounded-xl overflow-hidden">
+            {AP_MODULES.map(m => (
+              <div key={m.key} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors border-b border-border last:border-0">
+                <span className="text-sm font-medium">{m.label}</span>
+                <AgentToggle checked={moduleAccess[m.key] ?? true} onChange={v => setModuleAccess(a => ({ ...a, [m.key]: v }))} />
+              </div>
+            ))}
+          </div>
+          <button onClick={saveModules} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Save Module Access
+          </button>
+        </div>
+      )}
+
+      {/* Data Access tab */}
+      {permTab === 'data-access' && (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Scope</div>
+            {(['all', 'categories', 'processes'] as const).map(s => (
+              <label key={s} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary/40 cursor-pointer transition-colors">
+                <input type="radio" name="agentScope" checked={scope === s} onChange={() => setScope(s)} className="w-3.5 h-3.5 accent-primary" />
+                <div>
+                  <div className="text-sm font-medium capitalize">{s === 'all' ? 'All processes' : s === 'categories' ? 'Selected categories' : 'Selected processes'}</div>
+                  <div className="text-xs text-muted-foreground">{s === 'all' ? 'Full access to all processes' : s === 'categories' ? 'Restrict to chosen categories' : 'Restrict to specific processes'}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          {scope === 'categories' && (
+            <div className="border border-border rounded-xl overflow-hidden">
+              {AP_CATEGORIES.map(cat => (
+                <label key={cat} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                  <input type="checkbox" checked={selectedCategories.has(cat)} onChange={() => {
+                    setSelectedCategories(s => { const n = new Set(s); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; });
+                  }} className="w-3.5 h-3.5 rounded accent-primary" />
+                  <span className="text-sm">{cat}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {scope === 'processes' && (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <input value={processSearch} onChange={e => setProcessSearch(e.target.value)} placeholder="Search processes…"
+                  className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              {AP_CATEGORIES.filter(cat => catProcs(cat).length > 0).map(cat => (
+                <div key={cat} className="space-y-1">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">{cat}</div>
+                  <div className="border border-border rounded-xl overflow-hidden">
+                    {catProcs(cat).map(p => (
+                      <div key={p.id} className="flex items-center gap-3 px-4 py-2 border-b border-border last:border-0 hover:bg-secondary/40 transition-colors">
+                        <input type="checkbox" checked={processAccess.has(p.id)} onChange={() => {
+                          setProcessAccess(m => { const n = new Map(m); if (n.has(p.id)) n.delete(p.id); else n.set(p.id, false); return n; });
+                        }} className="w-3.5 h-3.5 rounded accent-primary" />
+                        <span className="text-sm flex-1">{p.processName}</span>
+                        {processAccess.has(p.id) && (
+                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <input type="checkbox" checked={processAccess.get(p.id) ?? false} onChange={e => {
+                              setProcessAccess(m => { const n = new Map(m); n.set(p.id, e.target.checked); return n; });
+                            }} className="w-3 h-3 rounded accent-primary" /> Can Edit
+                          </label>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <button onClick={saveDataAccess} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Save Data Access
+          </button>
+        </div>
+      )}
+
+      {/* Fields tab */}
+      {permTab === 'fields' && (
+        <div className="space-y-4">
+          {Object.entries(AP_FIELDS).map(([type, fs]) => (
+            <div key={type} className="space-y-1.5">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{type === 'master' ? 'Master Catalogue' : 'Process Catalogue'}</div>
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="grid grid-cols-[1fr_80px_80px] px-4 py-2 border-b border-border bg-secondary/30">
+                  <span className="text-xs font-semibold text-muted-foreground">Field</span>
+                  <span className="text-xs font-semibold text-muted-foreground text-center">View</span>
+                  <span className="text-xs font-semibold text-muted-foreground text-center">Edit</span>
+                </div>
+                {fs.map(f => {
+                  const key = `${type}:${f.key}`;
+                  const v = fieldPerms[key] ?? { canView: true, canEdit: true };
+                  return (
+                    <div key={f.key} className="grid grid-cols-[1fr_80px_80px] items-center px-4 py-2.5 border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                      <span className="text-sm">{f.label}</span>
+                      <div className="flex justify-center">
+                        <input type="checkbox" checked={v.canView} onChange={e => setFieldPerms(fd => ({ ...fd, [key]: { ...v, canView: e.target.checked, canEdit: e.target.checked ? v.canEdit : false } }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                      </div>
+                      <div className="flex justify-center">
+                        <input type="checkbox" checked={v.canEdit} disabled={!v.canView} onChange={e => setFieldPerms(fd => ({ ...fd, [key]: { ...v, canEdit: e.target.checked } }))} className="w-3.5 h-3.5 rounded accent-primary disabled:opacity-40" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          <button onClick={saveFields} disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            Save Field Permissions
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main AI Agents View ────────────────────────────────────────────────────────
+
+type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions";
 
 export function AiAgentsView() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -1002,6 +1287,7 @@ export function AiAgentsView() {
     { id: "knowledge", label: "Knowledge", icon: <FileText className="w-3.5 h-3.5" /> },
     { id: "schedule", label: "Schedule", icon: <Calendar className="w-3.5 h-3.5" /> },
     { id: "run", label: "Run", icon: <Play className="w-3.5 h-3.5" /> },
+    { id: "permissions", label: "Permissions", icon: <Shield className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -1203,6 +1489,16 @@ export function AiAgentsView() {
             {tab === "run" && (
               <div className="max-w-2xl">
                 <RunPanel agentId={selectedAgent.id} runKey={runKey} />
+              </div>
+            )}
+            {tab === "permissions" && (
+              <div className="max-w-2xl space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Shield className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Agent Permissions</h3>
+                  <span className="text-xs text-muted-foreground">— control what this agent can access and read/write</span>
+                </div>
+                <AgentPermissionsPanel agentId={selectedAgent.id} />
               </div>
             )}
           </div>

@@ -97,16 +97,10 @@ interface ProcessMeta { id: number; processName: string; category: string; }
 type Tab = 'profile' | 'modules' | 'data-access' | 'fields' | 'org';
 type ViewTab = 'users' | 'roles' | 'org-structure';
 
-interface OrgRole { id: number; name: string; description: string; color: string; }
-interface Division { id: number; name: string; description: string; }
-interface Department { id: number; name: string; description: string; divisionId: number | null; }
-interface Project { id: number; name: string; description: string; divisionId: number | null; departmentId: number | null; }
-interface UserMemberships {
-  roles: { id: number; name: string; color: string }[];
-  divisions: { id: number; name: string }[];
-  departments: { id: number; name: string }[];
-  projects: { id: number; name: string }[];
-}
+interface Group { id: number; name: string; description: string; color: string; }
+interface Role { id: number; name: string; description: string; color: string; }
+interface Project { id: number; name: string; description: string; }
+interface UserGroups { groups: { id: number; name: string; color: string; description: string }[]; }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -1241,125 +1235,85 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
 // ── Org Tab (user detail) ─────────────────────────────────────────────────────
 
 function OrgTab({ userId }: { userId: number }) {
-  const [memberships, setMemberships] = useState<UserMemberships | null>(null);
-  const [allRoles, setAllRoles] = useState<OrgRole[]>([]);
-  const [allDivisions, setAllDivisions] = useState<Division[]>([]);
-  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
-  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [userGroups, setUserGroups] = useState<{ id: number; name: string; color: string; description: string }[]>([]);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [groupIds, setGroupIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
-    const [m, r, div, dep, proj] = await Promise.all([
-      fetch(`${API}/org/users/${userId}/memberships`).then(x => x.json()),
-      fetch(`${API}/org/roles`).then(x => x.json()),
-      fetch(`${API}/org/divisions`).then(x => x.json()),
-      fetch(`${API}/org/departments`).then(x => x.json()),
-      fetch(`${API}/org/projects`).then(x => x.json()),
+    const [ug, ag] = await Promise.all([
+      fetch(`${API}/org/users/${userId}/groups`).then(x => x.json()),
+      fetch(`${API}/org/groups`).then(x => x.json()),
     ]);
-    setMemberships(m);
-    setAllRoles(r);
-    setAllDivisions(div);
-    setAllDepartments(dep);
-    setAllProjects(proj);
+    setUserGroups(ug);
+    setAllGroups(ag);
+    setGroupIds(new Set(ug.map((g: any) => g.id)));
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const [sel, setSel] = useState<{
-    roleIds: Set<number>; divisionIds: Set<number>; departmentIds: Set<number>; projectIds: Set<number>;
-  }>({ roleIds: new Set(), divisionIds: new Set(), departmentIds: new Set(), projectIds: new Set() });
-
-  useEffect(() => {
-    if (!memberships) return;
-    setSel({
-      roleIds: new Set(memberships.roles.map(r => r.id)),
-      divisionIds: new Set(memberships.divisions.map(d => d.id)),
-      departmentIds: new Set(memberships.departments.map(d => d.id)),
-      projectIds: new Set(memberships.projects.map(p => p.id)),
-    });
-  }, [memberships]);
-
-  const toggle = (kind: 'roleIds' | 'divisionIds' | 'departmentIds' | 'projectIds', id: number) => {
-    setSel(s => {
-      const next = new Set(s[kind]);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return { ...s, [kind]: next };
-    });
+  const toggle = (id: number) => {
+    setGroupIds(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/org/users/${userId}/memberships`, {
+      await fetch(`${API}/org/users/${userId}/groups`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          roleIds: Array.from(sel.roleIds),
-          divisionIds: Array.from(sel.divisionIds),
-          departmentIds: Array.from(sel.departmentIds),
-          projectIds: Array.from(sel.projectIds),
-        }),
+        body: JSON.stringify({ groupIds: Array.from(groupIds) }),
       });
       setSaveMsg('Saved ✓');
       setTimeout(() => setSaveMsg(''), 2000);
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   };
 
-  if (!memberships) return (
-    <div className="flex items-center justify-center py-20">
-      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-    </div>
-  );
-
-  const Section = ({ label, icon: Icon, children, empty }: { label: string; icon: React.ElementType; children: React.ReactNode; empty: string }) => (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
-      </div>
-      {React.Children.count(children) === 0
-        ? <div className="text-xs text-muted-foreground pl-5 py-1 italic">{empty}</div>
-        : <div className="space-y-1 pl-5">{children}</div>
-      }
-    </div>
-  );
-
-  const CheckItem = ({ id, label, kind }: { id: number; label: string; kind: 'roleIds' | 'divisionIds' | 'departmentIds' | 'projectIds' }) => (
-    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-secondary/40 cursor-pointer transition-colors">
-      <input type="checkbox" checked={sel[kind].has(id)} onChange={() => toggle(kind, id)} className="w-3.5 h-3.5 rounded accent-primary" />
-      <span className="text-sm">{label}</span>
-    </label>
-  );
-
   return (
-    <div className="p-6 space-y-6">
-      {/* Roles */}
-      <Section label="Roles" icon={Tag} empty={allRoles.length === 0 ? 'No roles defined yet' : 'No roles assigned'}>
-        {allRoles.map(r => <CheckItem key={r.id} id={r.id} label={r.name} kind="roleIds" />)}
-      </Section>
+    <div className="p-6 space-y-5 max-w-lg">
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Network className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Groups ({groupIds.size} assigned)</span>
+        </div>
+        {allGroups.length === 0 ? (
+          <div className="text-xs text-muted-foreground pl-5 py-2 italic">No groups defined yet — create groups in the Org Structure tab</div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-hidden">
+            {allGroups.map(g => (
+              <label key={g.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                <input type="checkbox" checked={groupIds.has(g.id)} onChange={() => toggle(g.id)} className="w-3.5 h-3.5 rounded accent-primary" />
+                <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: g.color || 'hsl(var(--secondary))' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{g.name}</div>
+                  {g.description && <div className="text-xs text-muted-foreground">{g.description}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Divisions */}
-      <Section label="Divisions" icon={Building2} empty={allDivisions.length === 0 ? 'No divisions defined yet' : 'No divisions assigned'}>
-        {allDivisions.map(d => <CheckItem key={d.id} id={d.id} label={d.name} kind="divisionIds" />)}
-      </Section>
+      {userGroups.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roles via Groups</div>
+          <div className="text-xs text-muted-foreground">Permissions are inherited from the Roles that the user's groups belong to.</div>
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {userGroups.map(g => (
+              <span key={g.id} className="text-xs px-2.5 py-1 rounded-full font-medium border"
+                style={{ background: g.color ? `${g.color}20` : 'hsl(var(--secondary))', color: g.color || 'hsl(var(--muted-foreground))', borderColor: g.color ? `${g.color}40` : 'hsl(var(--border))' }}>
+                {g.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
-      {/* Departments */}
-      <Section label="Departments" icon={Layers} empty={allDepartments.length === 0 ? 'No departments defined yet' : 'No departments assigned'}>
-        {allDepartments.map(d => <CheckItem key={d.id} id={d.id} label={d.name} kind="departmentIds" />)}
-      </Section>
-
-      {/* Projects */}
-      <Section label="Projects" icon={FolderOpen} empty={allProjects.length === 0 ? 'No projects defined yet' : 'No projects assigned'}>
-        {allProjects.map(p => <CheckItem key={p.id} id={p.id} label={p.name} kind="projectIds" />)}
-      </Section>
-
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 pt-1">
         <button onClick={save} disabled={saving}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-          Save Org Assignments
+          Save Group Assignments
         </button>
         {saveMsg && <span className="text-xs text-green-400 font-medium">{saveMsg}</span>}
       </div>
@@ -1367,61 +1321,296 @@ function OrgTab({ userId }: { userId: number }) {
   );
 }
 
+// ── Role Permissions Detail ────────────────────────────────────────────────────
+
+type RoleTab = 'overview' | 'modules' | 'data-access' | 'fields';
+
+function RoleModulesTab({ roleId }: { roleId: number }) {
+  const [access, setAccess] = useState<Record<string, boolean>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+      const map: Record<string, boolean> = Object.fromEntries(MODULES.map(m => [m.key, true]));
+      p.modules.forEach((m: any) => { map[m.module] = m.hasAccess; });
+      setAccess(map);
+    });
+  }, [roleId]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/org/roles/${roleId}/modules`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modules: MODULES.map(m => ({ module: m.key, hasAccess: access[m.key] ?? true })) }),
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex gap-2">
+        <button onClick={() => setAccess(Object.fromEntries(MODULES.map(m => [m.key, true])))}
+          className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">All On</button>
+        <button onClick={() => setAccess(Object.fromEntries(MODULES.map(m => [m.key, false])))}
+          className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-muted-foreground font-medium transition-colors">All Off</button>
+      </div>
+      <div className="space-y-1 border border-border rounded-xl overflow-hidden">
+        {MODULES.map(m => (
+          <div key={m.key} className="flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors border-b border-border last:border-0">
+            <span className="text-sm font-medium">{m.label}</span>
+            <Toggle checked={access[m.key] ?? true} onChange={v => setAccess(a => ({ ...a, [m.key]: v }))} />
+          </div>
+        ))}
+      </div>
+      <button onClick={save} disabled={saving}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+        Save Module Access
+      </button>
+    </div>
+  );
+}
+
+function RoleDataAccessTab({ roleId }: { roleId: number }) {
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [scope, setScope] = useState<'all' | 'categories' | 'processes'>('all');
+  const [processList, setProcessList] = useState<ProcessMeta[]>([]);
+  const [processAccess, setProcessAccess] = useState<Map<number, boolean>>(new Map());
+  const [processSearch, setProcessSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+      setSelectedCategories(new Set(p.categories.map((c: any) => c.category)));
+      setProcessAccess(new Map(p.processes.map((pr: any) => [pr.processId, pr.canEdit])));
+    });
+  }, [roleId]);
+
+  useEffect(() => {
+    if (scope === 'processes' && processList.length === 0)
+      fetch(`${API}/processes`).then(r => r.json()).then(setProcessList);
+  }, [scope]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/org/roles/${roleId}/categories`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categories: scope === 'categories' ? Array.from(selectedCategories) : [] }),
+      });
+      await fetch(`${API}/org/roles/${roleId}/processes`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ processes: scope === 'processes' ? Array.from(processAccess.entries()).map(([processId, canEdit]) => ({ processId, canEdit })) : [] }),
+      });
+    } finally { setSaving(false); }
+  };
+
+  const visibleProcesses = processList.filter(p =>
+    !processSearch || p.processName.toLowerCase().includes(processSearch.toLowerCase()) || p.category.toLowerCase().includes(processSearch.toLowerCase())
+  );
+  const categoryProcesses = (cat: string) => visibleProcesses.filter(p => p.category === cat);
+
+  return (
+    <div className="p-5 space-y-5">
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Scope</div>
+        {(['all', 'categories', 'processes'] as const).map(s => (
+          <label key={s} className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-secondary/40 cursor-pointer transition-colors">
+            <input type="radio" name="scope" checked={scope === s} onChange={() => setScope(s)} className="w-3.5 h-3.5 accent-primary" />
+            <div>
+              <div className="text-sm font-medium capitalize">{s === 'all' ? 'All processes' : s === 'categories' ? 'Selected categories' : 'Selected processes'}</div>
+              <div className="text-xs text-muted-foreground">{s === 'all' ? 'Full access to all processes' : s === 'categories' ? 'Restrict to chosen categories' : 'Restrict to specific processes'}</div>
+            </div>
+          </label>
+        ))}
+      </div>
+
+      {scope === 'categories' && (
+        <div className="space-y-1 border border-border rounded-xl overflow-hidden">
+          {CATEGORIES.map(cat => (
+            <label key={cat} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+              <input type="checkbox" checked={selectedCategories.has(cat)} onChange={() => {
+                setSelectedCategories(s => { const n = new Set(s); if (n.has(cat)) n.delete(cat); else n.add(cat); return n; });
+              }} className="w-3.5 h-3.5 rounded accent-primary" />
+              <span className="text-sm">{cat}</span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {scope === 'processes' && (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input value={processSearch} onChange={e => setProcessSearch(e.target.value)}
+              placeholder="Search processes…"
+              className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { const m = new Map<number, boolean>(); visibleProcesses.forEach(p => m.set(p.id, false)); setProcessAccess(m); }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">Select All</button>
+            <button onClick={() => { const m = new Map(processAccess); visibleProcesses.forEach(p => m.delete(p.id)); setProcessAccess(m); }}
+              className="text-xs px-2.5 py-1 rounded-lg bg-secondary hover:bg-secondary/80 text-muted-foreground font-medium transition-colors">Deselect All</button>
+          </div>
+          {CATEGORIES.filter(cat => categoryProcesses(cat).length > 0).map(cat => (
+            <div key={cat} className="space-y-1">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">{cat}</div>
+              <div className="border border-border rounded-xl overflow-hidden">
+                {categoryProcesses(cat).map(p => (
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-2 border-b border-border last:border-0 hover:bg-secondary/40 transition-colors">
+                    <input type="checkbox" checked={processAccess.has(p.id)} onChange={() => {
+                      setProcessAccess(m => { const n = new Map(m); if (n.has(p.id)) n.delete(p.id); else n.set(p.id, false); return n; });
+                    }} className="w-3.5 h-3.5 rounded accent-primary" />
+                    <span className="text-sm flex-1">{p.processName}</span>
+                    {processAccess.has(p.id) && (
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input type="checkbox" checked={processAccess.get(p.id) ?? false} onChange={e => {
+                          setProcessAccess(m => { const n = new Map(m); n.set(p.id, e.target.checked); return n; });
+                        }} className="w-3 h-3 rounded accent-primary" />
+                        Can Edit
+                      </label>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <button onClick={save} disabled={saving}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+        Save Data Access
+      </button>
+    </div>
+  );
+}
+
+function RoleFieldsTab({ roleId }: { roleId: number }) {
+  const [fields, setFields] = useState<Record<string, { canView: boolean; canEdit: boolean }>>({});
+  const [saving, setSaving] = useState(false);
+  const allFields = Object.entries(CATALOGUE_FIELDS).flatMap(([type, fs]) => fs.map(f => ({ type, ...f })));
+
+  useEffect(() => {
+    fetch(`${API}/org/roles/${roleId}/permissions`).then(r => r.json()).then(p => {
+      const m: Record<string, { canView: boolean; canEdit: boolean }> = {};
+      allFields.forEach(f => { m[`${f.type}:${f.key}`] = { canView: true, canEdit: true }; });
+      p.fields.forEach((f: any) => { m[`${f.catalogueType}:${f.fieldKey}`] = { canView: f.canView, canEdit: f.canEdit }; });
+      setFields(m);
+    });
+  }, [roleId]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const permissions = allFields.map(f => {
+        const v = fields[`${f.type}:${f.key}`] ?? { canView: true, canEdit: true };
+        return { catalogueType: f.type, fieldKey: f.key, canView: v.canView, canEdit: v.canEdit };
+      });
+      await fetch(`${API}/org/roles/${roleId}/field-permissions`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ permissions }),
+      });
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="p-5 space-y-5">
+      {Object.entries(CATALOGUE_FIELDS).map(([type, fs]) => (
+        <div key={type} className="space-y-1.5">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{type === 'master' ? 'Master Catalogue' : 'Process Catalogue'}</div>
+          <div className="border border-border rounded-xl overflow-hidden">
+            <div className="grid grid-cols-[1fr_80px_80px] px-4 py-2 border-b border-border bg-secondary/30">
+              <span className="text-xs font-semibold text-muted-foreground">Field</span>
+              <span className="text-xs font-semibold text-muted-foreground text-center">View</span>
+              <span className="text-xs font-semibold text-muted-foreground text-center">Edit</span>
+            </div>
+            {fs.map(f => {
+              const key = `${type}:${f.key}`;
+              const v = fields[key] ?? { canView: true, canEdit: true };
+              return (
+                <div key={f.key} className="grid grid-cols-[1fr_80px_80px] items-center px-4 py-2.5 border-b border-border last:border-0 hover:bg-secondary/30 transition-colors">
+                  <span className="text-sm">{f.label}</span>
+                  <div className="flex justify-center">
+                    <input type="checkbox" checked={v.canView} onChange={e => setFields(fd => ({ ...fd, [key]: { ...v, canView: e.target.checked, canEdit: e.target.checked ? v.canEdit : false } }))} className="w-3.5 h-3.5 rounded accent-primary" />
+                  </div>
+                  <div className="flex justify-center">
+                    <input type="checkbox" checked={v.canEdit} disabled={!v.canView} onChange={e => setFields(fd => ({ ...fd, [key]: { ...v, canEdit: e.target.checked } }))} className="w-3.5 h-3.5 rounded accent-primary disabled:opacity-40" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <button onClick={save} disabled={saving}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+        {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+        Save Field Permissions
+      </button>
+    </div>
+  );
+}
+
 // ── Roles View ────────────────────────────────────────────────────────────────
 
 function RolesView() {
-  const [roles, setRoles] = useState<OrgRole[]>([]);
-  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedRole, setSelectedRole] = useState<OrgRole | null>(null);
-  const [members, setMembers] = useState<{ id: number; name: string; email: string }[]>([]);
-  const [memberSel, setMemberSel] = useState<Set<number>>(new Set());
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [roleTab, setRoleTab] = useState<RoleTab>('overview');
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const [roleGroupIds, setRoleGroupIds] = useState<Set<number>>(new Set());
   const [form, setForm] = useState<{ name: string; description: string; color: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
 
+  const COLORS = ['', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, u] = await Promise.all([
+      const [r, g] = await Promise.all([
         fetch(`${API}/org/roles`).then(x => x.json()),
-        fetch(`${API}/users`).then(x => x.json()),
+        fetch(`${API}/org/groups`).then(x => x.json()),
       ]);
       setRoles(r);
-      setAllUsers(u);
+      setAllGroups(g);
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const openRole = async (role: OrgRole) => {
+  const openRole = async (role: Role) => {
     setSelectedRole(role);
+    setRoleTab('overview');
     setForm({ name: role.name, description: role.description, color: role.color });
-    const m = await fetch(`${API}/org/roles/${role.id}/members`).then(x => x.json());
-    setMembers(m);
-    setMemberSel(new Set(m.map((u: any) => u.id)));
+    const gs = await fetch(`${API}/org/roles/${role.id}/groups`).then(x => x.json());
+    setRoleGroupIds(new Set(gs.map((g: any) => g.id)));
   };
 
   const closeRole = () => { setSelectedRole(null); setForm(null); };
 
   const createRole = async () => {
-    const name = `New Role`;
-    const [row] = await fetch(`${API}/org/roles`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
-    }).then(x => x.json()).then(r => [r]);
+    const row = await fetch(`${API}/org/roles`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'New Role' }),
+    }).then(x => x.json());
     await load();
     openRole(row);
   };
 
-  const saveRole = async () => {
+  const saveOverview = async () => {
     if (!selectedRole || !form) return;
     setSaving(true);
     try {
       await fetch(`${API}/org/roles/${selectedRole.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
-      await fetch(`${API}/org/roles/${selectedRole.id}/members`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds: Array.from(memberSel) }),
+      await fetch(`${API}/org/roles/${selectedRole.id}/groups`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupIds: Array.from(roleGroupIds) }),
       });
       await load();
     } finally { setSaving(false); }
@@ -1435,16 +1624,14 @@ function RolesView() {
     await load();
   };
 
-  const COLORS = ['', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
-
   return (
     <div className="flex h-full min-h-0">
       {/* Role list */}
-      <div className={cn('flex flex-col h-full transition-all', selectedRole ? 'w-72 flex-shrink-0' : 'flex-1')}>
+      <div className={cn('flex flex-col h-full transition-all border-r border-border', selectedRole ? 'w-72 flex-shrink-0' : 'flex-1')}>
         <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
           <div>
             <h1 className="text-2xl font-display font-bold">Roles</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Group users into custom roles</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Define permission sets assigned to groups</p>
           </div>
           <button onClick={createRole} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
             <Plus className="w-4 h-4" /> Add Role
@@ -1461,13 +1648,10 @@ function RolesView() {
           ) : (
             <div className="divide-y divide-border">
               {roles.map(r => (
-                <div
-                  key={r.id}
-                  role="button" tabIndex={0}
+                <div key={r.id} role="button" tabIndex={0}
                   onKeyDown={e => { if (e.key === 'Enter') openRole(r); }}
                   onClick={() => openRole(r)}
-                  className={cn('flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors group', selectedRole?.id === r.id && 'bg-primary/5')}
-                >
+                  className={cn('flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors group', selectedRole?.id === r.id && 'bg-primary/5')}>
                   <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                     style={{ background: r.color || 'hsl(var(--secondary))', color: r.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
                     {r.name.slice(0, 2).toUpperCase()}
@@ -1500,7 +1684,8 @@ function RolesView() {
 
       {/* Role detail */}
       {selectedRole && form && (
-        <div className="flex-1 min-w-0 flex flex-col border-l border-border bg-card/40">
+        <div className="flex-1 min-w-0 flex flex-col bg-card/40">
+          {/* Header */}
           <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
@@ -1511,63 +1696,77 @@ function RolesView() {
             </div>
             <button onClick={closeRole} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {/* Name */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Name</label>
-              <input value={form.name} onChange={e => setForm(f => f && ({ ...f, name: e.target.value }))}
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-
-            {/* Description */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
-              <input value={form.description} onChange={e => setForm(f => f && ({ ...f, description: e.target.value }))}
-                placeholder="Optional description…"
-                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-
-            {/* Color */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
-              <div className="flex items-center gap-2 flex-wrap">
-                {COLORS.map(c => (
-                  <button key={c} onClick={() => setForm(f => f && ({ ...f, color: c }))}
-                    className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', form.color === c ? 'border-primary scale-110' : 'border-transparent')}
-                    style={{ background: c || 'hsl(var(--secondary))' }} />
-                ))}
-              </div>
-            </div>
-
-            {/* Members */}
-            <div className="space-y-2">
-              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Members ({memberSel.size})</div>
-              <div className="border border-border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
-                {allUsers.length === 0 ? (
-                  <div className="text-xs text-muted-foreground text-center py-4">No users available</div>
-                ) : allUsers.map(u => (
-                  <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
-                    <input type="checkbox" checked={memberSel.has(u.id)} onChange={() => {
-                      setMemberSel(s => { const n = new Set(s); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; });
-                    }} className="accent-primary" />
-                    <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-bold flex-shrink-0">
-                      {u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+          {/* Tabs */}
+          <div className="flex-none flex items-center gap-1 px-6 py-3 border-b border-border">
+            {([
+              { key: 'overview', label: 'Overview' },
+              { key: 'modules', label: 'Modules' },
+              { key: 'data-access', label: 'Data Access' },
+              { key: 'fields', label: 'Fields' },
+            ] as { key: RoleTab; label: string }[]).map(t => (
+              <button key={t.key} onClick={() => setRoleTab(t.key)}
+                className={cn('px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors', roleTab === t.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-secondary')}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div className="flex-1 overflow-y-auto">
+            {roleTab === 'overview' && (
+              <div className="p-5 space-y-5 max-w-lg">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Name</label>
+                  <input value={form.name} onChange={e => setForm(f => f && ({ ...f, name: e.target.value }))}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
+                  <input value={form.description} onChange={e => setForm(f => f && ({ ...f, description: e.target.value }))}
+                    placeholder="Optional description…"
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {COLORS.map(c => (
+                      <button key={c} onClick={() => setForm(f => f && ({ ...f, color: c }))}
+                        className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', form.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                        style={{ background: c || 'hsl(var(--secondary))' }} />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Groups with this Role ({roleGroupIds.size})</div>
+                  <div className="text-xs text-muted-foreground">Assign groups to this role to grant its permissions to all group members.</div>
+                  {allGroups.length === 0 ? (
+                    <div className="text-xs text-muted-foreground italic">No groups yet — create groups in Org Structure</div>
+                  ) : (
+                    <div className="border border-border rounded-xl overflow-hidden">
+                      {allGroups.map(g => (
+                        <label key={g.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                          <input type="checkbox" checked={roleGroupIds.has(g.id)} onChange={() => {
+                            setRoleGroupIds(s => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; });
+                          }} className="w-3.5 h-3.5 rounded accent-primary" />
+                          <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: g.color || 'hsl(var(--secondary))' }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium">{g.name}</div>
+                            {g.description && <div className="text-xs text-muted-foreground">{g.description}</div>}
+                          </div>
+                        </label>
+                      ))}
                     </div>
-                    <div>
-                      <div className="text-sm font-medium">{u.name}</div>
-                      <div className="text-xs text-muted-foreground">{u.email}</div>
-                    </div>
-                  </label>
-                ))}
+                  )}
+                </div>
+                <button onClick={saveOverview} disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Save Role
+                </button>
               </div>
-            </div>
-
-            <button onClick={saveRole} disabled={saving}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
-              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Save Role
-            </button>
+            )}
+            {roleTab === 'modules' && <RoleModulesTab key={selectedRole.id} roleId={selectedRole.id} />}
+            {roleTab === 'data-access' && <RoleDataAccessTab key={selectedRole.id} roleId={selectedRole.id} />}
+            {roleTab === 'fields' && <RoleFieldsTab key={selectedRole.id} roleId={selectedRole.id} />}
           </div>
         </div>
       )}
@@ -1575,281 +1774,258 @@ function RolesView() {
   );
 }
 
-// ── Org Structure View ────────────────────────────────────────────────────────
+// ── Org Structure View (Groups) ───────────────────────────────────────────────
 
 function OrgStructureView() {
-  const [divisions, setDivisions] = useState<Division[]>([]);
-  const [departments, setDepartments] = useState<Department[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [editTarget, setEditTarget] = useState<{ type: 'division' | 'department' | 'project'; item: Division | Department | Project } | null>(null);
-  const [editForm, setEditForm] = useState<{ name: string; description: string; divisionId?: number | null; departmentId?: number | null } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: number } | null>(null);
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
+  const [groupMemberIds, setGroupMemberIds] = useState<Set<number>>(new Set());
+  const [groupRoleIds, setGroupRoleIds] = useState<Set<number>>(new Set());
+  const [editForm, setEditForm] = useState<{ name: string; description: string; color: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', description: '', color: '' });
 
-  // Create modals
-  const [creating, setCreating] = useState<'division' | 'department' | 'project' | null>(null);
-  const [createForm, setCreateForm] = useState({ name: '', description: '', divisionId: null as number | null, departmentId: null as number | null });
+  const COLORS = ['', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [div, dep, proj] = await Promise.all([
-        fetch(`${API}/org/divisions`).then(x => x.json()),
-        fetch(`${API}/org/departments`).then(x => x.json()),
-        fetch(`${API}/org/projects`).then(x => x.json()),
+      const [g, u, r] = await Promise.all([
+        fetch(`${API}/org/groups`).then(x => x.json()),
+        fetch(`${API}/users`).then(x => x.json()),
+        fetch(`${API}/org/roles`).then(x => x.json()),
       ]);
-      setDivisions(div);
-      setDepartments(dep);
-      setProjects(proj);
+      setGroups(g);
+      setAllUsers(u);
+      setAllRoles(r);
     } finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
-  const openEdit = (type: 'division' | 'department' | 'project', item: Division | Department | Project) => {
-    setEditTarget({ type, item });
-    if (type === 'division') setEditForm({ name: item.name, description: item.description });
-    else if (type === 'department') setEditForm({ name: item.name, description: item.description, divisionId: (item as Department).divisionId });
-    else setEditForm({ name: item.name, description: item.description, divisionId: (item as Project).divisionId, departmentId: (item as Project).departmentId });
+  const openGroup = async (group: Group) => {
+    setSelectedGroup(group);
+    setEditForm({ name: group.name, description: group.description, color: group.color });
+    const [members, roles] = await Promise.all([
+      fetch(`${API}/org/groups/${group.id}/members`).then(x => x.json()),
+      fetch(`${API}/org/groups/${group.id}/roles`).then(x => x.json()),
+    ]);
+    setGroupMemberIds(new Set(members.map((u: any) => u.id)));
+    setGroupRoleIds(new Set(roles.map((r: any) => r.id)));
   };
 
-  const saveEdit = async () => {
-    if (!editTarget || !editForm) return;
+  const closeGroup = () => { setSelectedGroup(null); setEditForm(null); };
+
+  const saveGroup = async () => {
+    if (!selectedGroup || !editForm) return;
     setSaving(true);
     try {
-      await fetch(`${API}/org/${editTarget.type}s/${editTarget.item.id}`, {
+      await fetch(`${API}/org/groups/${selectedGroup.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
       });
-      setEditTarget(null); setEditForm(null);
+      await fetch(`${API}/org/groups/${selectedGroup.id}/members`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIds: Array.from(groupMemberIds) }),
+      });
+      await fetch(`${API}/org/groups/${selectedGroup.id}/roles`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleIds: Array.from(groupRoleIds) }),
+      });
       await load();
     } finally { setSaving(false); }
   };
 
-  const doDelete = async (type: string, id: number) => {
-    if (confirmDelete?.type !== type || confirmDelete?.id !== id) { setConfirmDelete({ type, id }); return; }
-    await fetch(`${API}/org/${type}s/${id}`, { method: 'DELETE' });
+  const deleteGroup = async (id: number) => {
+    if (confirmDelete !== id) { setConfirmDelete(id); return; }
+    await fetch(`${API}/org/groups/${id}`, { method: 'DELETE' });
     setConfirmDelete(null);
-    if (editTarget?.item.id === id) { setEditTarget(null); setEditForm(null); }
+    if (selectedGroup?.id === id) closeGroup();
     await load();
   };
 
-  const doCreate = async () => {
-    if (!creating || !createForm.name) return;
+  const createGroup = async () => {
+    if (!createForm.name) return;
     setSaving(true);
     try {
-      const body: Record<string, any> = { name: createForm.name, description: createForm.description };
-      if (creating === 'department') body.divisionId = createForm.divisionId;
-      if (creating === 'project') { body.divisionId = createForm.divisionId; body.departmentId = createForm.departmentId; }
-      await fetch(`${API}/org/${creating}s`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-      });
-      setCreating(null);
-      setCreateForm({ name: '', description: '', divisionId: null, departmentId: null });
+      const row = await fetch(`${API}/org/groups`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createForm),
+      }).then(x => x.json());
+      setCreating(false);
+      setCreateForm({ name: '', description: '', color: '' });
       await load();
+      openGroup(row);
     } finally { setSaving(false); }
   };
-
-  const divisionName = (id: number | null) => divisions.find(d => d.id === id)?.name ?? '—';
-  const departmentName = (id: number | null) => departments.find(d => d.id === id)?.name ?? '—';
 
   return (
     <div className="flex h-full min-h-0">
       {/* Main tree */}
-      <div className={cn('flex flex-col h-full transition-all', editTarget ? 'w-[480px] flex-shrink-0' : 'flex-1')}>
-        <div className="flex-none px-6 py-5 border-b border-border">
-          <h1 className="text-2xl font-display font-bold">Org Structure</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Divisions contain departments; projects belong to divisions or departments</p>
+      <div className={cn('flex flex-col h-full border-r border-border transition-all', selectedGroup ? 'w-72 flex-shrink-0' : 'flex-1')}>
+        <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Groups</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Organize users into groups and assign roles</p>
+          </div>
+          <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <Plus className="w-4 h-4" /> Add Group
+          </button>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+          <div className="flex-1 overflow-y-auto divide-y divide-border">
 
-            {/* Divisions */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-400" />
-                  <span className="text-sm font-semibold text-foreground">Divisions</span>
-                  <span className="text-xs text-muted-foreground">({divisions.length})</span>
-                </div>
-                <button onClick={() => setCreating('division')}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
-                  <Plus className="w-3.5 h-3.5" /> Add Division
-                </button>
+            {/* Groups list */}
+            {groups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Network className="w-10 h-10 mb-3 opacity-25" />
+                <p className="text-sm">No groups yet — click Add Group to create one</p>
               </div>
-              {divisions.length === 0 ? (
-                <div className="text-xs text-muted-foreground pl-6 py-2 italic">No divisions yet</div>
-              ) : (
-                <div className="space-y-1 pl-2">
-                  {divisions.map(d => (
-                    <OrgItem key={d.id} label={d.name} sub={d.description} color="blue"
-                      onEdit={() => openEdit('division', d)}
-                      onDelete={() => doDelete('division', d.id)}
-                      confirmDelete={confirmDelete?.type === 'division' && confirmDelete.id === d.id}
-                      onCancelDelete={() => setConfirmDelete(null)}
-                    >
-                      {/* Departments under this division */}
-                      {departments.filter(dep => dep.divisionId === d.id).map(dep => (
-                        <OrgItem key={dep.id} label={dep.name} sub={dep.description} color="violet" indent
-                          onEdit={() => openEdit('department', dep)}
-                          onDelete={() => doDelete('department', dep.id)}
-                          confirmDelete={confirmDelete?.type === 'department' && confirmDelete.id === dep.id}
-                          onCancelDelete={() => setConfirmDelete(null)}
-                        >
-                          {/* Projects under this department */}
-                          {projects.filter(p => p.departmentId === dep.id).map(proj => (
-                            <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green" indent
-                              onEdit={() => openEdit('project', proj)}
-                              onDelete={() => doDelete('project', proj.id)}
-                              confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
-                              onCancelDelete={() => setConfirmDelete(null)}
-                            />
-                          ))}
-                        </OrgItem>
-                      ))}
-                      {/* Projects directly under division (no department) */}
-                      {projects.filter(p => p.divisionId === d.id && !p.departmentId).map(proj => (
-                        <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green" indent
-                          onEdit={() => openEdit('project', proj)}
-                          onDelete={() => doDelete('project', proj.id)}
-                          confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
-                          onCancelDelete={() => setConfirmDelete(null)}
-                        />
-                      ))}
-                    </OrgItem>
-                  ))}
+            ) : groups.map(g => (
+              <div key={g.id} role="button" tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter') openGroup(g); }}
+                onClick={() => openGroup(g)}
+                className={cn('flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors group', selectedGroup?.id === g.id && 'bg-primary/5')}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: g.color || 'hsl(var(--secondary))', color: g.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                  {g.name.slice(0, 2).toUpperCase()}
                 </div>
-              )}
-            </div>
-
-            {/* Unattached Departments */}
-            {departments.filter(d => !d.divisionId).length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4 text-violet-400" />
-                  <span className="text-sm font-semibold text-foreground">Unattached Departments</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{g.name}</div>
+                  {g.description && <div className="text-xs text-muted-foreground truncate">{g.description}</div>}
                 </div>
-                <div className="space-y-1 pl-2">
-                  {departments.filter(d => !d.divisionId).map(dep => (
-                    <OrgItem key={dep.id} label={dep.name} sub={dep.description} color="violet"
-                      onEdit={() => openEdit('department', dep)}
-                      onDelete={() => doDelete('department', dep.id)}
-                      confirmDelete={confirmDelete?.type === 'department' && confirmDelete.id === dep.id}
-                      onCancelDelete={() => setConfirmDelete(null)}
-                    />
-                  ))}
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {confirmDelete === g.id ? (
+                    <>
+                      <button onClick={e => { e.stopPropagation(); deleteGroup(g.id); }}
+                        className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
+                      <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
+                        className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+                    </>
+                  ) : (
+                    <button onClick={e => { e.stopPropagation(); deleteGroup(g.id); }}
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
+            ))}
 
-            {/* Departments action */}
-            <div>
-              <button onClick={() => setCreating('department')}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add Department
-              </button>
-            </div>
-
-            {/* Unattached Projects */}
-            {projects.filter(p => !p.divisionId && !p.departmentId).length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-green-400" />
-                  <span className="text-sm font-semibold text-foreground">Unattached Projects</span>
-                </div>
-                <div className="space-y-1 pl-2">
-                  {projects.filter(p => !p.divisionId && !p.departmentId).map(proj => (
-                    <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green"
-                      onEdit={() => openEdit('project', proj)}
-                      onDelete={() => doDelete('project', proj.id)}
-                      confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
-                      onCancelDelete={() => setConfirmDelete(null)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <button onClick={() => setCreating('project')}
-                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
-                <Plus className="w-3.5 h-3.5" /> Add Project
-              </button>
-            </div>
           </div>
         )}
       </div>
 
-      {/* Edit Panel */}
-      {editTarget && editForm && (
-        <div className="flex-1 min-w-0 flex flex-col border-l border-border bg-card/40">
+      {/* Group detail panel */}
+      {selectedGroup && editForm && (
+        <div className="flex-1 min-w-0 flex flex-col bg-card/40">
           <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              {editTarget.type === 'division' && <Building2 className="w-4 h-4 text-blue-400" />}
-              {editTarget.type === 'department' && <Layers className="w-4 h-4 text-violet-400" />}
-              {editTarget.type === 'project' && <FolderOpen className="w-4 h-4 text-green-400" />}
-              <span className="text-sm font-semibold capitalize">{editTarget.type}: {editTarget.item.name}</span>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: editForm.color || 'hsl(var(--secondary))', color: editForm.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                {editForm.name.slice(0, 2).toUpperCase()}
+              </div>
+              <span className="font-semibold">{selectedGroup.name}</span>
             </div>
-            <button onClick={() => { setEditTarget(null); setEditForm(null); }} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+            <button onClick={closeGroup} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
           </div>
-          <div className="flex-1 overflow-y-auto p-6 space-y-5 max-w-lg">
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 max-w-lg">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Group Name</label>
               <input value={editForm.name} onChange={e => setEditForm(f => f && ({ ...f, name: e.target.value }))}
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
               <input value={editForm.description} onChange={e => setEditForm(f => f && ({ ...f, description: e.target.value }))}
-                placeholder="Optional…"
+                placeholder="Optional description…"
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
             </div>
-            {(editTarget.type === 'department' || editTarget.type === 'project') && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Division</label>
-                <select value={editForm.divisionId ?? ''} onChange={e => setEditForm(f => f && ({ ...f, divisionId: e.target.value ? parseInt(e.target.value) : null }))}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
-                  <option value="">— None —</option>
-                  {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {COLORS.map(c => (
+                  <button key={c} onClick={() => setEditForm(f => f && ({ ...f, color: c }))}
+                    className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', editForm.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                    style={{ background: c || 'hsl(var(--secondary))' }} />
+                ))}
               </div>
-            )}
-            {editTarget.type === 'project' && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Department</label>
-                <select value={editForm.departmentId ?? ''} onChange={e => setEditForm(f => f && ({ ...f, departmentId: e.target.value ? parseInt(e.target.value) : null }))}
-                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
-                  <option value="">— None —</option>
-                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
-              </div>
-            )}
-            <button onClick={saveEdit} disabled={saving}
+            </div>
+            <div className="space-y-1.5">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Members ({groupMemberIds.size})</div>
+              {allUsers.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No users available</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                  {allUsers.map(u => (
+                    <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={groupMemberIds.has(u.id)} onChange={() => {
+                        setGroupMemberIds(s => { const n = new Set(s); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; });
+                      }} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {u.name.split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{u.name}</div>
+                        <div className="text-xs text-muted-foreground">{u.email}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roles ({groupRoleIds.size})</div>
+              <div className="text-xs text-muted-foreground">Roles define what permissions members of this group inherit.</div>
+              {allRoles.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No roles yet — create roles in the Roles tab</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden">
+                  {allRoles.map(r => (
+                    <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={groupRoleIds.has(r.id)} onChange={() => {
+                        setGroupRoleIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; });
+                      }} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
+                      <div>
+                        <div className="text-sm font-medium">{r.name}</div>
+                        {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={saveGroup} disabled={saving}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-              Save Changes
+              Save Group
             </button>
           </div>
         </div>
       )}
 
-      {/* Create modal */}
+      {/* Create Group Modal */}
       {creating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-[440px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+          <div className="w-[420px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="font-display font-bold text-lg capitalize">Add {creating}</h2>
-              <button onClick={() => setCreating(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+              <h2 className="font-display font-bold text-lg">Add Group</h2>
+              <button onClick={() => setCreating(false)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
                 <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
-                  placeholder={`${creating.charAt(0).toUpperCase() + creating.slice(1)} name…`}
+                  placeholder="Group name…"
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
               </div>
               <div className="space-y-1">
@@ -1858,33 +2034,23 @@ function OrgStructureView() {
                   placeholder="Optional description…"
                   className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
               </div>
-              {(creating === 'department' || creating === 'project') && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Division <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
-                  <select value={createForm.divisionId ?? ''} onChange={e => setCreateForm(f => ({ ...f, divisionId: e.target.value ? parseInt(e.target.value) : null }))}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
-                    <option value="">— None —</option>
-                    {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLORS.map(c => (
+                    <button key={c} onClick={() => setCreateForm(f => ({ ...f, color: c }))}
+                      className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', createForm.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                      style={{ background: c || 'hsl(var(--secondary))' }} />
+                  ))}
                 </div>
-              )}
-              {creating === 'project' && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Department <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
-                  <select value={createForm.departmentId ?? ''} onChange={e => setCreateForm(f => ({ ...f, departmentId: e.target.value ? parseInt(e.target.value) : null }))}
-                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
-                    <option value="">— None —</option>
-                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-                  </select>
-                </div>
-              )}
+              </div>
             </div>
             <div className="flex gap-3 pt-1">
-              <button onClick={() => setCreating(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
-              <button onClick={doCreate} disabled={saving || !createForm.name}
+              <button onClick={() => setCreating(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+              <button onClick={createGroup} disabled={saving || !createForm.name}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                Create
+                Create Group
               </button>
             </div>
           </div>
@@ -1894,45 +2060,7 @@ function OrgStructureView() {
   );
 }
 
-// ── Org Item (tree row) ───────────────────────────────────────────────────────
-
-function OrgItem({
-  label, sub, color, indent, onEdit, onDelete, confirmDelete, onCancelDelete, children,
-}: {
-  label: string; sub: string; color: 'blue' | 'violet' | 'green';
-  indent?: boolean; onEdit: () => void; onDelete: () => void;
-  confirmDelete: boolean; onCancelDelete: () => void;
-  children?: React.ReactNode;
-}) {
-  const colorClass = {
-    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-    violet: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-    green: 'bg-green-500/10 text-green-400 border-green-500/20',
-  }[color];
-
-  const Icon = color === 'blue' ? Building2 : color === 'violet' ? Layers : FolderOpen;
-
-  return (
-    <div className={cn(indent && 'ml-5 border-l border-border pl-3')}>
-      <div className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border group hover:bg-secondary/40 transition-colors', colorClass)}>
-        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium truncate">{label}</div>
-          {sub && <div className="text-xs text-muted-foreground truncate">{sub}</div>}
-        </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-background/60 text-muted-foreground transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
-          {confirmDelete ? (
-            <>
-              <button onClick={onDelete} className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
-              <button onClick={onCancelDelete} className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
-            </>
-          ) : (
-            <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-          )}
-        </div>
-      </div>
-      {children && <div className="mt-1 space-y-1">{children}</div>}
-    </div>
-  );
-}
+// ── dummy used-for-import removal guard ──────────────────────────────────────
+// These were previously used and might be unused now — TypeScript will warn
+// but app runs fine with tsx
+const _unused = { Building2, Layers, FolderOpen }; void _unused;
