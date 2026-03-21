@@ -4,6 +4,11 @@
 
 Nonprofit Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
 
+## Recent Features Added
+- **Workflow step data sources**: Action steps can declare "Receives Data From" (Agent or Form) — shown as a badge in view mode
+- **Workflow step types**: Call Another Workflow (cyan) and Run AI Agent (emerald) — new step types in the designer alongside Action, Condition, Form
+- **AI Evaluation on processes**: Every process detail panel has an "Evaluation" section with an "Evaluate with AI" button — calls Claude to compare Achievement vs Target, returns score (1–10), rating badge, analysis, gaps, and recommendation; stored as JSON in `processes.evaluation` column; updates React Query cache directly (no double PUT)
+
 ## Navigation (sidebar names)
 - **Process Catalogue** (was "Process Matrix") — editable process table
 - **Process Map** (was "Architecture Tree") — horizontal tree diagram

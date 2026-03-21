@@ -140,6 +140,73 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
   }
 });
 
+// --- AI Evaluate (must be before /:id) ---
+router.post("/processes/:id/evaluate", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const [process] = await db.select().from(processesTable).where(eq(processesTable.id, id));
+    if (!process) { res.status(404).json({ error: "Process not found" }); return; }
+
+    const name = process.processName || process.processDescription;
+    const kpi = process.kpi || "Not specified";
+    const target = process.target || "Not specified";
+    const achievement = process.achievement || "Not specified";
+    const benchmark = process.industryBenchmark || "Not specified";
+
+    const prompt = `You are an expert operations performance analyst. Evaluate the following process performance by comparing the achievement against the target.
+
+Process: ${name}
+Category: ${process.category}
+KPI: ${kpi}
+Target: ${target}
+Achievement: ${achievement}
+Industry Benchmark: ${benchmark}
+
+Provide an objective, data-driven evaluation. Score the achievement on a 1–10 scale relative to the target (10 = fully achieved or exceeded, 1 = severely underperforming).
+
+Return ONLY a valid JSON object with exactly these keys:
+{
+  "score": <integer 1-10>,
+  "rating": "<one of: Exceeds Target | On Target | Near Target | Below Target | Well Below Target>",
+  "summary": "<2-3 sentence analysis of how well the achievement meets the target>",
+  "gaps": "<1-2 sentences on the key gaps or what's missing>",
+  "recommendation": "<1-2 sentences on the most impactful next step to close the gap>"
+}`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 800,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { res.status(500).json({ error: "AI did not return valid JSON" }); return; }
+
+    const evaluation = JSON.parse(jsonMatch[0]);
+    const evaluationStr = JSON.stringify(evaluation);
+
+    const [updated] = await db.update(processesTable)
+      .set({ evaluation: evaluationStr })
+      .where(eq(processesTable.id, id))
+      .returning();
+
+    await writeAuditLog({
+      action: "ai-evaluate",
+      entityType: "process",
+      entityId: String(id),
+      entityName: name,
+      description: `AI evaluated "${name}" — score: ${evaluation.score}/10, rating: ${evaluation.rating}`,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    req.log.error(err, "Failed to AI-evaluate process");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- AI Populate (must be before /:id) ---
 router.post("/processes/:id/ai-populate", async (req, res) => {
   try {

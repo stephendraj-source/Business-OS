@@ -22,6 +22,7 @@ export const processesTable = pgTable("processes", {
   target: text("target").notNull().default(""),
   achievement: text("achievement").notNull().default(""),
   trafficLight: text("traffic_light").notNull().default(""),
+  evaluation: text("evaluation"),
 });
 
 export const insertProcessSchema = createInsertSchema(processesTable).omit({ id: true });
