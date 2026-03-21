@@ -7,9 +7,10 @@ interface EditableCellProps {
   field: string;
   initialValue: string | null;
   multiline?: boolean;
+  onSaved?: (oldValue: string, newValue: string) => void;
 }
 
-export function EditableCell({ processId, field, initialValue, multiline = false }: EditableCellProps) {
+export function EditableCell({ processId, field, initialValue, multiline = false, onSaved }: EditableCellProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [value, setValue] = useState(initialValue || "");
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
@@ -33,11 +34,10 @@ export function EditableCell({ processId, field, initialValue, multiline = false
 
   const handleSave = () => {
     setIsEditing(false);
-    if (value !== initialValue) {
-      updateProcess({
-        id: processId,
-        data: { [field]: value }
-      });
+    if (value !== (initialValue || "")) {
+      const old = initialValue || "";
+      updateProcess({ id: processId, data: { [field]: value } });
+      onSaved?.(old, value);
     }
   };
 

@@ -7,7 +7,7 @@ import {
   db, checklistsTable, checklistItemsTable,
   evidenceItemsTable, evidenceUrlsTable, evidenceFilesTable,
 } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, count } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -58,6 +58,21 @@ async function getChecklistsFull(processId: number) {
   }
   return result;
 }
+
+// ── Checklist counts per process ──────────────────────────────────────────────
+
+router.get("/checklists/counts", async (req, res) => {
+  try {
+    const rows = await db
+      .select({ processId: checklistsTable.processId, itemCount: count(checklistItemsTable.id) })
+      .from(checklistsTable)
+      .leftJoin(checklistItemsTable, eq(checklistItemsTable.checklistId, checklistsTable.id))
+      .groupBy(checklistsTable.processId);
+    const map: Record<number, number> = {};
+    for (const row of rows) map[row.processId] = row.itemCount;
+    res.json(map);
+  } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
+});
 
 // ── Checklists ────────────────────────────────────────────────────────────────
 

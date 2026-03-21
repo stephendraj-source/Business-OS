@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2 } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -418,6 +418,31 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [detailProcess, setDetailProcess] = useState<Process | null>(null);
   const [checklistProcess, setChecklistProcess] = useState<Process | null>(null);
+  const [checklistCounts, setChecklistCounts] = useState<Record<number, number>>({});
+  const [undoEntry, setUndoEntry] = useState<{ label: string; restore: () => void } | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    fetch('/api/checklists/counts').then(r => r.ok ? r.json() : {}).then(setChecklistCounts).catch(() => {});
+  }, []);
+
+  const pushUndo = useCallback((label: string, restore: () => void) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoEntry({ label, restore });
+    undoTimerRef.current = setTimeout(() => setUndoEntry(null), 6000);
+  }, []);
+
+  const dismissUndo = useCallback(() => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoEntry(null);
+  }, []);
+
+  const { mutate: updateProcessForUndo } = useOptimisticUpdateProcess();
+  const cellSaved = useCallback((p: Process, field: string) => (oldValue: string, _newValue: string) => {
+    pushUndo(`Reverted "${p.processName}"`, () => {
+      updateProcessForUndo({ id: p.id, data: { [field]: oldValue } as any });
+    });
+  }, [pushUndo, updateProcessForUndo]);
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
@@ -771,19 +796,19 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'processName':
         return (
           <td key="processName" className="overflow-hidden p-0" style={{ width: widths['processName'] }}>
-            <EditableCell processId={process.id} field="processName" initialValue={process.processName} />
+            <EditableCell processId={process.id} field="processName" initialValue={process.processName} onSaved={cellSaved(process, 'processName')} />
           </td>
         );
       case 'processDescription':
         return (
           <td key="processDescription" className="overflow-hidden p-0" style={{ width: widths['processDescription'] }}>
-            <EditableCell processId={process.id} field="processDescription" initialValue={process.processDescription} multiline />
+            <EditableCell processId={process.id} field="processDescription" initialValue={process.processDescription} multiline onSaved={cellSaved(process, 'processDescription')} />
           </td>
         );
       case 'aiAgent':
         return (
           <td key="aiAgent" className="overflow-hidden p-0" style={{ width: widths['aiAgent'] }}>
-            <EditableCell processId={process.id} field="aiAgent" initialValue={process.aiAgent} />
+            <EditableCell processId={process.id} field="aiAgent" initialValue={process.aiAgent} onSaved={cellSaved(process, 'aiAgent')} />
           </td>
         );
       case 'aiAgentActive':
@@ -811,43 +836,43 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'purpose':
         return (
           <td key="purpose" className="overflow-hidden p-0" style={{ width: widths['purpose'] }}>
-            <EditableCell processId={process.id} field="purpose" initialValue={process.purpose} multiline />
+            <EditableCell processId={process.id} field="purpose" initialValue={process.purpose} multiline onSaved={cellSaved(process, 'purpose')} />
           </td>
         );
       case 'inputs':
         return (
           <td key="inputs" className="overflow-hidden p-0" style={{ width: widths['inputs'] }}>
-            <EditableCell processId={process.id} field="inputs" initialValue={process.inputs} multiline />
+            <EditableCell processId={process.id} field="inputs" initialValue={process.inputs} multiline onSaved={cellSaved(process, 'inputs')} />
           </td>
         );
       case 'outputs':
         return (
           <td key="outputs" className="overflow-hidden p-0" style={{ width: widths['outputs'] }}>
-            <EditableCell processId={process.id} field="outputs" initialValue={process.outputs} multiline />
+            <EditableCell processId={process.id} field="outputs" initialValue={process.outputs} multiline onSaved={cellSaved(process, 'outputs')} />
           </td>
         );
       case 'humanInTheLoop':
         return (
           <td key="humanInTheLoop" className="overflow-hidden p-0" style={{ width: widths['humanInTheLoop'] }}>
-            <EditableCell processId={process.id} field="humanInTheLoop" initialValue={process.humanInTheLoop} multiline />
+            <EditableCell processId={process.id} field="humanInTheLoop" initialValue={process.humanInTheLoop} multiline onSaved={cellSaved(process, 'humanInTheLoop')} />
           </td>
         );
       case 'kpi':
         return (
           <td key="kpi" className="overflow-hidden p-0" style={{ width: widths['kpi'] }}>
-            <EditableCell processId={process.id} field="kpi" initialValue={process.kpi} multiline />
+            <EditableCell processId={process.id} field="kpi" initialValue={process.kpi} multiline onSaved={cellSaved(process, 'kpi')} />
           </td>
         );
       case 'target':
         return (
           <td key="target" className="overflow-hidden p-0" style={{ width: widths['target'] }}>
-            <EditableCell processId={process.id} field="target" initialValue={process.target} multiline />
+            <EditableCell processId={process.id} field="target" initialValue={process.target} multiline onSaved={cellSaved(process, 'target')} />
           </td>
         );
       case 'achievement':
         return (
           <td key="achievement" className="overflow-hidden p-0" style={{ width: widths['achievement'] }}>
-            <EditableCell processId={process.id} field="achievement" initialValue={process.achievement} multiline />
+            <EditableCell processId={process.id} field="achievement" initialValue={process.achievement} multiline onSaved={cellSaved(process, 'achievement')} />
           </td>
         );
       case 'trafficLight': {
@@ -881,13 +906,13 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'estimatedValueImpact':
         return (
           <td key="estimatedValueImpact" className="overflow-hidden p-0" style={{ width: widths['estimatedValueImpact'] }}>
-            <EditableCell processId={process.id} field="estimatedValueImpact" initialValue={process.estimatedValueImpact} multiline />
+            <EditableCell processId={process.id} field="estimatedValueImpact" initialValue={process.estimatedValueImpact} multiline onSaved={cellSaved(process, 'estimatedValueImpact')} />
           </td>
         );
       case 'industryBenchmark':
         return (
           <td key="industryBenchmark" className="overflow-hidden p-0" style={{ width: widths['industryBenchmark'] }}>
-            <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline />
+            <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline onSaved={cellSaved(process, 'industryBenchmark')} />
           </td>
         );
       case 'governance': {
@@ -974,8 +999,13 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <div className="flex items-center justify-center gap-1">
               <button
                 onClick={() => setChecklistProcess(process)}
-                title="Checklists"
-                className="p-1.5 rounded-lg transition-all text-muted-foreground hover:text-primary hover:bg-primary/10"
+                title={`Checklists${(checklistCounts[process.id] ?? 0) > 0 ? ` (${checklistCounts[process.id]} items)` : ''}`}
+                className={cn(
+                  "p-1.5 rounded-lg transition-all hover:bg-primary/10",
+                  (checklistCounts[process.id] ?? 0) > 0
+                    ? "text-primary hover:text-primary"
+                    : "text-muted-foreground hover:text-primary"
+                )}
               >
                 <ClipboardList className="w-3.5 h-3.5" />
               </button>
@@ -1004,6 +1034,16 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       default:
         return null;
     }
+  }
+
+  if (checklistProcess) {
+    return (
+      <ChecklistPanel
+        process={{ id: checklistProcess.id, processName: checklistProcess.processName, category: checklistProcess.category ?? undefined }}
+        onClose={() => setChecklistProcess(null)}
+        fullPage
+      />
+    );
   }
 
   return (
@@ -1106,7 +1146,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                     className={cn(
                       "relative select-none overflow-hidden text-ellipsis whitespace-nowrap transition-colors",
                       isReorderable && "cursor-grab active:cursor-grabbing",
-                      isSortable && "hover:text-foreground",
+                      isSortable && "hover:text-foreground cursor-pointer",
                       isActiveSort ? "text-primary" : "",
                       col.key === 'include' && "text-center"
                     )}
@@ -1218,13 +1258,23 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         </span>
       </div>
 
-      {/* Process Detail Panel */}
-      {checklistProcess && (
-        <ChecklistPanel
-          process={{ id: checklistProcess.id, processName: checklistProcess.processName, category: checklistProcess.category }}
-          onClose={() => setChecklistProcess(null)}
-        />
+      {/* Undo Toast */}
+      {undoEntry && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[200] flex items-center gap-3 bg-card border border-border shadow-2xl rounded-xl px-4 py-3 text-sm">
+          <RotateCcw className="w-4 h-4 text-primary flex-shrink-0" />
+          <span className="text-foreground">{undoEntry.label}</span>
+          <button
+            onClick={() => { undoEntry.restore(); dismissUndo(); }}
+            className="px-3 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-semibold hover:bg-primary/90 transition-colors"
+          >
+            Undo
+          </button>
+          <button onClick={dismissUndo} className="text-muted-foreground hover:text-foreground transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
+
       {detailProcess && (
         <ProcessDetailPanel process={detailProcess} onClose={() => setDetailProcess(null)} />
       )}
