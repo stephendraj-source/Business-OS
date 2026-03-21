@@ -3,17 +3,18 @@ import {
   ClipboardList, Plus, Trash2, Save, Edit2, Loader2, X, Check,
   GripVertical, Type, Hash, Mail, AlignLeft, ChevronDown, Calendar,
   CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
-  GitBranch, ExternalLink, Radio, AlertCircle,
+  GitBranch, ExternalLink, Radio, AlertCircle, Phone,
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { PhoneInput } from "@/components/phone-input";
 
 const API = '/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type FieldType = 'text' | 'number' | 'email' | 'textarea' | 'select' | 'checkbox' | 'date';
+export type FieldType = 'text' | 'number' | 'email' | 'textarea' | 'select' | 'checkbox' | 'date' | 'phone';
 
 export interface FormField {
   id: string;
@@ -60,6 +61,7 @@ const FIELD_TYPES: { value: FieldType; label: string; icon: React.ReactNode }[] 
   { value: 'textarea', label: 'Long Text',    icon: <AlignLeft className="w-3.5 h-3.5" /> },
   { value: 'number',   label: 'Number',       icon: <Hash className="w-3.5 h-3.5" /> },
   { value: 'email',    label: 'Email',        icon: <Mail className="w-3.5 h-3.5" /> },
+  { value: 'phone',    label: 'Phone',        icon: <Phone className="w-3.5 h-3.5" /> },
   { value: 'select',   label: 'Dropdown',     icon: <ChevronDown className="w-3.5 h-3.5" /> },
   { value: 'checkbox', label: 'Checkbox',     icon: <CheckSquare className="w-3.5 h-3.5" /> },
   { value: 'date',     label: 'Date',         icon: <Calendar className="w-3.5 h-3.5" /> },
@@ -89,6 +91,7 @@ function buildSampleJson(fields: FormField[]): string {
       case 'checkbox': obj[key] = false; break;
       case 'select':  obj[key] = f.options[0] ?? ""; break;
       case 'date':    obj[key] = "2025-01-01"; break;
+      case 'phone':   obj[key] = "+65 91234567"; break;
       default:        obj[key] = "";
     }
   }
@@ -570,6 +573,14 @@ function FormPreview({ fields, formName }: { fields: FormField[]; formName: stri
               onChange={e => set(field.id, e.target.value)}
               placeholder={field.placeholder || 'email@example.com'}
               className={inputCls(field.id)}
+            />
+          )}
+          {field.type === 'phone' && (
+            <PhoneInput
+              value={values[field.id] ?? ''}
+              onChange={val => set(field.id, val)}
+              placeholder={field.placeholder || 'Phone number'}
+              error={!!errors[field.id]}
             />
           )}
           {field.type === 'date' && (

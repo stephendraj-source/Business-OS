@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
 import { AlertCircle, Check, ClipboardList, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PhoneInput } from "@/components/phone-input";
 
 const API = '/api';
 
-type FieldType = 'text' | 'number' | 'email' | 'textarea' | 'select' | 'checkbox' | 'date';
+type FieldType = 'text' | 'number' | 'email' | 'textarea' | 'select' | 'checkbox' | 'date' | 'phone';
 
 interface FormField {
   id: string;
@@ -172,6 +173,16 @@ export function PublicFormPage() {
                   {field.type === 'email' && (
                     <input type="email" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
                       placeholder={field.placeholder || 'email@example.com'} className={inputCls(field.id)} />
+                  )}
+                  {field.type === 'phone' && (
+                    <PhoneInput
+                      value={values[field.id] ?? ''}
+                      onChange={val => set(field.id, val)}
+                      placeholder={field.placeholder || 'Phone number'}
+                      error={!!errors[field.id]}
+                      selectClassName="bg-slate-50"
+                      inputClassName="bg-white"
+                    />
                   )}
                   {field.type === 'date' && (
                     <input type="date" value={values[field.id] ?? ''} onChange={e => set(field.id, e.target.value)}
