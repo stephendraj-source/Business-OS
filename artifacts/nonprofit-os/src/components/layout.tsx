@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, BookOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +9,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'library' | 'users' | 'initiatives' | 'configuration';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -35,6 +35,7 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'ai-agents':  { label: 'AI Agents',           section: 'AI' },
   'workflows':  { label: 'Workflows',           section: 'Workflows' },
   'forms':      { label: 'Forms',               section: 'Workflows' },
+  'library':    { label: 'Knowledge Base',       section: 'Workflows' },
   'users':         { label: 'Users',             section: 'Admin' },
   'configuration': { label: 'Configuration',    section: 'Admin' },
   'initiatives':   { label: 'Initiatives',      section: 'Strategy' },
@@ -135,6 +136,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             <div className="space-y-1">
               <NavItem icon={<GitBranch />} label="Workflows" active={activeView === 'workflows'} onClick={() => onViewChange('workflows')} />
               <NavItem icon={<ClipboardList />} label="Forms" active={activeView === 'forms'} onClick={() => onViewChange('forms')} />
+              <NavItem icon={<BookOpen />} label="Knowledge Base" active={activeView === 'library'} onClick={() => onViewChange('library')} />
             </div>
           </div>
 

@@ -16,6 +16,7 @@ import { authRouter } from "./auth";
 import { blueprintRouter } from "./blueprint";
 import { creditsRouter } from "./credits";
 import { formsRouter } from "./forms";
+import knowledgeRouter from "./knowledge";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(reportsRouter);
 router.use(dashboardsRouter);
 router.use(creditsRouter);
 router.use(formsRouter);
+router.use(knowledgeRouter);
 
 export default router;
