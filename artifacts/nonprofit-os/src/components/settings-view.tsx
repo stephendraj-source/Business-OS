@@ -218,7 +218,7 @@ const INDUSTRY_BLUEPRINTS = [
 ];
 
 export function SettingsView() {
-  const { fetchHeaders, user } = useAuth();
+  const { fetchHeaders, currentUser, isAdmin } = useAuth();
   const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('nonprofit-os-theme') ?? 'dark');
   const [orgNameInput, setOrgNameInput] = useState(getOrgName);
   const [orgNameSaved, setOrgNameSaved] = useState(false);
@@ -235,7 +235,6 @@ export function SettingsView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const API = '/api';
-  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
   useEffect(() => {
     loadSavedTheme();
@@ -435,11 +434,11 @@ export function SettingsView() {
           <h3 className="text-base font-semibold text-foreground mb-4">Profile</h3>
           <div className="flex items-center gap-4 p-5 bg-secondary/30 rounded-xl border border-border">
             <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary border-2 border-primary/30">
-              {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
+              {currentUser?.name?.charAt(0)?.toUpperCase() ?? 'U'}
             </div>
             <div>
-              <div className="font-semibold text-foreground">{user?.name ?? 'User'}</div>
-              <div className="text-sm text-muted-foreground capitalize">{user?.role ?? 'Member'}</div>
+              <div className="font-semibold text-foreground">{currentUser?.name ?? 'User'}</div>
+              <div className="text-sm text-muted-foreground capitalize">{currentUser?.role ?? 'Member'}</div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">Profile editing coming soon.</p>

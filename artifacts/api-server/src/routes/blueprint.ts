@@ -26,49 +26,38 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
   try {
     const tenantId = req.auth!.tenantId!;
 
-    const [
-      procs,
-      agents,
-      wflows,
-      grps,
-      rls,
-      bus,
-      rgns,
-      govStandards,
-      govDocs,
-      procGov,
-      chklists,
-      dashboards,
-      reports,
-      inits,
-    ] = await Promise.all([
-      db.select().from(processesTable).where(eq(processesTable.tenantId, tenantId)),
-      db.select().from(aiAgentsTable).where(eq(aiAgentsTable.tenantId, tenantId)),
-      db.select().from(workflowsTable).where(eq(workflowsTable.tenantId, tenantId)),
-      db.select().from(groups).where(eq(groups.tenantId, tenantId)),
-      db.select().from(roles).where(eq(roles.tenantId, tenantId)),
-      db.select().from(businessUnits).where(eq(businessUnits.tenantId, tenantId)),
-      db.select().from(regions).where(eq(regions.tenantId, tenantId)),
-      db.select().from(governanceStandardsTable).where(eq(governanceStandardsTable.tenantId, tenantId)),
-      db.select().from(governanceDocumentsTable).where(eq(governanceDocumentsTable.tenantId, tenantId)),
-      db.select().from(processGovernanceTable).where(eq(processGovernanceTable.tenantId, tenantId)),
-      db.select().from(checklistsTable).where(eq(checklistsTable.tenantId, tenantId)),
-      db.select().from(dashboardsTable).where(eq(dashboardsTable.tenantId, tenantId)),
-      db.select().from(customReportsTable).where(eq(customReportsTable.tenantId, tenantId)),
-      db.select().from(initiatives).where(eq(initiatives.tenantId, tenantId)),
-    ]);
+    // Fetch top-level tenant-scoped tables
+    const [procs, agents, wflows, grps, rls, bus, rgns, govStandards, chklists, dashboards, reports, inits] =
+      await Promise.all([
+        db.select().from(processesTable).where(eq(processesTable.tenantId, tenantId)),
+        db.select().from(aiAgentsTable).where(eq(aiAgentsTable.tenantId, tenantId)),
+        db.select().from(workflowsTable).where(eq(workflowsTable.tenantId, tenantId)),
+        db.select().from(groups).where(eq(groups.tenantId, tenantId)),
+        db.select().from(roles).where(eq(roles.tenantId, tenantId)),
+        db.select().from(businessUnits).where(eq(businessUnits.tenantId, tenantId)),
+        db.select().from(regions).where(eq(regions.tenantId, tenantId)),
+        db.select().from(governanceStandardsTable).where(eq(governanceStandardsTable.tenantId, tenantId)),
+        db.select().from(checklistsTable).where(eq(checklistsTable.tenantId, tenantId)),
+        db.select().from(dashboardsTable).where(eq(dashboardsTable.tenantId, tenantId)),
+        db.select().from(customReportsTable).where(eq(customReportsTable.tenantId, tenantId)),
+        db.select().from(initiatives).where(eq(initiatives.tenantId, tenantId)),
+      ]);
 
+    const procIds = procs.map((p: any) => p.id);
     const agentIds = agents.map((a: any) => a.id);
     const grpIds = grps.map((g: any) => g.id);
     const rlIds = rls.map((r: any) => r.id);
     const chkIds = chklists.map((c: any) => c.id);
     const initIds = inits.map((i: any) => i.id);
+    const govStdIds = govStandards.map((s: any) => s.id);
 
+    // Fetch dependent/junction tables
     const [
       agentUrls, agentFiles, agentSchedules,
       agentModAccess, agentAllowedCats, agentAllowedProcs, agentFieldPerms,
       grpRoles, grpBus, grpRgns,
       rlBus, rlRgns, rlModAccess, rlAllowedCats, rlAllowedProcs, rlFieldPerms,
+      govDocs, procGov,
       chkItems,
       initUrls, initProcs,
     ] = await Promise.all([
@@ -88,17 +77,17 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
       rlIds.length ? db.select().from(roleAllowedCategories).where(inArray(roleAllowedCategories.roleId, rlIds)) : Promise.resolve([]),
       rlIds.length ? db.select().from(roleAllowedProcesses).where(inArray(roleAllowedProcesses.roleId, rlIds)) : Promise.resolve([]),
       rlIds.length ? db.select().from(roleFieldPermissions).where(inArray(roleFieldPermissions.roleId, rlIds)) : Promise.resolve([]),
+      // governanceDocuments are linked via governanceId (-> governanceStandards)
+      govStdIds.length ? db.select().from(governanceDocumentsTable).where(inArray(governanceDocumentsTable.governanceId, govStdIds)) : Promise.resolve([]),
+      // processGovernance is linked via processId (no tenantId column)
+      procIds.length ? db.select().from(processGovernanceTable).where(inArray(processGovernanceTable.processId, procIds)) : Promise.resolve([]),
       chkIds.length ? db.select().from(checklistItemsTable).where(inArray(checklistItemsTable.checklistId, chkIds)) : Promise.resolve([]),
       initIds.length ? db.select().from(initiativeUrls).where(inArray(initiativeUrls.initiativeId, initIds)) : Promise.resolve([]),
       initIds.length ? db.select().from(initiativeProcesses).where(inArray(initiativeProcesses.initiativeId, initIds)) : Promise.resolve([]),
     ]);
 
-    const blueprint = {
-      _meta: {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        exportedByTenantId: tenantId,
-      },
+    res.json({
+      _meta: { version: 1, exportedAt: new Date().toISOString(), exportedByTenantId: tenantId },
       processes: procs,
       aiAgents: agents,
       agentKnowledgeUrls: agentUrls,
@@ -132,10 +121,9 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
       initiatives: inits,
       initiativeUrls: initUrls,
       initiativeProcesses: initProcs,
-    };
-
-    res.json(blueprint);
+    });
   } catch (e: any) {
+    console.error('[blueprint export error]', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -151,22 +139,15 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
       return res.status(400).json({ error: 'Invalid blueprint file. Expected version 1.' });
     }
 
+    // Strip id and tenantId from a row before inserting
     function strip(row: any): any {
       const { id: _id, tenantId: _t, ...rest } = row;
       return rest;
     }
 
-    // ── 1. Collect existing IDs for junction deletion ──────────────────────────
+    // ── 1. Collect existing entity IDs ─────────────────────────────────────────
 
-    const [
-      existingAgents,
-      existingGroups,
-      existingRoles,
-      existingBUs,
-      existingRgns,
-      existingChklists,
-      existingInits,
-    ] = await Promise.all([
+    const [eAgents, eGroups, eRoles, eBUs, eRgns, eChklists, eInits, eGovStds] = await Promise.all([
       db.select({ id: aiAgentsTable.id }).from(aiAgentsTable).where(eq(aiAgentsTable.tenantId, tenantId)),
       db.select({ id: groups.id }).from(groups).where(eq(groups.tenantId, tenantId)),
       db.select({ id: roles.id }).from(roles).where(eq(roles.tenantId, tenantId)),
@@ -174,17 +155,19 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
       db.select({ id: regions.id }).from(regions).where(eq(regions.tenantId, tenantId)),
       db.select({ id: checklistsTable.id }).from(checklistsTable).where(eq(checklistsTable.tenantId, tenantId)),
       db.select({ id: initiatives.id }).from(initiatives).where(eq(initiatives.tenantId, tenantId)),
+      db.select({ id: governanceStandardsTable.id }).from(governanceStandardsTable).where(eq(governanceStandardsTable.tenantId, tenantId)),
     ]);
 
-    const eAgentIds = existingAgents.map(a => a.id);
-    const eGroupIds = existingGroups.map(g => g.id);
-    const eRoleIds = existingRoles.map(r => r.id);
-    const eBUIds = existingBUs.map(b => b.id);
-    const eRgnIds = existingRgns.map(r => r.id);
-    const eChkIds = existingChklists.map(c => c.id);
-    const eInitIds = existingInits.map(i => i.id);
+    const eAgentIds = eAgents.map(a => a.id);
+    const eGroupIds = eGroups.map(g => g.id);
+    const eRoleIds = eRoles.map(r => r.id);
+    const eBUIds = eBUs.map(b => b.id);
+    const eRgnIds = eRgns.map(r => r.id);
+    const eChkIds = eChklists.map(c => c.id);
+    const eInitIds = eInits.map(i => i.id);
+    const eGovStdIds = eGovStds.map(s => s.id);
 
-    // ── 2. Delete junction tables (FK order) ───────────────────────────────────
+    // ── 2. Delete junction tables first (FK order, no cascades yet) ────────────
 
     if (eAgentIds.length) {
       await Promise.all([
@@ -224,7 +207,7 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
       ]);
     }
 
-    // ── 3. Delete base tables ──────────────────────────────────────────────────
+    // ── 3. Delete base tables (cascade handles process_governance + gov_docs) ──
 
     await Promise.all([
       eAgentIds.length ? db.delete(aiAgentsTable).where(inArray(aiAgentsTable.id, eAgentIds)) : Promise.resolve(),
@@ -234,16 +217,16 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
       eRgnIds.length ? db.delete(regions).where(inArray(regions.id, eRgnIds)) : Promise.resolve(),
       eChkIds.length ? db.delete(checklistsTable).where(inArray(checklistsTable.id, eChkIds)) : Promise.resolve(),
       eInitIds.length ? db.delete(initiatives).where(inArray(initiatives.id, eInitIds)) : Promise.resolve(),
+      // Deleting processes cascades → process_governance
       db.delete(processesTable).where(eq(processesTable.tenantId, tenantId)),
       db.delete(workflowsTable).where(eq(workflowsTable.tenantId, tenantId)),
-      db.delete(governanceStandardsTable).where(eq(governanceStandardsTable.tenantId, tenantId)),
-      db.delete(governanceDocumentsTable).where(eq(governanceDocumentsTable.tenantId, tenantId)),
-      db.delete(processGovernanceTable).where(eq(processGovernanceTable.tenantId, tenantId)),
       db.delete(dashboardsTable).where(eq(dashboardsTable.tenantId, tenantId)),
       db.delete(customReportsTable).where(eq(customReportsTable.tenantId, tenantId)),
+      // Deleting gov standards cascades → gov_documents + process_governance
+      eGovStdIds.length ? db.delete(governanceStandardsTable).where(inArray(governanceStandardsTable.id, eGovStdIds)) : Promise.resolve(),
     ]);
 
-    // ── 4. Insert base entities, capture ID maps ───────────────────────────────
+    // ── 4. Insert base entities — build ID remapping maps ──────────────────────
 
     const procMap = new Map<number, number>();
     const agentMap = new Map<number, number>();
@@ -254,14 +237,12 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
     const chkMap = new Map<number, number>();
     const initMap = new Map<number, number>();
     const govStdMap = new Map<number, number>();
-    const govDocMap = new Map<number, number>();
 
     async function insertMapped(table: any, rows: any[], idMap: Map<number, number>, extra: Record<string, any> = {}) {
       if (!rows?.length) return;
       for (const row of rows) {
-        const oldId = row.id;
-        const [inserted] = await db.insert(table).values({ ...strip(row), ...extra }).returning();
-        idMap.set(oldId, inserted.id);
+        const [inserted] = await db.insert(table).values({ ...strip(row), ...extra }).returning({ id: table.id });
+        idMap.set(row.id, inserted.id);
       }
     }
 
@@ -282,28 +263,23 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
     await insertMapped(checklistsTable, bp.checklists, chkMap, { tenantId });
     await insertMapped(initiatives, bp.initiatives, initMap, { tenantId });
     await insertMapped(governanceStandardsTable, bp.governanceStandards, govStdMap, { tenantId });
-    await insertMapped(governanceDocumentsTable, bp.governanceDocuments, govDocMap, { tenantId });
 
-    // Process governance (remapped FKs)
+    // Governance documents — link via governanceId → remapped govStdMap
+    for (const gd of (bp.governanceDocuments || [])) {
+      const newGovId = govStdMap.get(gd.governanceId);
+      if (newGovId) await db.insert(governanceDocumentsTable).values({ ...strip(gd), governanceId: newGovId });
+    }
+
+    // Process governance — processId + governanceId both remapped
     for (const pg of (bp.processGovernance || [])) {
       const newProcId = procMap.get(pg.processId);
-      if (!newProcId) continue;
-      await db.insert(processGovernanceTable).values({
-        ...strip(pg),
-        tenantId,
-        processId: newProcId,
-        standardId: pg.standardId ? (govStdMap.get(pg.standardId) ?? null) : null,
-        documentId: pg.documentId ? (govDocMap.get(pg.documentId) ?? null) : null,
-      });
+      const newGovId = govStdMap.get(pg.governanceId);
+      if (newProcId && newGovId) await db.insert(processGovernanceTable).values({ processId: newProcId, governanceId: newGovId });
     }
 
-    // Dashboards + reports (stored as JSON config, no remapping needed)
-    for (const d of (bp.dashboards || [])) {
-      await db.insert(dashboardsTable).values({ ...strip(d), tenantId });
-    }
-    for (const r of (bp.reports || [])) {
-      await db.insert(customReportsTable).values({ ...strip(r), tenantId });
-    }
+    // Dashboards + reports (JSON config, no FK remapping needed)
+    for (const d of (bp.dashboards || [])) await db.insert(dashboardsTable).values({ ...strip(d), tenantId });
+    for (const r of (bp.reports || [])) await db.insert(customReportsTable).values({ ...strip(r), tenantId });
 
     // ── 5. Insert junction/dependent tables with remapped IDs ──────────────────
 

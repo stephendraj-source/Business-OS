@@ -15,7 +15,7 @@ Nonprofit Operating System — a full-stack business operating system for nonpro
 - **Dashboards** — configurable widget dashboard (stored in localStorage)
 - **Reports** — built-in and custom reports with drag-and-drop field configuration
 - **Audit & Logs** — full audit trail of all create/update/delete/import/export/AI actions
-- **Settings** — colour theme selector (5 themes, persisted in localStorage)
+- **Settings** — colour theme selector (5 themes, persisted in localStorage); Blueprint export/import (admin only)
 
 ## Stack
 
