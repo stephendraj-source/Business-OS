@@ -69,10 +69,19 @@ function buildSampleJson(fields: FormField[]): string {
 
 function FieldRow({
   field, onUpdate, onDelete,
+  isDragging, isDragOver, dragPosition,
+  onDragStart, onDragEnd, onDragOver, onDrop,
 }: {
   field: FormField;
   onUpdate: (updates: Partial<FormField>) => void;
   onDelete: () => void;
+  isDragging: boolean;
+  isDragOver: boolean;
+  dragPosition: 'top' | 'bottom' | null;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
 }) {
   const [optionInput, setOptionInput] = useState("");
 
@@ -83,9 +92,35 @@ function FieldRow({
   };
 
   return (
-    <div className="rounded-xl border border-border bg-card p-3 space-y-2.5 group">
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={cn(
+        "relative rounded-xl border bg-card p-3 space-y-2.5 group transition-all duration-150",
+        isDragging ? "opacity-40 border-dashed border-primary/40 scale-[0.98]" : "border-border",
+        isDragOver && !isDragging ? "border-primary/60 bg-primary/5" : "",
+      )}
+    >
+      {/* Drop indicator — top */}
+      {isDragOver && dragPosition === 'top' && !isDragging && (
+        <div className="absolute -top-0.5 left-0 right-0 h-0.5 rounded-full bg-primary shadow-[0_0_6px_1px] shadow-primary/60 z-10" />
+      )}
+      {/* Drop indicator — bottom */}
+      {isDragOver && dragPosition === 'bottom' && !isDragging && (
+        <div className="absolute -bottom-0.5 left-0 right-0 h-0.5 rounded-full bg-primary shadow-[0_0_6px_1px] shadow-primary/60 z-10" />
+      )}
+
       <div className="flex items-center gap-2">
-        <GripVertical className="w-4 h-4 text-muted-foreground/40 cursor-grab flex-shrink-0" />
+        {/* Drag handle */}
+        <div
+          className="cursor-grab active:cursor-grabbing p-0.5 rounded hover:bg-secondary transition-colors flex-shrink-0"
+          title="Drag to reorder"
+        >
+          <GripVertical className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+        </div>
 
         {/* Type selector */}
         <select
@@ -128,7 +163,7 @@ function FieldRow({
         </button>
       </div>
 
-      {/* Placeholder (not for checkbox) */}
+      {/* Placeholder (not for checkbox / select) */}
       {field.type !== 'checkbox' && field.type !== 'select' && (
         <div className="pl-6">
           <input
@@ -249,6 +284,10 @@ export function FormsView() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'build' | 'preview' | 'json'>('build');
   const [copied, setCopied] = useState(false);
+  const dragIndex = useRef<number | null>(null);
+  const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragOverPosition, setDragOverPosition] = useState<'top' | 'bottom'>('bottom');
 
   const selectedForm = forms.find(f => f.id === selectedId) ?? null;
 
@@ -343,6 +382,56 @@ export function FormsView() {
   const deleteField = (id: string) => {
     setFields(prev => prev.filter(f => f.id !== id));
     markDirty();
+  };
+
+  const reorderFields = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    setFields(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    markDirty();
+  };
+
+  const handleDragStart = (index: number) => (e: React.DragEvent) => {
+    dragIndex.current = index;
+    setDraggingIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+  };
+
+  const handleDragEnd = () => {
+    dragIndex.current = null;
+    setDraggingIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragOver = (index: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    setDragOverPosition(e.clientY < midY ? 'top' : 'bottom');
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (index: number) => (e: React.DragEvent) => {
+    e.preventDefault();
+    if (dragIndex.current === null) return;
+    const from = dragIndex.current;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const isTopHalf = e.clientY < midY;
+    // Calculate the insertion index in the array after removal
+    let insertAt = isTopHalf ? index : index + 1;
+    // After removing `from`, indices >= from shift down by 1
+    if (from < insertAt) insertAt -= 1;
+    reorderFields(from, Math.max(0, insertAt));
+    dragIndex.current = null;
+    setDraggingIndex(null);
+    setDragOverIndex(null);
   };
 
   const sampleJson = buildSampleJson(fields);
@@ -522,12 +611,19 @@ export function FormsView() {
               <div className="p-6 space-y-3 max-w-2xl mx-auto">
 
                 {/* Field list */}
-                {fields.map(field => (
+                {fields.map((field, index) => (
                   <FieldRow
                     key={field.id}
                     field={field}
                     onUpdate={updates => updateField(field.id, updates)}
                     onDelete={() => deleteField(field.id)}
+                    isDragging={draggingIndex === index}
+                    isDragOver={dragOverIndex === index}
+                    dragPosition={dragOverIndex === index ? dragOverPosition : null}
+                    onDragStart={handleDragStart(index)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleDragOver(index)}
+                    onDrop={handleDrop(index)}
                   />
                 ))}
 
