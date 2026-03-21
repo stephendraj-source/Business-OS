@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
-  Code2, ClipboardList,
+  Code2, ClipboardList, Bot, ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,9 +27,13 @@ export interface WStep {
   elseSteps?: WStep[];
   formId?: number | null;
   formName?: string;
+  dataSourceType?: 'agent' | 'form' | null;
+  dataSourceId?: number | null;
+  dataSourceName?: string;
 }
 
 interface FormOption { id: number; name: string; formNumber: number; }
+interface AgentOption { id: number; name: string; agentNumber: number; }
 
 interface WorkflowSummary {
   id: number;
@@ -277,42 +281,69 @@ function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition' | 'form
 
 // ── Inline Editable Action Step Card ─────────────────────────────────────────
 
-function ActionStepCard({ step, onUpdate, onDelete, processFields }: {
+function ActionStepCard({ step, onUpdate, onDelete, processFields, forms, agents }: {
   step: WStep;
   onUpdate: (updates: Partial<WStep>) => void;
   onDelete: () => void;
   processFields: ProcessField[];
+  forms: FormOption[];
+  agents: AgentOption[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draftLabel, setDraftLabel] = useState(step.label);
   const [draftDesc, setDraftDesc] = useState(step.description);
+  const [draftSourceType, setDraftSourceType] = useState<'agent' | 'form' | null>(step.dataSourceType ?? null);
+  const [draftSourceId, setDraftSourceId] = useState<number | null>(step.dataSourceId ?? null);
   const labelRef = useRef<HTMLInputElement>(null);
 
-  // sync from parent if not editing
   useEffect(() => {
     if (!editing) {
       setDraftLabel(step.label);
       setDraftDesc(step.description);
+      setDraftSourceType(step.dataSourceType ?? null);
+      setDraftSourceId(step.dataSourceId ?? null);
     }
-  }, [step.label, step.description, editing]);
+  }, [step.label, step.description, step.dataSourceType, step.dataSourceId, editing]);
 
   const startEdit = () => {
     setDraftLabel(step.label);
     setDraftDesc(step.description);
+    setDraftSourceType(step.dataSourceType ?? null);
+    setDraftSourceId(step.dataSourceId ?? null);
     setEditing(true);
     setTimeout(() => labelRef.current?.focus(), 0);
   };
 
   const commitEdit = () => {
-    onUpdate({ label: draftLabel, description: draftDesc });
+    let sourceName: string | undefined;
+    if (draftSourceType === 'agent') {
+      sourceName = agents.find(a => a.id === draftSourceId)?.name ?? '';
+    } else if (draftSourceType === 'form') {
+      sourceName = forms.find(f => f.id === draftSourceId)?.name ?? '';
+    }
+    onUpdate({
+      label: draftLabel,
+      description: draftDesc,
+      dataSourceType: draftSourceType,
+      dataSourceId: draftSourceType ? draftSourceId : null,
+      dataSourceName: draftSourceType ? sourceName : undefined,
+    });
     setEditing(false);
   };
 
   const cancelEdit = () => {
     setDraftLabel(step.label);
     setDraftDesc(step.description);
+    setDraftSourceType(step.dataSourceType ?? null);
+    setDraftSourceId(step.dataSourceId ?? null);
     setEditing(false);
   };
+
+  const dataSourceIcon = step.dataSourceType === 'agent'
+    ? <Bot className="w-3 h-3 text-emerald-400" />
+    : step.dataSourceType === 'form'
+      ? <ClipboardList className="w-3 h-3 text-violet-400" />
+      : null;
 
   return (
     <div className={cn(
@@ -354,6 +385,60 @@ function ActionStepCard({ step, onUpdate, onDelete, processFields }: {
             />
           </div>
 
+          {/* Data Source */}
+          <div className="border-t border-border pt-2 space-y-2">
+            <label className="block text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+              <ArrowDownToLine className="w-3 h-3" />Receives Data From
+            </label>
+            <div className="flex gap-2">
+              {(['none', 'agent', 'form'] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => {
+                    setDraftSourceType(t === 'none' ? null : t);
+                    setDraftSourceId(null);
+                  }}
+                  className={cn(
+                    "flex-1 px-2 py-1 rounded-lg text-xs border transition-colors capitalize",
+                    (t === 'none' ? !draftSourceType : draftSourceType === t)
+                      ? t === 'agent' ? "border-emerald-500/60 bg-emerald-500/10 text-emerald-400"
+                        : t === 'form' ? "border-violet-500/60 bg-violet-500/10 text-violet-400"
+                        : "border-primary/60 bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:border-border/80"
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+
+            {draftSourceType === 'agent' && (
+              <select
+                value={draftSourceId ?? ''}
+                onChange={e => setDraftSourceId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              >
+                <option value="">— Select an agent —</option>
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>#{a.agentNumber} {a.name}</option>
+                ))}
+              </select>
+            )}
+
+            {draftSourceType === 'form' && (
+              <select
+                value={draftSourceId ?? ''}
+                onChange={e => setDraftSourceId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-violet-500"
+              >
+                <option value="">— Select a form —</option>
+                {forms.map(f => (
+                  <option key={f.id} value={f.id}>#{f.formNumber} {f.name}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
           <div className="flex items-center justify-end gap-2 pt-1">
             <button
               onClick={cancelEdit}
@@ -382,6 +467,16 @@ function ActionStepCard({ step, onUpdate, onDelete, processFields }: {
             </div>
             {step.description && (
               <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{step.description}</div>
+            )}
+            {step.dataSourceType && step.dataSourceName && (
+              <div className={cn(
+                "inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium",
+                step.dataSourceType === 'agent' ? "bg-emerald-500/10 text-emerald-400" : "bg-violet-500/10 text-violet-400"
+              )}>
+                {dataSourceIcon}
+                <ArrowDownToLine className="w-2.5 h-2.5" />
+                {step.dataSourceType === 'agent' ? 'Agent' : 'Form'}: {step.dataSourceName}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -692,7 +787,7 @@ function FormStepCard({ step, onUpdate, onDelete, forms }: {
 // ── Recursive Step Branch Renderer ────────────────────────────────────────────
 
 function StepBranch({
-  steps, branchKey, onUpdate, onDelete, onAdd, processFields, forms,
+  steps, branchKey, onUpdate, onDelete, onAdd, processFields, forms, agents,
 }: {
   steps: WStep[];
   branchKey: string;
@@ -701,6 +796,7 @@ function StepBranch({
   onAdd: (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => void;
   processFields: ProcessField[];
   forms: FormOption[];
+  agents: AgentOption[];
 }) {
   return (
     <div className="flex flex-col items-center">
@@ -714,6 +810,8 @@ function StepBranch({
                 onUpdate={updates => onUpdate(step.id, updates)}
                 onDelete={() => onDelete(step.id)}
                 processFields={processFields}
+                forms={forms}
+                agents={agents}
               />
             </div>
           )}
@@ -753,6 +851,7 @@ function StepBranch({
                     onAdd={onAdd}
                     processFields={processFields}
                     forms={forms}
+                    agents={agents}
                   />
                 </div>
                 {/* Divider */}
@@ -770,6 +869,7 @@ function StepBranch({
                     onAdd={onAdd}
                     processFields={processFields}
                     forms={forms}
+                    agents={agents}
                   />
                 </div>
               </div>
@@ -786,12 +886,13 @@ function StepBranch({
 // ── Workflow Designer ─────────────────────────────────────────────────────────
 
 function WorkflowDesigner({
-  steps, onChange, processFields, forms,
+  steps, onChange, processFields, forms, agents,
 }: {
   steps: WStep[];
   onChange: (steps: WStep[]) => void;
   processFields: ProcessField[];
   forms: FormOption[];
+  agents: AgentOption[];
 }) {
   const handleAdd = (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => {
     const newStep: WStep = {
@@ -836,6 +937,7 @@ function WorkflowDesigner({
           onAdd={handleAdd}
           processFields={processFields}
           forms={forms}
+          agents={agents}
         />
 
         {/* END node */}
@@ -872,6 +974,7 @@ export function WorkflowsView() {
   const [loading, setLoading] = useState(true);
   const [processFields, setProcessFields] = useState<ProcessField[]>([]);
   const [availableForms, setAvailableForms] = useState<FormOption[]>([]);
+  const [availableAgents, setAvailableAgents] = useState<AgentOption[]>([]);
 
   const selectedWorkflow = workflows.find(w => w.id === selectedId) ?? null;
 
@@ -898,7 +1001,15 @@ export function WorkflowsView() {
     }
   }, [fetchHeaders]);
 
-  useEffect(() => { fetchWorkflows(); fetchFields(); fetchForms(); }, [fetchWorkflows, fetchFields, fetchForms]);
+  const fetchAgents = useCallback(async () => {
+    const r = await fetch(`${API}/ai-agents`, { headers: fetchHeaders() });
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data)) setAvailableAgents(data.map((a: any) => ({ id: a.id, name: a.name, agentNumber: a.agentNumber })));
+    }
+  }, [fetchHeaders]);
+
+  useEffect(() => { fetchWorkflows(); fetchFields(); fetchForms(); fetchAgents(); }, [fetchWorkflows, fetchFields, fetchForms, fetchAgents]);
 
   const loadWorkflow = useCallback(async (id: number) => {
     const r = await fetch(`${API}/workflows/${id}`, { headers: fetchHeaders() });
@@ -1102,6 +1213,7 @@ export function WorkflowsView() {
               onChange={newSteps => { setSteps(newSteps); markDirty(); }}
               processFields={processFields}
               forms={availableForms}
+              agents={availableAgents}
             />
           </div>
         </div>
