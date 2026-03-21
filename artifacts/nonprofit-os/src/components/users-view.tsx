@@ -443,7 +443,16 @@ function UserDetailPanel({
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
-  const initForm = () => ({ name: user.name, email: user.email, role: user.role, designation: user.designation ?? '', isActive: user.isActive });
+  const initForm = () => ({
+    name: user.name,
+    firstName: (user as any).firstName ?? '',
+    lastName: (user as any).lastName ?? '',
+    preferredName: (user as any).preferredName ?? '',
+    email: user.email,
+    role: user.role,
+    designation: user.designation ?? '',
+    isActive: user.isActive,
+  });
   const [form, setForm] = useState(initForm);
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
@@ -455,12 +464,28 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     setResetResult(null);
   }, [user.id]);
 
+  const handleFirstName = (value: string) => {
+    setForm(f => {
+      const autoName = [f.firstName, f.lastName].filter(Boolean).join(' ');
+      const shouldSync = f.name === autoName || f.name === '';
+      return { ...f, firstName: value, name: shouldSync ? [value, f.lastName].filter(Boolean).join(' ') : f.name };
+    });
+  };
+
+  const handleLastName = (value: string) => {
+    setForm(f => {
+      const autoName = [f.firstName, f.lastName].filter(Boolean).join(' ');
+      const shouldSync = f.name === autoName || f.name === '';
+      return { ...f, lastName: value, name: shouldSync ? [f.firstName, value].filter(Boolean).join(' ') : f.name };
+    });
+  };
+
   const save = async () => {
     setSaving(true);
     try {
       await fetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, email: form.email, role: form.role, designation: form.designation, isActive: form.isActive }),
+        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, isActive: form.isActive }),
       });
       await onSaved();
     } finally {
@@ -492,8 +517,33 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
 
   return (
     <div className="p-6 space-y-5 max-w-lg">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">First Name</label>
+          <input value={form.firstName} onChange={e => handleFirstName(e.target.value)}
+            placeholder="Jane"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Name</label>
+          <input value={form.lastName} onChange={e => handleLastName(e.target.value)}
+            placeholder="Smith"
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+        </div>
+      </div>
+
       <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Full Name</label>
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Preferred Name <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+        <input value={form.preferredName} onChange={e => setForm(f => ({ ...f, preferredName: e.target.value }))}
+          placeholder="e.g. nickname or goes-by name"
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Full Name</label>
+          <span className="text-[10px] text-muted-foreground/60">Auto-filled from first + last name</span>
+        </div>
         <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
       </div>
@@ -1005,19 +1055,36 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ name: '', email: '', designation: '', role: 'user' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', role: 'user' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [resetLink, setResetLink] = useState('');
   const [copied, setCopied] = useState(false);
 
+  const handleFirstName = (value: string) => {
+    setForm(f => {
+      const autoName = [f.firstName, f.lastName].filter(Boolean).join(' ');
+      const shouldSync = f.name === autoName || f.name === '';
+      return { ...f, firstName: value, name: shouldSync ? [value, f.lastName].filter(Boolean).join(' ') : f.name };
+    });
+  };
+
+  const handleLastName = (value: string) => {
+    setForm(f => {
+      const autoName = [f.firstName, f.lastName].filter(Boolean).join(' ');
+      const shouldSync = f.name === autoName || f.name === '';
+      return { ...f, lastName: value, name: shouldSync ? [f.firstName, value].filter(Boolean).join(' ') : f.name };
+    });
+  };
+
   const submit = async () => {
-    if (!form.name || !form.email) { setError('Name and email are required'); return; }
+    const resolvedName = form.name || [form.firstName, form.lastName].filter(Boolean).join(' ');
+    if (!resolvedName || !form.email) { setError('Name (or first/last name) and email are required'); return; }
     setSaving(true);
     setError('');
     try {
       const r = await fetch(`${API}/users`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, name: resolvedName }),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed to create user'); return; }
       const d = await r.json();
@@ -1093,8 +1160,33 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
         {error && <div className="px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}
 
         <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">First Name</label>
+              <input value={form.firstName} onChange={e => handleFirstName(e.target.value)}
+                placeholder="Jane"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Name</label>
+              <input value={form.lastName} onChange={e => handleLastName(e.target.value)}
+                placeholder="Smith"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+          </div>
+
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Full Name</label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Preferred Name <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+            <input value={form.preferredName} onChange={e => setForm(f => ({ ...f, preferredName: e.target.value }))}
+              placeholder="e.g. nickname or goes-by name"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Full Name</label>
+              <span className="text-[10px] text-muted-foreground/60">Auto-filled from first + last name</span>
+            </div>
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Jane Smith"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />

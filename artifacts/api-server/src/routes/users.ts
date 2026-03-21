@@ -25,11 +25,12 @@ usersRouter.get('/', async (_req, res) => {
 
 usersRouter.post('/', async (req, res) => {
   try {
-    const { name, email, role = 'user', designation = '', isActive = true, dataScope = 'all' } = req.body;
-    if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
+    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', isActive = true, dataScope = 'all' } = req.body;
+    const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
+    if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
     const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
-      name, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
+      name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
     }).returning();
     const token = crypto.randomUUID().replace(/-/g, '');
     const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
@@ -79,9 +80,12 @@ usersRouter.get('/:id', async (req, res) => {
 usersRouter.patch('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, password, role, designation, isActive, dataScope } = req.body;
+    const { name, firstName, lastName, preferredName, email, password, role, designation, isActive, dataScope } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
+    if (firstName !== undefined) updates.firstName = firstName;
+    if (lastName !== undefined) updates.lastName = lastName;
+    if (preferredName !== undefined) updates.preferredName = preferredName;
     if (email !== undefined) updates.email = email;
     if (password) updates.passwordHash = hashPassword(password);
     if (role !== undefined) updates.role = role;
