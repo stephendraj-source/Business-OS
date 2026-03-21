@@ -5,7 +5,7 @@ import {
   CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
   GitBranch, ExternalLink, Radio, AlertCircle, Phone,
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
-  Database, RefreshCw, PenLine, Inbox,
+  Database, RefreshCw, PenLine, Inbox, Settings2,
   BookMarked, FileText, Upload, Download, FileUp, File, Pencil,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
@@ -1582,6 +1582,7 @@ export function FormsView() {
       const form: FormSummary = await r.json();
       await fetchForms();
       setSelectedId(form.id);
+      setMode('templates');
     }
   };
 
@@ -1602,6 +1603,7 @@ export function FormsView() {
       await fetchForms();
       setSelectedId(form.id);
       setEditFolderId(folderId);
+      setMode('templates');
       // Ensure the folder is expanded so the new form is visible
       setExpandedFolders(prev => new Set([...prev, folderId]));
     }
@@ -1914,7 +1916,7 @@ export function FormsView() {
                       selectedKnowledgeId={selectedKnowledgeId}
                       expanded={expandedFolders}
                       onToggle={toggleFolder}
-                      onSelectForm={(id) => { setSelectedId(id); setSelectedKnowledgeId(null); }}
+                      onSelectForm={(id) => { setSelectedId(id); setSelectedKnowledgeId(null); setMode('entry'); }}
                       onDeleteForm={deleteForm}
                       onSelectKnowledge={(id) => { setSelectedKnowledgeId(id); setSelectedId(null); }}
                       onDeleteKnowledge={deleteKnowledgeItem}
@@ -1940,10 +1942,10 @@ export function FormsView() {
                         return (
                           <div
                             key={`form-${form.id}`}
-                            onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); }}
+                            onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setMode('entry'); }}
                             role="button"
                             tabIndex={0}
-                            onKeyDown={e => e.key === 'Enter' && setSelectedId(form.id)}
+                            onKeyDown={e => e.key === 'Enter' && (setSelectedId(form.id), setMode('entry'))}
                             className={cn(
                               "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group cursor-pointer",
                               selectedId === form.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
@@ -2082,9 +2084,16 @@ export function FormsView() {
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex-none px-6 py-3 border-b border-border bg-card/60 flex items-center gap-3">
             <PenLine className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">Data Entry</span>
-            <span className="text-xs text-muted-foreground">·</span>
-            <span className="text-sm text-muted-foreground truncate">{selectedForm.name}</span>
+            <span className="text-sm font-semibold truncate">{selectedForm.name}</span>
+            <div className="ml-auto flex-shrink-0">
+              <button
+                onClick={() => setMode('templates')}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg hover:bg-secondary transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Edit template
+              </button>
+            </div>
           </div>
           <div className="flex-1 min-h-0">
             <DataEntryFillPanel
