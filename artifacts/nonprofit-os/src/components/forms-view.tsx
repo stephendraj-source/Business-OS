@@ -12,6 +12,7 @@ import {
   ListOrdered, Quote, Code, Minus,
   AlignCenter, AlignRight,
   Highlighter, Undo2, Redo2, Unlink,
+  LayoutGrid, Search,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1565,6 +1566,8 @@ export function FormsView() {
   const { fetchHeaders, currentUser } = useAuth();
   const currentUserName = (currentUser as any)?.name || (currentUser as any)?.email || "User";
   const [mode, setMode] = useState<'templates' | 'entry'>('templates');
+  const [showAllForms, setShowAllForms] = useState(false);
+  const [allFormsSearch, setAllFormsSearch] = useState("");
   const [forms, setForms] = useState<FormSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -1993,10 +1996,10 @@ export function FormsView() {
         ] as const).map(m => (
           <button
             key={m.key}
-            onClick={() => setMode(m.key)}
+            onClick={() => { setMode(m.key); setShowAllForms(false); }}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-              mode === m.key
+              mode === m.key && !showAllForms
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground"
             )}
@@ -2004,13 +2007,162 @@ export function FormsView() {
             {m.icon}{m.label}
           </button>
         ))}
+        <div className="w-px h-4 bg-border mx-1" />
+        <button
+          onClick={() => { setShowAllForms(v => !v); setAllFormsSearch(""); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+            showAllForms
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+          )}
+        >
+          <LayoutGrid className="w-3.5 h-3.5" />Show All Forms
+        </button>
       </div>
 
       {/* Main content — left panel + right panel */}
       <div className="flex-1 min-h-0 flex">
 
+      {/* ── Show All Forms ── */}
+      {showAllForms && (() => {
+        const cats = folders.filter(f => f.parentId === null);
+        const q = allFormsSearch.trim().toLowerCase();
+        const matchForms = (arr: FormSummary[]) =>
+          q ? arr.filter(f => f.name.toLowerCase().includes(q) || (f.description ?? "").toLowerCase().includes(q)) : arr;
+
+        // Build category → forms map
+        type CatGroup = { id: number | null; name: string; forms: FormSummary[] };
+        const groups: CatGroup[] = cats.map(cat => {
+          // All sub-folder ids under this root folder (recursively for 1 level, covers most cases)
+          const subIds = folders.filter(f => f.parentId === cat.id).map(f => f.id);
+          const allIds = new Set([cat.id, ...subIds]);
+          const catForms = forms.filter(f => f.folderId != null && allIds.has(f.folderId));
+          return { id: cat.id, name: cat.name, forms: matchForms(catForms) };
+        });
+        const assignedIds = new Set(forms.filter(f => f.folderId != null && cats.some(c => {
+          const subIds = folders.filter(s => s.parentId === c.id).map(s => s.id);
+          return [c.id, ...subIds].includes(f.folderId!);
+        })).map(f => f.id));
+        const uncatForms = matchForms(forms.filter(f => !assignedIds.has(f.id)));
+        const visibleGroups = [...groups.filter(g => g.forms.length > 0), ...(uncatForms.length > 0 ? [{ id: null, name: "Uncategorized", forms: uncatForms }] : [])];
+        const totalVisible = visibleGroups.reduce((s, g) => s + g.forms.length, 0);
+
+        // Category accent colours matching getCatColor palette
+        const catColor = (name: string) => {
+          const n = name.toLowerCase();
+          if (n.includes("finance") || n.includes("compliance")) return "text-cyan-400 bg-cyan-500/10";
+          if (n.includes("fundraising") || n.includes("donor")) return "text-emerald-400 bg-emerald-500/10";
+          if (n.includes("grant")) return "text-violet-400 bg-violet-500/10";
+          if (n.includes("hr") || n.includes("volunteer") || n.includes("talent")) return "text-fuchsia-400 bg-fuchsia-500/10";
+          if (n.includes("marketing") || n.includes("brand")) return "text-amber-400 bg-amber-500/10";
+          if (n.includes("program") || n.includes("delivery")) return "text-rose-400 bg-rose-500/10";
+          if (n.includes("strategy") || n.includes("governance")) return "text-blue-400 bg-blue-500/10";
+          if (n.includes("technology") || n.includes("tech") || n.includes("data")) return "text-indigo-400 bg-indigo-500/10";
+          return "text-primary bg-primary/10";
+        };
+
+        return (
+          <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Search + stats bar */}
+            <div className="flex-none flex items-center gap-3 px-5 py-3 border-b border-border bg-card/40">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  value={allFormsSearch}
+                  onChange={e => setAllFormsSearch(e.target.value)}
+                  placeholder="Search forms…"
+                  className="w-full pl-9 pr-3 py-1.5 text-sm border border-border rounded-lg bg-background outline-none focus:border-primary transition-colors"
+                />
+                {allFormsSearch && (
+                  <button onClick={() => setAllFormsSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {totalVisible} form{totalVisible !== 1 ? "s" : ""} across {visibleGroups.length} categor{visibleGroups.length !== 1 ? "ies" : "y"}
+              </span>
+              <button
+                onClick={createForm}
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />New Form
+              </button>
+            </div>
+
+            {/* Scrollable grid */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-8">
+              {visibleGroups.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+                  <ClipboardList className="w-10 h-10 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">{q ? "No forms match your search." : "No forms yet. Create your first form."}</p>
+                </div>
+              ) : visibleGroups.map(group => (
+                <div key={group.id ?? "uncat"}>
+                  {/* Category header */}
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", catColor(group.name))}>
+                      <Folder className="w-3 h-3" />
+                      {group.name}
+                    </div>
+                    <div className="flex-1 h-px bg-border" />
+                    <span className="text-xs text-muted-foreground">{group.forms.length} form{group.forms.length !== 1 ? "s" : ""}</span>
+                  </div>
+
+                  {/* Form cards grid */}
+                  <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                    {group.forms.map(form => {
+                      let fieldCount = 0;
+                      try { fieldCount = JSON.parse(form.fields).length; } catch {}
+                      return (
+                        <button
+                          key={form.id}
+                          onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setMode('templates'); setShowAllForms(false); }}
+                          className={cn(
+                            "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5",
+                            selectedId === form.id ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
+                          )}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0">
+                              <ClipboardList className="w-4 h-4 text-primary" />
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {form.isPublished && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-medium">
+                                  <Globe className="w-2.5 h-2.5" />Live
+                                </span>
+                              )}
+                              <span className="text-[10px] text-muted-foreground font-mono">#{form.formNumber}</span>
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">{form.name}</p>
+                            {form.description && (
+                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{form.description}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-auto pt-1">
+                            {fieldCount > 0 && (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <List className="w-2.5 h-2.5" />{fieldCount} field{fieldCount !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Left panel — form list with folder tree */}
-      {(() => {
+      {!showAllForms && (() => {
         const { roots: folderTree, uncategorized, uncategorizedKnowledge } = buildFolderTree(folders, forms, knowledgeItems);
         const flatFolders = flattenFoldersForSelect(folderTree);
         const toggleFolder = (id: number) => setExpandedFolders(prev => {
@@ -2184,7 +2336,7 @@ export function FormsView() {
       })()}
 
       {/* Right panel */}
-      {selectedKnowledgeItem ? (
+      {!showAllForms && (selectedKnowledgeItem ? (
         <div className="flex-1 min-w-0">
           {selectedKnowledgeItem.type === "wiki" && (
             <WikiEditor
@@ -2625,7 +2777,7 @@ export function FormsView() {
 
           </div>
         </div>
-      )}
+      ))}
       </div>{/* /flex-1 min-h-0 flex */}
     </div>
   );
