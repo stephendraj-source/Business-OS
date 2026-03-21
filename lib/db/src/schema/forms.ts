@@ -1,5 +1,7 @@
-import { pgTable, serial, text, integer, timestamp, boolean, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
+import { workflowsTable } from "./workflows";
+import { aiAgentsTable } from "./ai-agents";
 
 export const formsTable = pgTable("forms", {
   id: serial("id").primaryKey(),
@@ -10,6 +12,8 @@ export const formsTable = pgTable("forms", {
   tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   publishSlug: text("publish_slug").unique(),
   isPublished: boolean("is_published").notNull().default(false),
+  linkedWorkflowId: integer("linked_workflow_id").references(() => workflowsTable.id, { onDelete: "set null" }),
+  linkedAgentId: integer("linked_agent_id").references(() => aiAgentsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, formsTable } from "@workspace/db";
 import { eq, max, and } from "drizzle-orm";
+import crypto from "crypto";
 
 const router: IRouter = Router();
 
@@ -57,16 +58,59 @@ router.put("/forms/:id", async (req, res) => {
   try {
     const auth = (req as any).auth;
     const id = Number(req.params.id);
-    const { formNumber, name, description, fields } = req.body as Record<string, any>;
+    const { formNumber, name, description, fields, linkedWorkflowId, linkedAgentId } = req.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (formNumber !== undefined) updates.formNumber = Number(formNumber);
     if (name !== undefined) updates.name = name;
     if (description !== undefined) updates.description = description;
     if (fields !== undefined) updates.fields = typeof fields === "string" ? fields : JSON.stringify(fields);
+    if (linkedWorkflowId !== undefined) updates.linkedWorkflowId = linkedWorkflowId ? Number(linkedWorkflowId) : null;
+    if (linkedAgentId !== undefined) updates.linkedAgentId = linkedAgentId ? Number(linkedAgentId) : null;
     const cond = auth?.tenantId
       ? and(eq(formsTable.id, id), eq(formsTable.tenantId, auth.tenantId))
       : eq(formsTable.id, id);
     const [form] = await db.update(formsTable).set(updates).where(cond).returning();
+    if (!form) return res.status(404).json({ error: "Not found" });
+    res.json(form);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/forms/:id/publish", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const id = Number(req.params.id);
+    const cond = auth?.tenantId
+      ? and(eq(formsTable.id, id), eq(formsTable.tenantId, auth.tenantId))
+      : eq(formsTable.id, id);
+    const [existing] = await db.select().from(formsTable).where(cond);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+
+    const slug = existing.publishSlug ?? crypto.randomBytes(6).toString("hex");
+    const [form] = await db.update(formsTable)
+      .set({ publishSlug: slug, isPublished: true, updatedAt: new Date() })
+      .where(cond)
+      .returning();
+    res.json(form);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/forms/:id/publish", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const id = Number(req.params.id);
+    const cond = auth?.tenantId
+      ? and(eq(formsTable.id, id), eq(formsTable.tenantId, auth.tenantId))
+      : eq(formsTable.id, id);
+    const [form] = await db.update(formsTable)
+      .set({ isPublished: false, updatedAt: new Date() })
+      .where(cond)
+      .returning();
     if (!form) return res.status(404).json({ error: "Not found" });
     res.json(form);
   } catch (err) {
