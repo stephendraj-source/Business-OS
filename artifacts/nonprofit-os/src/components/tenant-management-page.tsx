@@ -5,7 +5,7 @@ import {
   BookOpen, ChevronDown, Hash, Trash2, AlertTriangle, ShieldCheck,
   Coins, Edit2, X, UserPlus, Mail, KeyRound,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard as clipCopy } from '@/lib/utils';
 
 const API = '/api';
 
@@ -117,7 +117,7 @@ export function TenantManagementPage() {
   }
 
   function copyToClipboard(text: string) {
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+    clipCopy(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   }
 
   function displayName(t: Tenant) {

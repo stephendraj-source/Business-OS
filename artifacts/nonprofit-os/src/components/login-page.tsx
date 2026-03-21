@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Building2, Mail, Lock, LogIn, Eye, EyeOff, ArrowLeft, Copy, Check, KeyRound } from 'lucide-react';
+import { copyToClipboard } from '@/lib/utils';
 
 type View = 'login' | 'forgot' | 'temp-password';
 
@@ -53,7 +54,7 @@ export function LoginPage() {
   }
 
   function copyTemp() {
-    navigator.clipboard.writeText(tempPassword).then(() => {
+    copyToClipboard(tempPassword).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });

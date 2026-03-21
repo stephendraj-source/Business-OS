@@ -5,7 +5,7 @@ import {
   Database, Layers, Lock, Mail, Copy, KeyRound,
   Building2, Tag, FolderOpen, Network, ChevronRight, Pencil, Globe, Briefcase,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, copyToClipboard } from '@/lib/utils';
 import { PhoneInput } from '@/components/phone-input';
 
 const API = '/api';
@@ -507,7 +507,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
 
   const copyLink = () => {
     if (resetResult) {
-      navigator.clipboard.writeText(resetResult.link);
+      copyToClipboard(resetResult.link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -1104,7 +1104,7 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
   };
 
   const copyLink = () => {
-    navigator.clipboard.writeText(resetLink);
+    copyToClipboard(resetLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

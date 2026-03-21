@@ -5,7 +5,7 @@ import {
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
   Shield, Search, Share2,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, copyToClipboard } from "@/lib/utils";
 import { useUser } from "@/contexts/UserContext";
 import { ShareModal } from "./share-modal";
 
@@ -452,7 +452,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
 
   const copyOutput = async () => {
     const text = formatOutput(output, outputFormat);
-    await navigator.clipboard.writeText(text);
+    await copyToClipboard(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

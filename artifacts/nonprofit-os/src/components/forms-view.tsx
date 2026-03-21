@@ -6,7 +6,7 @@ import {
   GitBranch, ExternalLink, Radio, AlertCircle, Phone,
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PhoneInput } from "@/components/phone-input";
 
@@ -973,7 +973,7 @@ export function FormsView() {
   const sampleJson = buildSampleJson(fields);
 
   const copyJson = () => {
-    navigator.clipboard.writeText(sampleJson);
+    copyToClipboard(sampleJson);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1452,7 +1452,7 @@ export function FormsView() {
                         </div>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}${import.meta.env.BASE_URL}f/${selectedForm!.publishSlug}`);
+                            copyToClipboard(`${window.location.origin}${import.meta.env.BASE_URL}f/${selectedForm!.publishSlug}`);
                             setUrlCopied(true);
                             setTimeout(() => setUrlCopied(false), 2000);
                           }}
