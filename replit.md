@@ -113,3 +113,41 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - `pnpm --filter @workspace/scripts run seed` — seed processes into database
 - `pnpm --filter @workspace/api-spec run codegen` — re-generate API client from OpenAPI spec (run after every OpenAPI change)
 - `pnpm --filter @workspace/db run push` — push schema changes to database (run after every schema change)
+
+## User Management — Org Structure & Roles
+
+The Users admin section (Admin → Users) has three top-level views:
+
+### Users
+- List, create, edit, delete users
+- Per-user detail panel with tabs: Profile, Modules, Data Access, Fields, Org
+
+### Roles
+- Create/edit/delete custom roles (name, description, colour)
+- Add/remove multiple users per role
+
+### Org Structure
+- **Divisions** (top-level grouping, blue)
+- **Departments** — belong to a division (violet)
+- **Projects** — belong to a division and/or department (green)
+- Hierarchical tree view: Divisions → Departments → Projects
+- Inline edit panel (name, description, parent assignment)
+
+### User Org Tab
+Each user's detail panel has an "Org" tab for assigning:
+- Roles, Divisions, Departments, Projects
+
+### Schema Tables Added
+- `org_roles`, `org_role_memberships`
+- `divisions`, `departments`, `projects`
+- `user_divisions`, `user_departments`, `user_projects`
+
+### API Endpoints Added
+- `GET/POST /api/org/roles` — list/create roles
+- `PATCH/DELETE /api/org/roles/:id` — update/delete role
+- `GET/PUT /api/org/roles/:id/members` — get/set role members
+- `GET/POST/PATCH/DELETE /api/org/divisions` — CRUD divisions
+- `GET/POST/PATCH/DELETE /api/org/departments` — CRUD departments
+- `GET/POST/PATCH/DELETE /api/org/projects` — CRUD projects
+- `GET/PUT /api/org/users/:id/memberships` — get/set user org memberships
+- `GET /api/org/tree` — full org tree snapshot

@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User,
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search,
   Database, Layers, Lock, Mail, Copy, KeyRound,
+  Building2, Tag, FolderOpen, Network, ChevronRight, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -93,7 +94,19 @@ interface UserDetail extends UserRow {
 
 interface ProcessMeta { id: number; processName: string; category: string; }
 
-type Tab = 'profile' | 'modules' | 'data-access' | 'fields';
+type Tab = 'profile' | 'modules' | 'data-access' | 'fields' | 'org';
+type ViewTab = 'users' | 'roles' | 'org-structure';
+
+interface OrgRole { id: number; name: string; description: string; color: string; }
+interface Division { id: number; name: string; description: string; }
+interface Department { id: number; name: string; description: string; divisionId: number | null; }
+interface Project { id: number; name: string; description: string; divisionId: number | null; departmentId: number | null; }
+interface UserMemberships {
+  roles: { id: number; name: string; color: string }[];
+  divisions: { id: number; name: string }[];
+  departments: { id: number; name: string }[];
+  projects: { id: number; name: string }[];
+}
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -131,6 +144,41 @@ function ActiveDot({ active }: { active: boolean }) {
 }
 
 export function UsersView() {
+  const [viewTab, setViewTab] = useState<ViewTab>('users');
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Top-level view switcher */}
+      <div className="flex-none flex items-center gap-1 px-6 pt-5 pb-0">
+        {([
+          { key: 'users', label: 'Users', icon: Users },
+          { key: 'roles', label: 'Roles', icon: Tag },
+          { key: 'org-structure', label: 'Org Structure', icon: Network },
+        ] as { key: ViewTab; label: string; icon: React.ElementType }[]).map(t => (
+          <button
+            key={t.key}
+            onClick={() => setViewTab(t.key)}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors',
+              viewTab === t.key ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-secondary hover:text-foreground'
+            )}
+          >
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex-1 min-h-0">
+        {viewTab === 'users' && <UsersListView />}
+        {viewTab === 'roles' && <RolesView />}
+        {viewTab === 'org-structure' && <OrgStructureView />}
+      </div>
+    </div>
+  );
+}
+
+function UsersListView() {
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -352,6 +400,7 @@ function UserDetailPanel({
           { key: 'modules', label: 'Modules', icon: Layers },
           { key: 'data-access', label: 'Data Access', icon: Database },
           { key: 'fields', label: 'Fields', icon: Lock },
+          { key: 'org', label: 'Org', icon: Network },
         ] as { key: Tab; label: string; icon: React.ElementType }[]).map(t => (
           <button
             key={t.key}
@@ -382,6 +431,9 @@ function UserDetailPanel({
         )}
         {tab === 'fields' && (
           <FieldPermissionsTab user={user} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
+        )}
+        {tab === 'org' && (
+          <OrgTab userId={user.id} />
         )}
       </div>
     </div>
@@ -1064,6 +1116,705 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Org Tab (user detail) ─────────────────────────────────────────────────────
+
+function OrgTab({ userId }: { userId: number }) {
+  const [memberships, setMemberships] = useState<UserMemberships | null>(null);
+  const [allRoles, setAllRoles] = useState<OrgRole[]>([]);
+  const [allDivisions, setAllDivisions] = useState<Division[]>([]);
+  const [allDepartments, setAllDepartments] = useState<Department[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState('');
+
+  const load = useCallback(async () => {
+    const [m, r, div, dep, proj] = await Promise.all([
+      fetch(`${API}/org/users/${userId}/memberships`).then(x => x.json()),
+      fetch(`${API}/org/roles`).then(x => x.json()),
+      fetch(`${API}/org/divisions`).then(x => x.json()),
+      fetch(`${API}/org/departments`).then(x => x.json()),
+      fetch(`${API}/org/projects`).then(x => x.json()),
+    ]);
+    setMemberships(m);
+    setAllRoles(r);
+    setAllDivisions(div);
+    setAllDepartments(dep);
+    setAllProjects(proj);
+  }, [userId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const [sel, setSel] = useState<{
+    roleIds: Set<number>; divisionIds: Set<number>; departmentIds: Set<number>; projectIds: Set<number>;
+  }>({ roleIds: new Set(), divisionIds: new Set(), departmentIds: new Set(), projectIds: new Set() });
+
+  useEffect(() => {
+    if (!memberships) return;
+    setSel({
+      roleIds: new Set(memberships.roles.map(r => r.id)),
+      divisionIds: new Set(memberships.divisions.map(d => d.id)),
+      departmentIds: new Set(memberships.departments.map(d => d.id)),
+      projectIds: new Set(memberships.projects.map(p => p.id)),
+    });
+  }, [memberships]);
+
+  const toggle = (kind: 'roleIds' | 'divisionIds' | 'departmentIds' | 'projectIds', id: number) => {
+    setSel(s => {
+      const next = new Set(s[kind]);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return { ...s, [kind]: next };
+    });
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await fetch(`${API}/org/users/${userId}/memberships`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roleIds: Array.from(sel.roleIds),
+          divisionIds: Array.from(sel.divisionIds),
+          departmentIds: Array.from(sel.departmentIds),
+          projectIds: Array.from(sel.projectIds),
+        }),
+      });
+      setSaveMsg('Saved ✓');
+      setTimeout(() => setSaveMsg(''), 2000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!memberships) return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+    </div>
+  );
+
+  const Section = ({ label, icon: Icon, children, empty }: { label: string; icon: React.ElementType; children: React.ReactNode; empty: string }) => (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+      </div>
+      {React.Children.count(children) === 0
+        ? <div className="text-xs text-muted-foreground pl-5 py-1 italic">{empty}</div>
+        : <div className="space-y-1 pl-5">{children}</div>
+      }
+    </div>
+  );
+
+  const CheckItem = ({ id, label, kind }: { id: number; label: string; kind: 'roleIds' | 'divisionIds' | 'departmentIds' | 'projectIds' }) => (
+    <label className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-secondary/40 cursor-pointer transition-colors">
+      <input type="checkbox" checked={sel[kind].has(id)} onChange={() => toggle(kind, id)} className="w-3.5 h-3.5 rounded accent-primary" />
+      <span className="text-sm">{label}</span>
+    </label>
+  );
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Roles */}
+      <Section label="Roles" icon={Tag} empty={allRoles.length === 0 ? 'No roles defined yet' : 'No roles assigned'}>
+        {allRoles.map(r => <CheckItem key={r.id} id={r.id} label={r.name} kind="roleIds" />)}
+      </Section>
+
+      {/* Divisions */}
+      <Section label="Divisions" icon={Building2} empty={allDivisions.length === 0 ? 'No divisions defined yet' : 'No divisions assigned'}>
+        {allDivisions.map(d => <CheckItem key={d.id} id={d.id} label={d.name} kind="divisionIds" />)}
+      </Section>
+
+      {/* Departments */}
+      <Section label="Departments" icon={Layers} empty={allDepartments.length === 0 ? 'No departments defined yet' : 'No departments assigned'}>
+        {allDepartments.map(d => <CheckItem key={d.id} id={d.id} label={d.name} kind="departmentIds" />)}
+      </Section>
+
+      {/* Projects */}
+      <Section label="Projects" icon={FolderOpen} empty={allProjects.length === 0 ? 'No projects defined yet' : 'No projects assigned'}>
+        {allProjects.map(p => <CheckItem key={p.id} id={p.id} label={p.name} kind="projectIds" />)}
+      </Section>
+
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={saving}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+          Save Org Assignments
+        </button>
+        {saveMsg && <span className="text-xs text-green-400 font-medium">{saveMsg}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Roles View ────────────────────────────────────────────────────────────────
+
+function RolesView() {
+  const [roles, setRoles] = useState<OrgRole[]>([]);
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRole, setSelectedRole] = useState<OrgRole | null>(null);
+  const [members, setMembers] = useState<{ id: number; name: string; email: string }[]>([]);
+  const [memberSel, setMemberSel] = useState<Set<number>>(new Set());
+  const [form, setForm] = useState<{ name: string; description: string; color: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, u] = await Promise.all([
+        fetch(`${API}/org/roles`).then(x => x.json()),
+        fetch(`${API}/users`).then(x => x.json()),
+      ]);
+      setRoles(r);
+      setAllUsers(u);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openRole = async (role: OrgRole) => {
+    setSelectedRole(role);
+    setForm({ name: role.name, description: role.description, color: role.color });
+    const m = await fetch(`${API}/org/roles/${role.id}/members`).then(x => x.json());
+    setMembers(m);
+    setMemberSel(new Set(m.map((u: any) => u.id)));
+  };
+
+  const closeRole = () => { setSelectedRole(null); setForm(null); };
+
+  const createRole = async () => {
+    const name = `New Role`;
+    const [row] = await fetch(`${API}/org/roles`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    }).then(x => x.json()).then(r => [r]);
+    await load();
+    openRole(row);
+  };
+
+  const saveRole = async () => {
+    if (!selectedRole || !form) return;
+    setSaving(true);
+    try {
+      await fetch(`${API}/org/roles/${selectedRole.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
+      });
+      await fetch(`${API}/org/roles/${selectedRole.id}/members`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userIds: Array.from(memberSel) }),
+      });
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const deleteRole = async (id: number) => {
+    if (confirmDelete !== id) { setConfirmDelete(id); return; }
+    await fetch(`${API}/org/roles/${id}`, { method: 'DELETE' });
+    setConfirmDelete(null);
+    if (selectedRole?.id === id) closeRole();
+    await load();
+  };
+
+  const COLORS = ['', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* Role list */}
+      <div className={cn('flex flex-col h-full transition-all', selectedRole ? 'w-72 flex-shrink-0' : 'flex-1')}>
+        <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
+          <div>
+            <h1 className="text-2xl font-display font-bold">Roles</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Group users into custom roles</p>
+          </div>
+          <button onClick={createRole} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <Plus className="w-4 h-4" /> Add Role
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : roles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+              <Tag className="w-10 h-10 mb-3 opacity-25" />
+              <p className="text-sm">No roles yet — click Add Role to create one</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {roles.map(r => (
+                <div
+                  key={r.id}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => { if (e.key === 'Enter') openRole(r); }}
+                  onClick={() => openRole(r)}
+                  className={cn('flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors group', selectedRole?.id === r.id && 'bg-primary/5')}
+                >
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{ background: r.color || 'hsl(var(--secondary))', color: r.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                    {r.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{r.name}</div>
+                    {r.description && <div className="text-xs text-muted-foreground truncate">{r.description}</div>}
+                  </div>
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {confirmDelete === r.id ? (
+                      <>
+                        <button onClick={e => { e.stopPropagation(); deleteRole(r.id); }}
+                          className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
+                        <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
+                          className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+                      </>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); deleteRole(r.id); }}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Role detail */}
+      {selectedRole && form && (
+        <div className="flex-1 min-w-0 flex flex-col border-l border-border bg-card/40">
+          <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                style={{ background: form.color || 'hsl(var(--secondary))', color: form.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                {form.name.slice(0, 2).toUpperCase()}
+              </div>
+              <span className="font-semibold">{selectedRole.name}</span>
+            </div>
+            <button onClick={closeRole} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {/* Name */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role Name</label>
+              <input value={form.name} onChange={e => setForm(f => f && ({ ...f, name: e.target.value }))}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
+              <input value={form.description} onChange={e => setForm(f => f && ({ ...f, description: e.target.value }))}
+                placeholder="Optional description…"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+
+            {/* Color */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {COLORS.map(c => (
+                  <button key={c} onClick={() => setForm(f => f && ({ ...f, color: c }))}
+                    className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', form.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                    style={{ background: c || 'hsl(var(--secondary))' }} />
+                ))}
+              </div>
+            </div>
+
+            {/* Members */}
+            <div className="space-y-2">
+              <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Members ({memberSel.size})</div>
+              <div className="border border-border rounded-xl overflow-hidden max-h-72 overflow-y-auto">
+                {allUsers.length === 0 ? (
+                  <div className="text-xs text-muted-foreground text-center py-4">No users available</div>
+                ) : allUsers.map(u => (
+                  <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                    <input type="checkbox" checked={memberSel.has(u.id)} onChange={() => {
+                      setMemberSel(s => { const n = new Set(s); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; });
+                    }} className="accent-primary" />
+                    <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                      {u.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">{u.name}</div>
+                      <div className="text-xs text-muted-foreground">{u.email}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <button onClick={saveRole} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Save Role
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Org Structure View ────────────────────────────────────────────────────────
+
+function OrgStructureView() {
+  const [divisions, setDivisions] = useState<Division[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [editTarget, setEditTarget] = useState<{ type: 'division' | 'department' | 'project'; item: Division | Department | Project } | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; description: string; divisionId?: number | null; departmentId?: number | null } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Create modals
+  const [creating, setCreating] = useState<'division' | 'department' | 'project' | null>(null);
+  const [createForm, setCreateForm] = useState({ name: '', description: '', divisionId: null as number | null, departmentId: null as number | null });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [div, dep, proj] = await Promise.all([
+        fetch(`${API}/org/divisions`).then(x => x.json()),
+        fetch(`${API}/org/departments`).then(x => x.json()),
+        fetch(`${API}/org/projects`).then(x => x.json()),
+      ]);
+      setDivisions(div);
+      setDepartments(dep);
+      setProjects(proj);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openEdit = (type: 'division' | 'department' | 'project', item: Division | Department | Project) => {
+    setEditTarget({ type, item });
+    if (type === 'division') setEditForm({ name: item.name, description: item.description });
+    else if (type === 'department') setEditForm({ name: item.name, description: item.description, divisionId: (item as Department).divisionId });
+    else setEditForm({ name: item.name, description: item.description, divisionId: (item as Project).divisionId, departmentId: (item as Project).departmentId });
+  };
+
+  const saveEdit = async () => {
+    if (!editTarget || !editForm) return;
+    setSaving(true);
+    try {
+      await fetch(`${API}/org/${editTarget.type}s/${editTarget.item.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
+      });
+      setEditTarget(null); setEditForm(null);
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const doDelete = async (type: string, id: number) => {
+    if (confirmDelete?.type !== type || confirmDelete?.id !== id) { setConfirmDelete({ type, id }); return; }
+    await fetch(`${API}/org/${type}s/${id}`, { method: 'DELETE' });
+    setConfirmDelete(null);
+    if (editTarget?.item.id === id) { setEditTarget(null); setEditForm(null); }
+    await load();
+  };
+
+  const doCreate = async () => {
+    if (!creating || !createForm.name) return;
+    setSaving(true);
+    try {
+      const body: Record<string, any> = { name: createForm.name, description: createForm.description };
+      if (creating === 'department') body.divisionId = createForm.divisionId;
+      if (creating === 'project') { body.divisionId = createForm.divisionId; body.departmentId = createForm.departmentId; }
+      await fetch(`${API}/org/${creating}s`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      setCreating(null);
+      setCreateForm({ name: '', description: '', divisionId: null, departmentId: null });
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const divisionName = (id: number | null) => divisions.find(d => d.id === id)?.name ?? '—';
+  const departmentName = (id: number | null) => departments.find(d => d.id === id)?.name ?? '—';
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* Main tree */}
+      <div className={cn('flex flex-col h-full transition-all', editTarget ? 'w-[480px] flex-shrink-0' : 'flex-1')}>
+        <div className="flex-none px-6 py-5 border-b border-border">
+          <h1 className="text-2xl font-display font-bold">Org Structure</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">Divisions contain departments; projects belong to divisions or departments</p>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+
+            {/* Divisions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-blue-400" />
+                  <span className="text-sm font-semibold text-foreground">Divisions</span>
+                  <span className="text-xs text-muted-foreground">({divisions.length})</span>
+                </div>
+                <button onClick={() => setCreating('division')}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
+                  <Plus className="w-3.5 h-3.5" /> Add Division
+                </button>
+              </div>
+              {divisions.length === 0 ? (
+                <div className="text-xs text-muted-foreground pl-6 py-2 italic">No divisions yet</div>
+              ) : (
+                <div className="space-y-1 pl-2">
+                  {divisions.map(d => (
+                    <OrgItem key={d.id} label={d.name} sub={d.description} color="blue"
+                      onEdit={() => openEdit('division', d)}
+                      onDelete={() => doDelete('division', d.id)}
+                      confirmDelete={confirmDelete?.type === 'division' && confirmDelete.id === d.id}
+                      onCancelDelete={() => setConfirmDelete(null)}
+                    >
+                      {/* Departments under this division */}
+                      {departments.filter(dep => dep.divisionId === d.id).map(dep => (
+                        <OrgItem key={dep.id} label={dep.name} sub={dep.description} color="violet" indent
+                          onEdit={() => openEdit('department', dep)}
+                          onDelete={() => doDelete('department', dep.id)}
+                          confirmDelete={confirmDelete?.type === 'department' && confirmDelete.id === dep.id}
+                          onCancelDelete={() => setConfirmDelete(null)}
+                        >
+                          {/* Projects under this department */}
+                          {projects.filter(p => p.departmentId === dep.id).map(proj => (
+                            <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green" indent
+                              onEdit={() => openEdit('project', proj)}
+                              onDelete={() => doDelete('project', proj.id)}
+                              confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
+                              onCancelDelete={() => setConfirmDelete(null)}
+                            />
+                          ))}
+                        </OrgItem>
+                      ))}
+                      {/* Projects directly under division (no department) */}
+                      {projects.filter(p => p.divisionId === d.id && !p.departmentId).map(proj => (
+                        <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green" indent
+                          onEdit={() => openEdit('project', proj)}
+                          onDelete={() => doDelete('project', proj.id)}
+                          confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
+                          onCancelDelete={() => setConfirmDelete(null)}
+                        />
+                      ))}
+                    </OrgItem>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Unattached Departments */}
+            {departments.filter(d => !d.divisionId).length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-violet-400" />
+                  <span className="text-sm font-semibold text-foreground">Unattached Departments</span>
+                </div>
+                <div className="space-y-1 pl-2">
+                  {departments.filter(d => !d.divisionId).map(dep => (
+                    <OrgItem key={dep.id} label={dep.name} sub={dep.description} color="violet"
+                      onEdit={() => openEdit('department', dep)}
+                      onDelete={() => doDelete('department', dep.id)}
+                      confirmDelete={confirmDelete?.type === 'department' && confirmDelete.id === dep.id}
+                      onCancelDelete={() => setConfirmDelete(null)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Departments action */}
+            <div>
+              <button onClick={() => setCreating('department')}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add Department
+              </button>
+            </div>
+
+            {/* Unattached Projects */}
+            {projects.filter(p => !p.divisionId && !p.departmentId).length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-green-400" />
+                  <span className="text-sm font-semibold text-foreground">Unattached Projects</span>
+                </div>
+                <div className="space-y-1 pl-2">
+                  {projects.filter(p => !p.divisionId && !p.departmentId).map(proj => (
+                    <OrgItem key={proj.id} label={proj.name} sub={proj.description} color="green"
+                      onEdit={() => openEdit('project', proj)}
+                      onDelete={() => doDelete('project', proj.id)}
+                      confirmDelete={confirmDelete?.type === 'project' && confirmDelete.id === proj.id}
+                      onCancelDelete={() => setConfirmDelete(null)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <button onClick={() => setCreating('project')}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 font-medium transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Add Project
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Edit Panel */}
+      {editTarget && editForm && (
+        <div className="flex-1 min-w-0 flex flex-col border-l border-border bg-card/40">
+          <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center gap-2">
+              {editTarget.type === 'division' && <Building2 className="w-4 h-4 text-blue-400" />}
+              {editTarget.type === 'department' && <Layers className="w-4 h-4 text-violet-400" />}
+              {editTarget.type === 'project' && <FolderOpen className="w-4 h-4 text-green-400" />}
+              <span className="text-sm font-semibold capitalize">{editTarget.type}: {editTarget.item.name}</span>
+            </div>
+            <button onClick={() => { setEditTarget(null); setEditForm(null); }} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-6 space-y-5 max-w-lg">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
+              <input value={editForm.name} onChange={e => setEditForm(f => f && ({ ...f, name: e.target.value }))}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
+              <input value={editForm.description} onChange={e => setEditForm(f => f && ({ ...f, description: e.target.value }))}
+                placeholder="Optional…"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            {(editTarget.type === 'department' || editTarget.type === 'project') && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Division</label>
+                <select value={editForm.divisionId ?? ''} onChange={e => setEditForm(f => f && ({ ...f, divisionId: e.target.value ? parseInt(e.target.value) : null }))}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                  <option value="">— None —</option>
+                  {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            )}
+            {editTarget.type === 'project' && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Department</label>
+                <select value={editForm.departmentId ?? ''} onChange={e => setEditForm(f => f && ({ ...f, departmentId: e.target.value ? parseInt(e.target.value) : null }))}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                  <option value="">— None —</option>
+                  {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+              </div>
+            )}
+            <button onClick={saveEdit} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Save Changes
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create modal */}
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-[440px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display font-bold text-lg capitalize">Add {creating}</h2>
+              <button onClick={() => setCreating(null)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
+                <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder={`${creating.charAt(0).toUpperCase() + creating.slice(1)} name…`}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
+                <input value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional description…"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              {(creating === 'department' || creating === 'project') && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Division <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
+                  <select value={createForm.divisionId ?? ''} onChange={e => setCreateForm(f => ({ ...f, divisionId: e.target.value ? parseInt(e.target.value) : null }))}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="">— None —</option>
+                    {divisions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {creating === 'project' && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Department <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
+                  <select value={createForm.departmentId ?? ''} onChange={e => setCreateForm(f => ({ ...f, departmentId: e.target.value ? parseInt(e.target.value) : null }))}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+                    <option value="">— None —</option>
+                    {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setCreating(null)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+              <button onClick={doCreate} disabled={saving || !createForm.name}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Org Item (tree row) ───────────────────────────────────────────────────────
+
+function OrgItem({
+  label, sub, color, indent, onEdit, onDelete, confirmDelete, onCancelDelete, children,
+}: {
+  label: string; sub: string; color: 'blue' | 'violet' | 'green';
+  indent?: boolean; onEdit: () => void; onDelete: () => void;
+  confirmDelete: boolean; onCancelDelete: () => void;
+  children?: React.ReactNode;
+}) {
+  const colorClass = {
+    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    violet: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+    green: 'bg-green-500/10 text-green-400 border-green-500/20',
+  }[color];
+
+  const Icon = color === 'blue' ? Building2 : color === 'violet' ? Layers : FolderOpen;
+
+  return (
+    <div className={cn(indent && 'ml-5 border-l border-border pl-3')}>
+      <div className={cn('flex items-center gap-3 px-3 py-2.5 rounded-xl border group hover:bg-secondary/40 transition-colors', colorClass)}>
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium truncate">{label}</div>
+          {sub && <div className="text-xs text-muted-foreground truncate">{sub}</div>}
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={onEdit} className="p-1.5 rounded-lg hover:bg-background/60 text-muted-foreground transition-colors"><Pencil className="w-3.5 h-3.5" /></button>
+          {confirmDelete ? (
+            <>
+              <button onClick={onDelete} className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
+              <button onClick={onCancelDelete} className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+            </>
+          ) : (
+            <button onClick={onDelete} className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+          )}
+        </div>
+      </div>
+      {children && <div className="mt-1 space-y-1">{children}</div>}
     </div>
   );
 }
