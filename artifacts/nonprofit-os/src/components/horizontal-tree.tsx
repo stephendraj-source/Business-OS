@@ -69,7 +69,7 @@ export function HorizontalTree({ initialCategory }: HorizontalTreeProps) {
       {/* Level 1: Categories */}
       <div className="flex-none w-72 border-r border-border bg-sidebar flex flex-col h-full shrink-0">
         <div className="p-6 border-b border-border bg-sidebar/50">
-          <h2 className="text-xl font-display font-bold text-foreground">Process Map</h2>
+          <h2 className="text-xl font-display font-bold text-foreground">Master Map</h2>
           <p className="text-sm text-muted-foreground mt-1">{processes?.length ?? 0} total processes</p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-2">

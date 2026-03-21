@@ -517,7 +517,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     );
   }
 
-  const title = mode === 'portfolio' ? 'Portfolio Catalogue' : 'Process Catalogue';
+  const title = mode === 'portfolio' ? 'Process Catalogue' : 'Master Catalogue';
   const subtitle = mode === 'portfolio'
     ? 'Showing only included processes. Drag column headers to reorder.'
     : 'Inline editing enabled — click any cell to update. Drag column headers to reorder, borders to resize.';

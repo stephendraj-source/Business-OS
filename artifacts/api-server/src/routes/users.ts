@@ -1,0 +1,140 @@
+import { Router } from 'express';
+import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions } from '@workspace/db';
+import { eq } from 'drizzle-orm';
+import crypto from 'crypto';
+
+export const usersRouter = Router();
+
+function hashPassword(plain: string) {
+  return crypto.createHash('sha256').update(plain + 'npos-salt-2024').digest('hex');
+}
+
+function safeUser(u: typeof users.$inferSelect) {
+  const { passwordHash: _, ...rest } = u;
+  return rest;
+}
+
+usersRouter.get('/', async (_req, res) => {
+  try {
+    const rows = await db.select().from(users).orderBy(users.createdAt);
+    res.json(rows.map(safeUser));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.post('/', async (req, res) => {
+  try {
+    const { name, email, password, role = 'user', isActive = true, dataScope = 'all' } = req.body;
+    if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
+    const [row] = await db.insert(users).values({
+      name, email, passwordHash: hashPassword(password), role, isActive, dataScope,
+    }).returning();
+    res.status(201).json(safeUser(row));
+  } catch (e: any) {
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Email already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.get('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const [row] = await db.select().from(users).where(eq(users.id, id));
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const modules = await db.select().from(userModuleAccess).where(eq(userModuleAccess.userId, id));
+    const categories = await db.select().from(userAllowedCategories).where(eq(userAllowedCategories.userId, id));
+    const processes = await db.select().from(userAllowedProcesses).where(eq(userAllowedProcesses.userId, id));
+    const fields = await db.select().from(userFieldPermissions).where(eq(userFieldPermissions.userId, id));
+    res.json({ ...safeUser(row), modules, categories, processes, fields });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.patch('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, email, password, role, isActive, dataScope } = req.body;
+    const updates: Partial<typeof users.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (email !== undefined) updates.email = email;
+    if (password) updates.passwordHash = hashPassword(password);
+    if (role !== undefined) updates.role = role;
+    if (isActive !== undefined) updates.isActive = isActive;
+    if (dataScope !== undefined) updates.dataScope = dataScope;
+    const [row] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(safeUser(row));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.delete('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await db.delete(users).where(eq(users.id, id));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.put('/:id/modules', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { modules } = req.body as { modules: { module: string; hasAccess: boolean }[] };
+    await db.delete(userModuleAccess).where(eq(userModuleAccess.userId, id));
+    if (modules?.length) {
+      await db.insert(userModuleAccess).values(modules.map(m => ({ userId: id, module: m.module, hasAccess: m.hasAccess })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.put('/:id/categories', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { categories } = req.body as { categories: string[] };
+    await db.delete(userAllowedCategories).where(eq(userAllowedCategories.userId, id));
+    if (categories?.length) {
+      await db.insert(userAllowedCategories).values(categories.map(c => ({ userId: id, category: c })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.put('/:id/processes', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { processes } = req.body as { processes: { processId: number; canEdit: boolean }[] };
+    await db.delete(userAllowedProcesses).where(eq(userAllowedProcesses.userId, id));
+    if (processes?.length) {
+      await db.insert(userAllowedProcesses).values(processes.map(p => ({ userId: id, processId: p.processId, canEdit: p.canEdit })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+usersRouter.put('/:id/field-permissions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { permissions } = req.body as { permissions: { catalogueType: string; fieldKey: string; canView: boolean; canEdit: boolean }[] };
+    await db.delete(userFieldPermissions).where(eq(userFieldPermissions.userId, id));
+    if (permissions?.length) {
+      await db.insert(userFieldPermissions).values(permissions.map(p => ({
+        userId: id, catalogueType: p.catalogueType, fieldKey: p.fieldKey, canView: p.canView, canEdit: p.canEdit,
+      })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});

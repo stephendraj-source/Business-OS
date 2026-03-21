@@ -7,6 +7,7 @@ import governanceRouter from "./governance";
 import aiAgentsRouter from "./ai-agents";
 import workflowsRouter from "./workflows";
 import checklistsRouter from "./checklists";
+import { usersRouter } from "./users";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(auditLogsRouter);
 router.use(aiAgentsRouter);
 router.use(workflowsRouter);
 router.use(checklistsRouter);
+router.use('/users', usersRouter);
 
 export default router;

@@ -1,11 +1,11 @@
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -18,10 +18,10 @@ interface LayoutProps {
 type ViewMeta = { label: string; section: string };
 
 const VIEW_META: Record<ActiveView, ViewMeta> = {
-  table:        { label: 'Process Catalogue',  section: 'Core Views' },
-  tree:         { label: 'Process Map',         section: 'Core Views' },
-  portfolio:    { label: 'Portfolio Catalogue', section: 'Core Views' },
-  'process-map':{ label: 'Portfolio Map',       section: 'Core Views' },
+  table:        { label: 'Master Catalogue',   section: 'Core Views' },
+  tree:         { label: 'Master Map',          section: 'Core Views' },
+  portfolio:    { label: 'Process Catalogue',   section: 'Core Views' },
+  'process-map':{ label: 'Process Map',         section: 'Core Views' },
   governance:   { label: 'Governance',          section: 'Governance' },
   connectors:   { label: 'Connectors',          section: 'Integrations' },
   dashboards:   { label: 'Dashboards',          section: 'System' },
@@ -29,7 +29,8 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'audit-logs': { label: 'Audit & Logs',        section: 'System' },
   settings:     { label: 'Settings',            section: 'System' },
   'ai-agents':  { label: 'AI Agents',           section: 'AI' },
-  'workflows':  { label: 'Workflows',            section: 'Workflows' },
+  'workflows':  { label: 'Workflows',           section: 'Workflows' },
+  'users':      { label: 'Users',               section: 'Admin' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -56,10 +57,10 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
           <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Core Views</div>
             <div className="space-y-1">
-              <NavItem icon={<TableProperties />} label="Process Catalogue" active={activeView === 'table'} onClick={() => onViewChange('table')} />
-              <NavItem icon={<Network />} label="Process Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
-              <NavItem icon={<Briefcase />} label="Portfolio Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
-              <NavItem icon={<Map />} label="Portfolio Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
+              <NavItem icon={<TableProperties />} label="Master Catalogue" active={activeView === 'table'} onClick={() => onViewChange('table')} />
+              <NavItem icon={<Network />} label="Master Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
+              <NavItem icon={<Briefcase />} label="Process Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
+              <NavItem icon={<Map />} label="Process Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
             </div>
           </div>
 
@@ -98,6 +99,13 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
               <NavItem icon={<FileBarChart />} label="Reports" active={activeView === 'reports'} onClick={() => onViewChange('reports')} />
               <NavItem icon={<Bell />} label="Audit &amp; Logs" active={activeView === 'audit-logs'} onClick={() => onViewChange('audit-logs')} />
               <NavItem icon={<Settings />} label="Settings" active={activeView === 'settings'} onClick={() => onViewChange('settings')} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Admin</div>
+            <div className="space-y-1">
+              <NavItem icon={<Users />} label="Users" active={activeView === 'users'} onClick={() => onViewChange('users')} />
             </div>
           </div>
 
