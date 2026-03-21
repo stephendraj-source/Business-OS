@@ -6,6 +6,7 @@ import {
   Building2, Tag, FolderOpen, Network, ChevronRight, Pencil, Globe, Briefcase,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { PhoneInput } from '@/components/phone-input';
 
 const API = '/api';
 
@@ -447,6 +448,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     email: user.email,
     role: user.role,
     designation: user.designation ?? '',
+    phone: (user as any).phone ?? '',
     isActive: user.isActive,
   });
   const [form, setForm] = useState(initForm);
@@ -481,7 +483,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     try {
       await fetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, isActive: form.isActive }),
+        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, isActive: form.isActive }),
       });
       await onSaved();
     } finally {
@@ -555,6 +557,15 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
           placeholder="e.g. Program Manager, Finance Director…"
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+        <PhoneInput
+          value={form.phone}
+          onChange={val => setForm(f => ({ ...f, phone: val }))}
+          placeholder="Mobile number"
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -1051,7 +1062,7 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', role: 'user' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', phone: '', role: 'user' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [resetLink, setResetLink] = useState('');
@@ -1080,7 +1091,7 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
     setError('');
     try {
       const r = await fetch(`${API}/users`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, name: resolvedName }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, name: resolvedName, phone: form.phone }),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed to create user'); return; }
       const d = await r.json();
@@ -1193,6 +1204,15 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
             <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               placeholder="jane@org.org"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Phone <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+            <PhoneInput
+              value={form.phone}
+              onChange={val => setForm(f => ({ ...f, phone: val }))}
+              placeholder="Mobile number"
+            />
           </div>
 
           <div className="space-y-1">

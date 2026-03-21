@@ -58,12 +58,12 @@ usersRouter.post('/', async (req, res) => {
   try {
     const auth = (req as any).auth;
     const tenantId = auth?.tenantId ?? null;
-    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', isActive = true, dataScope = 'categories' } = req.body;
+    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', phone = '', isActive = true, dataScope = 'categories' } = req.body;
     const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
     if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
     const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
-      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
+      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, phone, isActive, dataScope,
     }).returning();
     await db.insert(userModuleAccess).values(
       ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: false }))
@@ -116,7 +116,7 @@ usersRouter.get('/:id', async (req, res) => {
 usersRouter.patch('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, firstName, lastName, preferredName, email, password, role, designation, isActive, dataScope } = req.body;
+    const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (firstName !== undefined) updates.firstName = firstName;
@@ -126,6 +126,7 @@ usersRouter.patch('/:id', async (req, res) => {
     if (password) updates.passwordHash = hashPassword(password);
     if (role !== undefined) updates.role = role;
     if (designation !== undefined) updates.designation = designation;
+    if (phone !== undefined) updates.phone = phone;
     if (isActive !== undefined) updates.isActive = isActive;
     if (dataScope !== undefined) updates.dataScope = dataScope;
     const [row] = await db.update(users).set(updates).where(eq(users.id, id)).returning();

@@ -12,6 +12,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: text('role').notNull().default('user'),
   designation: text('designation').notNull().default(''),
+  phone: text('phone').notNull().default(''),
   dataScope: text('data_scope').notNull().default('categories'),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').defaultNow(),
