@@ -363,7 +363,7 @@ function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: strin
 
 // ── Run Panel ─────────────────────────────────────────────────────────────────
 
-type OutputFormat = "plain" | "json" | "xml";
+type OutputFormat = "plain" | "json" | "xml" | "html";
 
 function formatOutput(raw: string, fmt: OutputFormat): string {
   if (!raw) return "";
@@ -393,6 +393,12 @@ function formatOutput(raw: string, fmt: OutputFormat): string {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const lines = raw.trim().split("\n");
     return `<output>\n${lines.map(l => `  <line>${esc(l)}</line>`).join("\n")}\n</output>`;
+  }
+  if (fmt === "html") {
+    // Extract from ```html ... ``` code block if present
+    const blockMatch = raw.match(/```(?:html)?\s*([\s\S]*?)```/);
+    if (blockMatch) return blockMatch[1].trim();
+    return raw;
   }
   return raw;
 }
@@ -491,7 +497,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Output</div>
           <div className="flex items-center gap-2">
             <div className="flex rounded-lg overflow-hidden border border-border text-xs">
-              {(["plain", "json", "xml"] as OutputFormat[]).map(fmt => (
+              {(["plain", "json", "xml", "html"] as OutputFormat[]).map(fmt => (
                 <button
                   key={fmt}
                   onClick={() => setOutputFormat(fmt)}
@@ -514,17 +520,38 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
             )}
           </div>
         </div>
-        <div
-          ref={outputRef}
-          className="bg-background border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap"
-        >
-          {running && !output && <span className="text-muted-foreground animate-pulse">Executing agent…</span>}
-          {displayedOutput && <span>{displayedOutput}</span>}
-          {error && <span className="text-red-400">{'\n'}{error}</span>}
-          {!running && !output && !error && (
-            <span className="text-muted-foreground/40 italic">Starting agent run…</span>
-          )}
-        </div>
+        {outputFormat === "html" ? (
+          <div
+            ref={outputRef}
+            className="border border-border rounded-xl min-h-[120px] max-h-80 overflow-y-auto bg-white"
+          >
+            {running && !output && (
+              <div className="p-4 text-muted-foreground text-xs animate-pulse">Executing agent…</div>
+            )}
+            {displayedOutput ? (
+              <div
+                className="p-4 html-output"
+                dangerouslySetInnerHTML={{ __html: displayedOutput }}
+              />
+            ) : null}
+            {error && <div className="p-4 text-red-500 text-xs">{error}</div>}
+            {!running && !output && !error && (
+              <div className="p-4 text-muted-foreground/40 text-xs italic">Starting agent run…</div>
+            )}
+          </div>
+        ) : (
+          <div
+            ref={outputRef}
+            className="bg-background border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap"
+          >
+            {running && !output && <span className="text-muted-foreground animate-pulse">Executing agent…</span>}
+            {displayedOutput && <span>{displayedOutput}</span>}
+            {error && <span className="text-red-400">{'\n'}{error}</span>}
+            {!running && !output && !error && (
+              <span className="text-muted-foreground/40 italic">Starting agent run…</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
