@@ -94,7 +94,7 @@ export function TenantManagementPage() {
             </div>
             <div>
               <h1 className="font-display font-bold text-base">Tenant Management</h1>
-              <p className="text-xs text-muted-foreground">NonprofitOS Administration</p>
+              <p className="text-xs text-muted-foreground">BusinessOS Administration</p>
             </div>
           </div>
           <button

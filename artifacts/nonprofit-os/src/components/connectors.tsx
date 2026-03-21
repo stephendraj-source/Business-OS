@@ -195,7 +195,7 @@ function SalesforceCard({ status, savedConfig, onConfigure, onDisconnect }: {
               <StatusBadge status={status} />
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Sync donor records, opportunities, campaigns, and contacts between NonprofitOS and Salesforce Nonprofit Success Pack (NPSP) or Salesforce for Nonprofits.
+              Sync donor records, opportunities, campaigns, and contacts between BusinessOS and Salesforce Nonprofit Success Pack (NPSP) or Salesforce for Nonprofits.
             </p>
             {savedConfig && (
               <p className="text-xs text-muted-foreground/70 mt-2 flex items-center gap-1.5">

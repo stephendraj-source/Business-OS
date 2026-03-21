@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const KEY = 'nonprofit-os-org-name';
-const DEFAULT_NAME = 'NonprofitOS';
+const DEFAULT_NAME = 'BusinessOS';
 
 export function getOrgName(): string {
   return localStorage.getItem(KEY) ?? DEFAULT_NAME;
