@@ -445,17 +445,27 @@ export function FormsView() {
 
   useEffect(() => { fetchForms(); }, [fetchForms]);
 
-  // Fetch workflows + agents once (for the Publish tab dropdowns)
-  useEffect(() => {
-    fetch(`${API}/workflows`, { headers: fetchHeaders() })
-      .then(r => r.ok ? r.json() : [])
-      .then(d => { if (Array.isArray(d)) setWorkflows(d); })
-      .catch(() => {});
-    fetch(`${API}/ai-agents`, { headers: fetchHeaders() })
-      .then(r => r.ok ? r.json() : [])
-      .then(d => { if (Array.isArray(d)) setAgents(d); })
-      .catch(() => {});
+  // Fetch workflows + agents whenever the Publish tab is opened (or on mount)
+  const fetchWorkflowsAndAgents = useCallback(async () => {
+    const headers = fetchHeaders();
+    const [wRes, aRes] = await Promise.allSettled([
+      fetch(`${API}/workflows`, { headers }),
+      fetch(`${API}/ai-agents`, { headers }),
+    ]);
+    if (wRes.status === 'fulfilled' && wRes.value.ok) {
+      try { const d = await wRes.value.json(); if (Array.isArray(d)) setWorkflows(d); } catch {}
+    }
+    if (aRes.status === 'fulfilled' && aRes.value.ok) {
+      try { const d = await aRes.value.json(); if (Array.isArray(d)) setAgents(d); } catch {}
+    }
   }, [fetchHeaders]);
+
+  useEffect(() => { fetchWorkflowsAndAgents(); }, [fetchWorkflowsAndAgents]);
+
+  // Re-fetch when the user switches to the Publish tab
+  useEffect(() => {
+    if (tab === 'publish') fetchWorkflowsAndAgents();
+  }, [tab, fetchWorkflowsAndAgents]);
 
   const loadForm = useCallback(async (id: number) => {
     const r = await fetch(`${API}/forms/${id}`, { headers: fetchHeaders() });
