@@ -368,9 +368,26 @@ type OutputFormat = "plain" | "json" | "xml";
 function formatOutput(raw: string, fmt: OutputFormat): string {
   if (!raw) return "";
   if (fmt === "json") {
-    const match = raw.match(/```(?:json)?\s*([\s\S]*?)```/) || raw.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-    const candidate = match ? match[1].trim() : raw.trim();
-    try { return JSON.stringify(JSON.parse(candidate), null, 2); } catch { return raw; }
+    // Strategy 1: extract from triple-backtick code blocks
+    const blockMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (blockMatch) {
+      try { return JSON.stringify(JSON.parse(blockMatch[1].trim()), null, 2); } catch {}
+    }
+    // Strategy 2: try the whole trimmed string
+    try { return JSON.stringify(JSON.parse(raw.trim()), null, 2); } catch {}
+    // Strategy 3: find outermost { } or [ ] block
+    const firstBrace = raw.indexOf('{');
+    const firstBracket = raw.indexOf('[');
+    const jsonStart = [firstBrace, firstBracket].filter(i => i !== -1).reduce((a, b) => Math.min(a, b), Infinity);
+    if (jsonStart < Infinity) {
+      const lastBrace = raw.lastIndexOf('}');
+      const lastBracket = raw.lastIndexOf(']');
+      const jsonEnd = Math.max(lastBrace, lastBracket);
+      if (jsonEnd > jsonStart) {
+        try { return JSON.stringify(JSON.parse(raw.slice(jsonStart, jsonEnd + 1)), null, 2); } catch {}
+      }
+    }
+    return raw;
   }
   if (fmt === "xml") {
     const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -380,7 +397,7 @@ function formatOutput(raw: string, fmt: OutputFormat): string {
   return raw;
 }
 
-function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () => Promise<void> }) {
+function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
@@ -389,6 +406,7 @@ function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () 
   const [outputFormat, setOutputFormat] = useState<OutputFormat>("plain");
   const [copied, setCopied] = useState(false);
   const outputRef = useRef<HTMLDivElement>(null);
+  const lastRunKey = useRef(0);
 
   const fetchLogs = useCallback(async () => {
     const r = await fetch(`${API}/ai-agents/${agentId}/logs`);
@@ -410,8 +428,7 @@ function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const run = async () => {
-    if (onBeforeRun) await onBeforeRun();
+  const run = useCallback(async () => {
     setRunning(true);
     setOutput("");
     setError("");
@@ -439,26 +456,34 @@ function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () 
       setRunning(false);
       fetchLogs();
     }
-  };
+  }, [agentId, fetchLogs]);
+
+  // Auto-run when runKey changes (triggered by parent tab click)
+  useEffect(() => {
+    if (runKey > 0 && runKey !== lastRunKey.current) {
+      lastRunKey.current = runKey;
+      run();
+    }
+  }, [runKey, run]);
 
   const displayedOutput = formatOutput(output, outputFormat);
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold flex items-center gap-2"><Play className="w-4 h-4 text-primary" />Run Agent</h3>
-        <button
-          onClick={run}
-          disabled={running}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
-            running
-              ? "bg-secondary text-muted-foreground cursor-not-allowed"
-              : "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-          )}
-        >
-          {running ? <><Loader2 className="w-4 h-4 animate-spin" />Running…</> : <><Zap className="w-4 h-4" />Run Now</>}
-        </button>
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          {running
+            ? <><Loader2 className="w-4 h-4 animate-spin text-primary" />Running…</>
+            : <><Play className="w-4 h-4 text-primary" />Run Agent</>}
+        </h3>
+        {!running && (
+          <button
+            onClick={run}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+          >
+            <RefreshCw className="w-3 h-3" />{output || error ? "Re-run" : "Run"}
+          </button>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -497,7 +522,7 @@ function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () 
           {displayedOutput && <span>{displayedOutput}</span>}
           {error && <span className="text-red-400">{'\n'}{error}</span>}
           {!running && !output && !error && (
-            <span className="text-muted-foreground/40 italic">Output will appear here after you run the agent.</span>
+            <span className="text-muted-foreground/40 italic">Starting agent run…</span>
           )}
         </div>
       </div>
@@ -511,7 +536,7 @@ function RunPanel({ agentId, onBeforeRun }: { agentId: number; onBeforeRun?: () 
         </div>
         {logs.length === 0 ? (
           <div className="text-sm text-muted-foreground text-center py-6 bg-secondary/30 rounded-xl border border-border">
-            No runs yet. Click "Run Now" to execute this agent.
+            No previous runs found.
           </div>
         ) : (
           <div className="space-y-2">
@@ -818,6 +843,7 @@ export function AiAgentsView() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
+  const [runKey, setRunKey] = useState(0);
   const [processFields, setProcessFields] = useState<ProcessField[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowMeta[]>([]);
 
@@ -904,6 +930,16 @@ export function AiAgentsView() {
       setDirty(false);
     } finally { setSaving(false); }
   };
+
+  const handleTabClick = useCallback(async (tabId: Tab) => {
+    if (tabId === "run") {
+      if (dirty) await save();
+      setTab("run");
+      setRunKey(k => k + 1);
+    } else {
+      setTab(tabId);
+    }
+  }, [dirty, save]);
 
   const markDirty = <T,>(setter: React.Dispatch<React.SetStateAction<T>>) => (v: T) => {
     setter(v); setDirty(true);
@@ -1055,7 +1091,7 @@ export function AiAgentsView() {
             {TABS.map(t => (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => handleTabClick(t.id)}
                 className={cn(
                   "flex items-center gap-1.5 px-3 py-2 text-sm rounded-t-lg transition-colors border-b-2 -mb-px",
                   tab === t.id
@@ -1107,7 +1143,7 @@ export function AiAgentsView() {
             )}
             {tab === "run" && (
               <div className="max-w-2xl">
-                <RunPanel agentId={selectedAgent.id} onBeforeRun={save} />
+                <RunPanel agentId={selectedAgent.id} runKey={runKey} />
               </div>
             )}
           </div>
