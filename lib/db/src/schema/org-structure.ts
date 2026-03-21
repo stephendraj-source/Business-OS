@@ -42,6 +42,7 @@ export const groups = pgTable('groups', {
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   color: text('color').notNull().default(''),
+  isAdminGroup: boolean('is_admin_group').notNull().default(false),
 });
 
 export const userGroups = pgTable('user_groups', {
@@ -71,6 +72,7 @@ export const roles = pgTable('roles', {
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   color: text('color').notNull().default(''),
+  isSystem: boolean('is_system').notNull().default(false),
 });
 
 export const groupRoles = pgTable('group_roles', {
