@@ -7,10 +7,23 @@ import {
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
   Database, RefreshCw, PenLine, Inbox, Settings2,
   BookMarked, FileText, Upload, Download, FileUp, File, Pencil,
+  Bold, Italic, Underline, Strikethrough,
+  Heading1, Heading2, Heading3,
+  ListOrdered, Quote, Code, Minus,
+  AlignCenter, AlignRight,
+  Highlighter, Undo2, Redo2, Unlink,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PhoneInput } from "@/components/phone-input";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import LinkExtension from "@tiptap/extension-link";
+import PlaceholderExtension from "@tiptap/extension-placeholder";
+import UnderlineExtension from "@tiptap/extension-underline";
+import TextAlignExtension from "@tiptap/extension-text-align";
+import HighlightExtension from "@tiptap/extension-highlight";
+import TypographyExtension from "@tiptap/extension-typography";
 
 const API = '/api';
 
@@ -1136,77 +1149,217 @@ function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName, ag
 
 // ── Knowledge Item Editors ────────────────────────────────────────────────────
 
+function TbBtn({ onClick, active, title, disabled, children }: {
+  onClick: () => void; active?: boolean; title?: string; disabled?: boolean; children: React.ReactNode;
+}) {
+  return (
+    <button
+      onMouseDown={e => { e.preventDefault(); onClick(); }}
+      title={title}
+      disabled={disabled}
+      className={cn(
+        "w-7 h-7 flex items-center justify-center rounded text-xs transition-colors shrink-0",
+        active ? "bg-primary/20 text-primary" : "hover:bg-secondary text-muted-foreground hover:text-foreground",
+        disabled && "opacity-30 cursor-not-allowed"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TbSep() {
+  return <div className="w-px h-4 bg-border mx-0.5 shrink-0" />;
+}
+
 function WikiEditor({ item, onSave, saving }: {
   item: KnowledgeItem;
   onSave: (title: string, content: string) => Promise<void>;
   saving: boolean;
 }) {
   const [title, setTitle] = useState(item.title);
-  const [content, setContent] = useState(item.content);
-  const [preview, setPreview] = useState(false);
-  const dirty = title !== item.title || content !== item.content;
+  const [savedContent, setSavedContent] = useState(item.content);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const titleRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setTitle(item.title); setContent(item.content); }, [item.id, item.title, item.content]);
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      UnderlineExtension,
+      HighlightExtension.configure({ multicolor: false }),
+      TextAlignExtension.configure({ types: ["heading", "paragraph"] }),
+      LinkExtension.configure({ openOnClick: false, HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" } }),
+      PlaceholderExtension.configure({ placeholder: "Start writing your wiki page…" }),
+      TypographyExtension,
+    ],
+    content: item.content || "",
+    onUpdate: ({ editor }) => {
+      setDirty(title !== item.title || editor.getHTML() !== savedContent);
+    },
+  });
 
-  const renderMarkdown = (text: string) =>
-    text
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/^#{3} (.+)/gm, '<h3 class="text-base font-semibold mt-4 mb-1">$1</h3>')
-      .replace(/^#{2} (.+)/gm, '<h2 class="text-lg font-semibold mt-5 mb-2">$1</h2>')
-      .replace(/^# (.+)/gm, '<h1 class="text-xl font-bold mt-6 mb-2">$1</h1>')
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code class="bg-secondary px-1 rounded text-xs font-mono">$1</code>')
-      .replace(/^- (.+)/gm, '<li class="ml-4 list-disc">$1</li>')
-      .replace(/^(\d+)\. (.+)/gm, '<li class="ml-4 list-decimal">$2</li>')
-      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" class="text-primary underline">$1</a>')
-      .replace(/\n{2,}/g, '</p><p class="mb-2">')
-      .replace(/\n/g, '<br/>');
+  useEffect(() => {
+    if (!editor) return;
+    editor.commands.setContent(item.content || "");
+    setTitle(item.title);
+    setSavedContent(item.content);
+    setDirty(false);
+  }, [item.id]);
+
+  useEffect(() => {
+    if (!editor) return;
+    setDirty(title !== item.title || editor.getHTML() !== savedContent);
+  }, [title]);
+
+  const handleSave = async () => {
+    if (!editor) return;
+    const html = editor.getHTML();
+    await onSave(title, html);
+    setSavedContent(html);
+    setDirty(false);
+  };
+
+  const openLinkDialog = () => {
+    if (!editor) return;
+    const prev = editor.getAttributes("link").href || "";
+    setLinkUrl(prev);
+    setLinkDialogOpen(true);
+  };
+
+  const applyLink = () => {
+    if (!editor) return;
+    if (!linkUrl.trim()) {
+      editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    } else {
+      const href = linkUrl.startsWith("http") ? linkUrl : `https://${linkUrl}`;
+      editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    }
+    setLinkDialogOpen(false);
+    setLinkUrl("");
+  };
+
+  if (!editor) return null;
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-6 py-3.5 border-b border-border">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/30 to-violet-500/10 flex items-center justify-center flex-shrink-0">
           <BookMarked className="w-4 h-4 text-violet-400" />
         </div>
         <input
+          ref={titleRef}
           value={title}
           onChange={e => setTitle(e.target.value)}
           className="flex-1 text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground"
-          placeholder="Page title..."
+          placeholder="Page title…"
         />
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPreview(v => !v)}
-            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", preview ? "bg-primary text-primary-foreground" : "border border-border hover:bg-secondary")}
-          >
-            {preview ? <Pencil className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            {preview ? "Edit" : "Preview"}
-          </button>
-          <button
-            onClick={() => onSave(title, content)}
-            disabled={!dirty || saving}
-            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {dirty ? "Save" : "Saved"}
-          </button>
-        </div>
+        <button
+          onClick={handleSave}
+          disabled={!dirty || saving}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors shrink-0",
+            dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground cursor-not-allowed"
+          )}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {dirty ? "Save" : "Saved"}
+        </button>
       </div>
-      <div className="flex-1 overflow-auto">
-        {preview ? (
-          <div
-            className="px-8 py-6 prose prose-sm max-w-none text-sm leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: `<p class="mb-2">${renderMarkdown(content || "*Nothing written yet*")}</p>` }}
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-0.5 px-4 py-1.5 border-b border-border bg-secondary/20 flex-wrap">
+        <TbBtn onClick={() => editor.chain().focus().undo().run()} title="Undo" disabled={!editor.can().undo()}>
+          <Undo2 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().redo().run()} title="Redo" disabled={!editor.can().redo()}>
+          <Redo2 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbSep />
+        <TbBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} active={editor.isActive("heading", { level: 1 })} title="Heading 1">
+          <Heading1 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} active={editor.isActive("heading", { level: 2 })} title="Heading 2">
+          <Heading2 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} active={editor.isActive("heading", { level: 3 })} title="Heading 3">
+          <Heading3 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbSep />
+        <TbBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Bold (Ctrl+B)">
+          <Bold className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Italic (Ctrl+I)">
+          <Italic className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive("underline")} title="Underline (Ctrl+U)">
+          <Underline className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive("strike")} title="Strikethrough">
+          <Strikethrough className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleHighlight().run()} active={editor.isActive("highlight")} title="Highlight">
+          <Highlighter className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbSep />
+        <TbBtn onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive("bulletList")} title="Bullet List">
+          <List className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive("orderedList")} title="Ordered List">
+          <ListOrdered className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive("blockquote")} title="Blockquote">
+          <Quote className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleCode().run()} active={editor.isActive("code")} title="Inline Code">
+          <Code className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive("codeBlock")} title="Code Block">
+          <Code2 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbSep />
+        <TbBtn onClick={() => editor.chain().focus().setTextAlign("left").run()} active={editor.isActive({ textAlign: "left" })} title="Align Left">
+          <AlignLeft className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().setTextAlign("center").run()} active={editor.isActive({ textAlign: "center" })} title="Align Center">
+          <AlignCenter className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().setTextAlign("right").run()} active={editor.isActive({ textAlign: "right" })} title="Align Right">
+          <AlignRight className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbSep />
+        <TbBtn onClick={openLinkDialog} active={editor.isActive("link")} title="Insert Link">
+          <Link2 className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().unsetLink().run()} disabled={!editor.isActive("link")} title="Remove Link">
+          <Unlink className="w-3.5 h-3.5" />
+        </TbBtn>
+        <TbBtn onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Horizontal Rule">
+          <Minus className="w-3.5 h-3.5" />
+        </TbBtn>
+      </div>
+
+      {/* Link Dialog */}
+      {linkDialogOpen && (
+        <div className="flex items-center gap-2 px-4 py-2 border-b border-border bg-secondary/30">
+          <input
+            autoFocus
+            value={linkUrl}
+            onChange={e => setLinkUrl(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") applyLink(); if (e.key === "Escape") setLinkDialogOpen(false); }}
+            placeholder="https://example.com"
+            className="flex-1 text-sm border border-border rounded px-2 py-1 bg-background outline-none focus:border-primary"
           />
-        ) : (
-          <textarea
-            value={content}
-            onChange={e => setContent(e.target.value)}
-            placeholder={"# Start writing...\n\nSupports basic Markdown: **bold**, *italic*, # headings, - lists, [links](url)\n"}
-            className="w-full h-full resize-none bg-transparent px-8 py-6 text-sm font-mono leading-relaxed outline-none"
-          />
-        )}
+          <button onClick={applyLink} className="px-2 py-1 text-xs bg-primary text-primary-foreground rounded">Apply</button>
+          <button onClick={() => setLinkDialogOpen(false)} className="px-2 py-1 text-xs border border-border rounded hover:bg-secondary">Cancel</button>
+        </div>
+      )}
+
+      {/* Editor body */}
+      <div className="flex-1 overflow-auto px-8 py-6">
+        <EditorContent editor={editor} className="tiptap-editor min-h-[300px] outline-none" />
       </div>
     </div>
   );

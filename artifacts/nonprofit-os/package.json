@@ -75,6 +75,14 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@tiptap/extension-highlight": "^2.27.2",
+    "@tiptap/extension-link": "^2.27.2",
+    "@tiptap/extension-placeholder": "^2.27.2",
+    "@tiptap/extension-text-align": "^2.27.2",
+    "@tiptap/extension-typography": "^2.27.2",
+    "@tiptap/extension-underline": "^2.27.2",
+    "@tiptap/react": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   }
