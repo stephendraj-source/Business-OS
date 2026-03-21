@@ -4,7 +4,7 @@ import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
 import { useQueryClient } from '@tanstack/react-query';
 import { getListProcessesQueryKey } from '@workspace/api-client-react';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck, Star, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck, Star, TrendingUp, TrendingDown, Minus, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
@@ -913,12 +913,14 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         case 'trafficLight':         av = TL_ORD[(a as any).trafficLight] ?? 0; bv = TL_ORD[(b as any).trafficLight] ?? 0; break;
         case 'estimatedValueImpact': av = a.estimatedValueImpact ?? '';      bv = b.estimatedValueImpact ?? ''; break;
         case 'industryBenchmark':    av = a.industryBenchmark ?? '';         bv = b.industryBenchmark ?? ''; break;
+        case 'include':              av = a.included ? 0 : 1;               bv = b.included ? 0 : 1; break;
+        case 'governance':           av = (govMap[a.id]?.length ?? 0);      bv = (govMap[b.id]?.length ?? 0); break;
         default: return a.number - b.number;
       }
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * m;
       return String(av).localeCompare(String(bv)) * m;
     });
-  }, [processes, search, selectedCategory, mode, sortKey, sortDir]);
+  }, [processes, search, selectedCategory, mode, sortKey, sortDir, govMap]);
 
   const handleIncludeToggle = (process: Process) => {
     updateProcess({ id: process.id, data: { included: !process.included } });
@@ -1413,17 +1415,17 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
               {allVisibleCols.map((col) => {
                 const isReorderable = !col.fixed;
                 const isDragOver = dragOverKey === col.key;
-                const isSortable = col.key !== 'include' && col.key !== 'actions';
+                const isSortable = col.key !== 'actions' && col.key !== 'include';
                 const isActiveSort = sortKey === col.key;
                 return (
                   <th
                     key={col.key}
                     title={col.label || undefined}
                     className={cn(
-                      "relative select-none overflow-hidden text-ellipsis whitespace-nowrap transition-colors",
+                      "relative group select-none overflow-hidden text-ellipsis whitespace-nowrap transition-colors",
                       isReorderable && "cursor-grab active:cursor-grabbing",
-                      isSortable && "hover:text-foreground cursor-pointer",
-                      isActiveSort ? "text-primary" : "",
+                      isSortable && "hover:bg-secondary/60 cursor-pointer",
+                      isActiveSort ? "text-primary bg-primary/5 border-b-2 border-primary" : "border-b border-border",
                       col.key === 'include' && "text-center"
                     )}
                     style={{ width: widths[col.key] ?? col.defaultWidth }}
@@ -1474,15 +1476,17 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                         </span>
                       </div>
                     ) : (
-                      <span className="flex items-center gap-1 pr-3 pointer-events-none">
+                      <span className="flex items-center gap-1.5 pr-3 pointer-events-none">
                         {isReorderable && (
                           <GripVertical className="w-3 h-3 text-muted-foreground/40 shrink-0" />
                         )}
                         <span className="truncate">{col.label}</span>
                         {isSortable && col.label && (
-                          <span className={cn("text-[9px] leading-none shrink-0", isActiveSort ? "text-primary" : "text-muted-foreground/30")}>
-                            {isActiveSort ? (sortDir === 'asc' ? '↑' : '↓') : '⇅'}
-                          </span>
+                          isActiveSort
+                            ? (sortDir === 'asc'
+                                ? <ArrowUp   className="w-3 h-3 shrink-0 text-primary" />
+                                : <ArrowDown className="w-3 h-3 shrink-0 text-primary" />)
+                            : <ArrowUpDown className="w-3 h-3 shrink-0 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
                         )}
                       </span>
                     )}
