@@ -9,6 +9,7 @@ import workflowsRouter from "./workflows";
 import checklistsRouter from "./checklists";
 import { usersRouter } from "./users";
 import { orgRouter } from "./org";
+import { initiativesRouter } from "./initiatives";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(workflowsRouter);
 router.use(checklistsRouter);
 router.use('/users', usersRouter);
 router.use(orgRouter);
+router.use(initiativesRouter);
 
 export default router;

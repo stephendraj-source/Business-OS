@@ -1,11 +1,11 @@
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users' | 'initiatives';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -31,6 +31,7 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'ai-agents':  { label: 'AI Agents',           section: 'AI' },
   'workflows':  { label: 'Workflows',           section: 'Workflows' },
   'users':      { label: 'Users',               section: 'Admin' },
+  'initiatives':{ label: 'Initiatives',         section: 'Strategy' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -61,6 +62,13 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
               <NavItem icon={<Network />} label="Master Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
               <NavItem icon={<Briefcase />} label="Process Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
               <NavItem icon={<Map />} label="Process Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Strategy</div>
+            <div className="space-y-1">
+              <NavItem icon={<Flag />} label="Initiatives" active={activeView === 'initiatives'} onClick={() => onViewChange('initiatives')} />
             </div>
           </div>
 
