@@ -470,26 +470,28 @@ function GovernanceCard({
         </div>
 
         {!isEditing && (
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={onEditStart}
-              title="Edit"
-              className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors border border-border/50"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-3.5 h-3.5" />
+              Edit
             </button>
             {confirmDelete ? (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => { setConfirmDelete(false); onDelete(); }}
                   disabled={deletingId === standard.id}
-                  className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-red-500 text-white hover:bg-red-600 font-medium transition-colors disabled:opacity-60"
                 >
-                  {deletingId === standard.id ? '...' : 'Confirm'}
+                  {deletingId === standard.id
+                    ? <><Loader2 className="w-3 h-3 animate-spin" />Deleting…</>
+                    : <><Trash2 className="w-3 h-3" />Confirm Delete</>}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(false)}
-                  className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground hover:bg-secondary/80 font-semibold"
+                  className="px-3 py-1.5 text-xs rounded-lg border border-border bg-background text-muted-foreground hover:bg-secondary font-medium transition-colors"
                 >
                   Cancel
                 </button>
@@ -497,10 +499,10 @@ function GovernanceCard({
             ) : (
               <button
                 onClick={() => setConfirmDelete(true)}
-                title="Delete"
-                className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border border-red-500/30 text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-colors"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
+                Delete
               </button>
             )}
           </div>
