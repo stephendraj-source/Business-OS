@@ -189,27 +189,40 @@ function DraggableTh({ fieldKey, children, className, onReorder, isActive, sortD
   onSort?: () => void;
 }) {
   const [dragOverSide, setDragOverSide] = useState<'before' | 'after' | null>(null);
+  const dragOverSideRef = useRef<'before' | 'after' | null>(null);
+
+  function setSide(side: 'before' | 'after' | null) {
+    dragOverSideRef.current = side;
+    setDragOverSide(side);
+  }
+
   return (
     <th
       draggable
       title={typeof children === 'string' ? children : undefined}
       onClick={() => onSort?.()}
-      onDragStart={e => e.dataTransfer.setData('text/plain', fieldKey)}
+      onDragStart={e => {
+        e.dataTransfer.setData('text/plain', fieldKey);
+        e.dataTransfer.effectAllowed = 'move';
+      }}
       onDragOver={e => {
         e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
         const rect = e.currentTarget.getBoundingClientRect();
-        setDragOverSide(e.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
+        setSide(e.clientX < rect.left + rect.width / 2 ? 'before' : 'after');
       }}
       onDragLeave={e => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverSide(null);
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setSide(null);
       }}
       onDrop={e => {
         e.preventDefault();
+        e.stopPropagation();
         const fromKey = e.dataTransfer.getData('text/plain');
-        if (fromKey && fromKey !== fieldKey && dragOverSide) onReorder(fromKey, fieldKey, dragOverSide);
-        setDragOverSide(null);
+        const side = dragOverSideRef.current;
+        setSide(null);
+        if (fromKey && fromKey !== fieldKey && side) onReorder(fromKey, fieldKey, side);
       }}
-      onDragEnd={() => setDragOverSide(null)}
+      onDragEnd={() => setSide(null)}
       className={cn(
         "relative text-left px-4 py-3 text-xs font-semibold bg-secondary/50 border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors",
         isActive ? "text-primary" : "text-muted-foreground",
