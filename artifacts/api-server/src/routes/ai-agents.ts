@@ -4,12 +4,14 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import {
-  db, processesTable,
+  db, processesTable, users,
   aiAgentsTable, agentKnowledgeUrlsTable, agentKnowledgeFilesTable,
   agentSchedulesTable, agentRunLogsTable,
   agentModuleAccess, agentAllowedCategories, agentAllowedProcesses, agentFieldPermissions,
+  agentShares,
 } from "@workspace/db";
-import { eq, desc, max, sql } from "drizzle-orm";
+import { userGroups, groupRoles } from "@workspace/db";
+import { eq, desc, max, sql, or, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
@@ -216,12 +218,18 @@ router.get("/ai-agents/:id", async (req, res) => {
   }
 });
 
+function getRequestUserId(req: any): number | null {
+  const h = req.headers['x-user-id'];
+  return h ? parseInt(h as string) : null;
+}
+
 router.post("/ai-agents", async (req, res) => {
   try {
+    const userId = getRequestUserId(req);
     const [maxNum] = await db.select({ val: max(aiAgentsTable.agentNumber) }).from(aiAgentsTable);
     const nextNum = (maxNum?.val ?? 0) + 1;
     const { name = "New Agent", description = "", instructions = "", tools = "[]" } = req.body as Record<string, string>;
-    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools }).returning();
+    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools, createdBy: userId ?? undefined }).returning();
     await db.insert(agentModuleAccess).values(
       ALL_MODULES.map(module => ({ agentId: agent.id, module, hasAccess: false }))
     );
@@ -605,6 +613,36 @@ router.put("/:id/permissions/field-permissions", async (req, res) => {
       await db.insert(agentFieldPermissions).values(permissions.map(p => ({ agentId: id, catalogueType: p.catalogueType, fieldKey: p.fieldKey, canView: p.canView, canEdit: p.canEdit })));
     }
     res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Agent Shares ───────────────────────────────────────────────────────────────
+
+router.get("/ai-agents/:id/shares", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const shares = await db.select().from(agentShares).where(eq(agentShares.agentId, id));
+    res.json(shares);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+router.put("/ai-agents/:id/shares", async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const id = parseInt(req.params.id);
+    const agent = await db.select().from(aiAgentsTable).where(eq(aiAgentsTable.id, id));
+    if (!agent.length) return res.status(404).json({ error: "Not found" });
+    const isOwner = agent[0].createdBy === userId;
+    const userRoleRow = userId ? await db.select({ role: users.role }).from(users).where(eq(users.id, userId)) : [];
+    const isAdmin = userRoleRow[0]?.role === 'admin';
+    if (!isOwner && !isAdmin) return res.status(403).json({ error: "No share access" });
+    const { shares } = req.body as { shares: { sharedWithUserId?: number; sharedWithRoleId?: number; sharedWithGroupId?: number; privilege: string }[] };
+    await db.delete(agentShares).where(eq(agentShares.agentId, id));
+    if (shares?.length) {
+      await db.insert(agentShares).values(shares.map(s => ({ agentId: id, ...s })));
+    }
+    const result = await db.select().from(agentShares).where(eq(agentShares.agentId, id));
+    res.json(result);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

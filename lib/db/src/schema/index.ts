@@ -10,3 +10,4 @@ export * from "./users";
 export * from "./process-links";
 export * from "./org-structure";
 export * from "./initiatives";
+export * from "./sharing";

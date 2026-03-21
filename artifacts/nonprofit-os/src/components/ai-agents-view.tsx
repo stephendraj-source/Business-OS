@@ -3,9 +3,11 @@ import {
   Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
-  Shield, Search,
+  Shield, Search, Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useUser } from "@/contexts/UserContext";
+import { ShareModal } from "./share-modal";
 
 const API = '/api';
 
@@ -1171,7 +1173,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
 
 // ── Main AI Agents View ────────────────────────────────────────────────────────
 
-type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions";
+type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions" | "shares";
 
 export function AiAgentsView() {
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -1282,12 +1284,14 @@ export function AiAgentsView() {
     setter(v); setDirty(true);
   };
 
+  const { currentUser } = useUser();
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Overview", icon: <Wrench className="w-3.5 h-3.5" /> },
     { id: "knowledge", label: "Knowledge", icon: <FileText className="w-3.5 h-3.5" /> },
     { id: "schedule", label: "Schedule", icon: <Calendar className="w-3.5 h-3.5" /> },
     { id: "run", label: "Run", icon: <Play className="w-3.5 h-3.5" /> },
     { id: "permissions", label: "Permissions", icon: <Shield className="w-3.5 h-3.5" /> },
+    { id: "shares", label: "Share", icon: <Share2 className="w-3.5 h-3.5" /> },
   ];
 
   return (
@@ -1501,9 +1505,38 @@ export function AiAgentsView() {
                 <AgentPermissionsPanel agentId={selectedAgent.id} />
               </div>
             )}
+            {tab === "shares" && (
+              <div className="max-w-lg space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <Share2 className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Agent Sharing</h3>
+                  <span className="text-xs text-muted-foreground">— control who can view, edit, or delete this agent</span>
+                </div>
+                <AgentSharesPanel
+                  agentId={selectedAgent.id}
+                  isOwner={selectedAgent.createdBy === currentUser?.id || currentUser?.role === 'admin'}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function AgentSharesPanel({ agentId, isOwner }: { agentId: number; isOwner: boolean }) {
+  return (
+    <ShareModal
+      resourceType="agent"
+      resourceId={agentId}
+      resourceName=""
+      isOwner={isOwner}
+      privilegeMode="privilege"
+      privilegeOptions={['view', 'edit', 'delete']}
+      onClose={() => {}}
+      onSaved={() => {}}
+      inline
+    />
   );
 }

@@ -1,13 +1,17 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
-  SlidersHorizontal, GripVertical, X, Plus, RotateCcw,
+  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
 import { useOptimisticUpdateProcess, useCategoriesData } from '@/hooks/use-app-data';
 import * as XLSX from 'xlsx';
+import { useUser } from '@/contexts/UserContext';
+import { ShareModal } from './share-modal';
+
+const API = '/api';
 
 type Process = {
   id: number;
@@ -539,11 +543,14 @@ function loadFieldConfig(): Record<ReportId, string[]> {
 // ─── Custom report types & helpers ─────────────────────────────────────────────
 
 type CustomReportDef = {
-  id: string;
+  id: number;
   name: string;
   description: string;
   fields: string[];
   createdAt: string;
+  isOwner?: boolean;
+  canEdit?: boolean;
+  shares?: unknown[];
 };
 
 const CUSTOM_REPORT_ALL_FIELDS: FieldDef[] = [
@@ -568,15 +575,6 @@ const CUSTOM_REPORT_ALL_FIELDS: FieldDef[] = [
   { key: 'fieldsFilled',         label: 'Fields Filled' },
 ];
 
-const CUSTOM_REPORTS_LS = 'nonprofit-os-custom-reports-v1';
-
-function loadCustomReports(): CustomReportDef[] {
-  try {
-    const raw = localStorage.getItem(CUSTOM_REPORTS_LS);
-    if (raw) return JSON.parse(raw) as CustomReportDef[];
-  } catch { /* ignore */ }
-  return [];
-}
 
 const TL_ORDER: Record<string, number> = { green: 3, orange: 2, red: 1 };
 
@@ -711,7 +709,7 @@ function CustomReport({ report, processes, sortKey, sortDir, onSortChange, onRow
 
 function NewReportModal({ onClose, onCreate }: {
   onClose: () => void;
-  onCreate: (report: CustomReportDef) => void;
+  onCreate: (name: string, description: string, fields: string[]) => void;
 }) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -723,13 +721,7 @@ function NewReportModal({ onClose, onCreate }: {
 
   function handleCreate() {
     if (!name.trim() || selectedFields.length === 0) return;
-    onCreate({
-      id: `custom-${Date.now()}`,
-      name: name.trim(),
-      description: description.trim(),
-      fields: selectedFields,
-      createdAt: new Date().toISOString(),
-    });
+    onCreate(name.trim(), description.trim(), selectedFields);
   }
 
   return (
@@ -818,16 +810,44 @@ function NewReportModal({ onClose, onCreate }: {
 
 export function ReportsView() {
   const { data: processes = [] } = useListProcesses();
+  const { fetchHeaders, currentUser } = useUser();
   const [activeReport, setActiveReport] = useState<string>('coverage');
-  const [customReports, setCustomReports] = useState<CustomReportDef[]>(loadCustomReports);
+  const [customReports, setCustomReports] = useState<CustomReportDef[]>([]);
+  const [customReportsLoading, setCustomReportsLoading] = useState(true);
   const [showNewReport, setShowNewReport] = useState(false);
+  const [sharingReportId, setSharingReportId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFieldPanel, setShowFieldPanel] = useState(false);
   const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
 
+  const sharingReport = customReports.find(r => r.id === sharingReportId) ?? null;
+
+  const fetchCustomReports = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/reports`, { headers: fetchHeaders() });
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setCustomReports(data.map((r: any) => ({
+          id: r.id,
+          name: r.title,
+          description: r.description ?? '',
+          fields: r.fields ?? [],
+          createdAt: r.createdAt ?? new Date().toISOString(),
+          isOwner: r.isOwner,
+          canEdit: r.canEdit,
+          shares: r.shares ?? [],
+        })));
+      }
+    } catch { /* ignore */ } finally {
+      setCustomReportsLoading(false);
+    }
+  }, [fetchHeaders]);
+
+  useEffect(() => { fetchCustomReports(); }, [fetchCustomReports]);
+
   const isBuiltInReport = REPORT_TYPES.some(r => r.id === activeReport);
-  const activeCustomReport = isBuiltInReport ? null : customReports.find(r => r.id === activeReport) ?? null;
+  const activeCustomReport = isBuiltInReport ? null : customReports.find(r => String(r.id) === activeReport) ?? null;
 
   const [detailProcess, setDetailProcess] = useState<Process | null>(null);
   const [detailGroup, setDetailGroup] = useState<{ title: string; subtitle?: string; processes: Process[] } | null>(null);
@@ -876,10 +896,13 @@ export function ReportsView() {
       const newConfig = { ...fieldConfig, [activeReport]: newFields };
       setFieldConfig(newConfig);
       localStorage.setItem(LS_KEY, JSON.stringify(newConfig));
-    } else {
-      const updated = customReports.map(r => r.id === activeReport ? { ...r, fields: newFields } : r);
-      setCustomReports(updated);
-      localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
+    } else if (activeCustomReport) {
+      setCustomReports(prev => prev.map(r => r.id === activeCustomReport.id ? { ...r, fields: newFields } : r));
+      fetch(`${API}/reports/${activeCustomReport.id}`, {
+        method: 'PATCH',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ fields: newFields }),
+      }).catch(() => {});
     }
   }
 
@@ -898,20 +921,38 @@ export function ReportsView() {
     updateFields([...DEFAULT_ACTIVE[activeReport as ReportId]]);
   }
 
-  function createCustomReport(report: CustomReportDef) {
-    const updated = [...customReports, report];
-    setCustomReports(updated);
-    localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
-    setActiveReport(report.id);
-    setShowNewReport(false);
-    setShowFieldPanel(false);
+  async function createCustomReport(name: string, description: string, fields: string[]) {
+    try {
+      const res = await fetch(`${API}/reports`, {
+        method: 'POST',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ title: name, description, fields }),
+      });
+      if (!res.ok) return;
+      const r = await res.json();
+      const newReport: CustomReportDef = {
+        id: r.id,
+        name: r.title,
+        description: r.description ?? '',
+        fields: r.fields ?? [],
+        createdAt: r.createdAt ?? new Date().toISOString(),
+        isOwner: true,
+        canEdit: true,
+        shares: [],
+      };
+      setCustomReports(prev => [...prev, newReport]);
+      setActiveReport(String(r.id));
+      setShowNewReport(false);
+      setShowFieldPanel(false);
+    } catch { /* ignore */ }
   }
 
-  function deleteCustomReport(id: string) {
-    const updated = customReports.filter(r => r.id !== id);
-    setCustomReports(updated);
-    localStorage.setItem(CUSTOM_REPORTS_LS, JSON.stringify(updated));
-    if (activeReport === id) setActiveReport('coverage');
+  async function deleteCustomReport(id: number) {
+    try {
+      await fetch(`${API}/reports/${id}`, { method: 'DELETE', headers: fetchHeaders() });
+      setCustomReports(prev => prev.filter(r => r.id !== id));
+      if (activeReport === String(id)) setActiveReport('coverage');
+    } catch { /* ignore */ }
   }
 
   function reorderField(fromKey: string, toKey: string, side: 'before' | 'after') {
@@ -1113,27 +1154,38 @@ export function ReportsView() {
               {customReports.map(r => (
                 <div key={r.id} className="group relative">
                   <button
-                    onClick={() => { setActiveReport(r.id); setShowFieldPanel(false); }}
+                    onClick={() => { setActiveReport(String(r.id)); setShowFieldPanel(false); }}
                     className={cn(
-                      "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all pr-8",
-                      activeReport === r.id
+                      "w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all pr-16",
+                      activeReport === String(r.id)
                         ? "bg-primary/10 text-primary"
                         : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     )}
                   >
-                    <FileBarChart className={cn("w-4 h-4 mt-0.5 flex-shrink-0 shrink-0", activeReport === r.id ? "text-primary" : "text-muted-foreground")} />
+                    <FileBarChart className={cn("w-4 h-4 mt-0.5 flex-shrink-0 shrink-0", activeReport === String(r.id) ? "text-primary" : "text-muted-foreground")} />
                     <div className="min-w-0">
                       <div className="text-sm font-medium leading-tight truncate">{r.name}</div>
                       {r.description && <div className="text-[10px] mt-0.5 text-muted-foreground leading-tight truncate">{r.description}</div>}
                     </div>
                   </button>
-                  <button
-                    onClick={() => deleteCustomReport(r.id)}
-                    title="Delete report"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-muted-foreground/40 hover:text-red-400 transition-all p-1 rounded"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-all">
+                    <button
+                      onClick={e => { e.stopPropagation(); setSharingReportId(r.id); }}
+                      title="Share report"
+                      className="text-muted-foreground/40 hover:text-primary transition-colors p-1 rounded"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                    {r.isOwner && (
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteCustomReport(r.id); }}
+                        title="Delete report"
+                        className="text-muted-foreground/40 hover:text-red-400 transition-colors p-1 rounded"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </>
@@ -1340,6 +1392,17 @@ export function ReportsView() {
       )}
       {showNewReport && (
         <NewReportModal onClose={() => setShowNewReport(false)} onCreate={createCustomReport} />
+      )}
+      {sharingReport && (
+        <ShareModal
+          resourceType="report"
+          resourceId={sharingReport.id}
+          resourceName={sharingReport.name}
+          isOwner={sharingReport.isOwner ?? false}
+          initialShares={sharingReport.shares as any}
+          onClose={() => setSharingReportId(null)}
+          onSaved={fetchCustomReports}
+        />
       )}
     </div>
   );

@@ -4,15 +4,20 @@ import {
   LayoutDashboard, Plus, X, BarChart2, Activity, CheckCircle2, Target,
   Cpu, TrendingUp, Loader2, FileText, PieChart as PieChartIcon,
   LineChart as LineChartIcon, AreaChart as AreaChartIcon, Settings2,
-  AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown, Clock,
+  AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown, Clock, Share2, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
+import { useUser } from '@/contexts/UserContext';
+import { ShareModal } from './share-modal';
+
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, AreaChart, Area,
   CartesianGrid, Legend
 } from 'recharts';
+
+const API = '/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1023,25 +1028,132 @@ function DashboardDrillPanel({ title, processes, onClose, onOpenProcess }: {
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
+type DashboardRecord = {
+  id: number;
+  name: string;
+  widgets: WidgetConfig[];
+  isOwner?: boolean;
+  canEdit?: boolean;
+  shares?: unknown[];
+};
+
 export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) {
   const { data: processes, isLoading } = useProcessesData();
   const { data: rawLogs } = useAuditLogsData(100);
+  const { fetchHeaders } = useUser();
   const [govMap, setGovMap] = useState<Record<number, number[]>>({});
+  const [dashboards, setDashboards] = useState<DashboardRecord[]>([]);
+  const [activeDashboardId, setActiveDashboardId] = useState<number | null>(null);
   const [widgets, setWidgets] = useState<WidgetConfig[]>(loadWidgets);
   const [showAdd, setShowAdd] = useState(false);
   const [addMode, setAddMode] = useState<'picker' | 'chart-config'>('picker');
   const [configuringUid, setConfiguringUid] = useState<string | null>(null);
   const [showPerfConfig, setShowPerfConfig] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [showDashboardSelector, setShowDashboardSelector] = useState(false);
+  const [showSharingModal, setShowSharingModal] = useState(false);
+  const [newDashboardName, setNewDashboardName] = useState('');
+  const [creatingDashboard, setCreatingDashboard] = useState(false);
   const dragUid = useRef<string | null>(null);
   const [drillDown, setDrillDown] = useState<{ title: string; processes: Process[] } | null>(null);
   const [drillProcess, setDrillProcess] = useState<Process | null>(null);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeDashboard = dashboards.find(d => d.id === activeDashboardId) ?? null;
 
   useEffect(() => {
     fetch('/api/processes/governance-map').then(r => r.json()).then(setGovMap).catch(() => {});
   }, []);
 
-  const persist = useCallback((next: WidgetConfig[]) => { setWidgets(next); saveWidgets(next); }, []);
+  const loadDashboards = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/dashboards`, { headers: fetchHeaders() });
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const mapped: DashboardRecord[] = data.map((d: any) => ({
+          id: d.id,
+          name: d.name,
+          widgets: Array.isArray(d.widgets) && d.widgets.length > 0 ? d.widgets as WidgetConfig[] : buildDefaults(),
+          isOwner: d.isOwner,
+          canEdit: d.canEdit,
+          shares: d.shares ?? [],
+        }));
+        setDashboards(mapped);
+        setActiveDashboardId(prev => prev ?? mapped[0].id);
+        setWidgets(prev => {
+          const first = mapped.find(d => d.id === (prev.length > 0 ? mapped[0].id : null));
+          return first ? first.widgets : mapped[0].widgets;
+        });
+      } else {
+        const createRes = await fetch(`${API}/dashboards`, {
+          method: 'POST',
+          headers: fetchHeaders(),
+          body: JSON.stringify({ name: 'My Dashboard', widgets: buildDefaults() }),
+        });
+        const created = await createRes.json();
+        const newDB: DashboardRecord = { id: created.id, name: created.name, widgets: buildDefaults(), isOwner: true, canEdit: true, shares: [] };
+        setDashboards([newDB]);
+        setActiveDashboardId(newDB.id);
+        setWidgets(buildDefaults());
+      }
+    } catch { /* ignore */ }
+  }, [fetchHeaders]);
+
+  useEffect(() => { loadDashboards(); }, [loadDashboards]);
+
+  useEffect(() => {
+    const dash = dashboards.find(d => d.id === activeDashboardId);
+    if (dash) {
+      const w = Array.isArray(dash.widgets) && dash.widgets.length > 0 ? dash.widgets : buildDefaults();
+      setWidgets(w);
+    }
+  }, [activeDashboardId]);
+
+  const persist = useCallback((next: WidgetConfig[]) => {
+    setWidgets(next);
+    setDashboards(prev => prev.map(d => d.id === activeDashboardId ? { ...d, widgets: next } : d));
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      if (activeDashboardId) {
+        fetch(`${API}/dashboards/${activeDashboardId}`, {
+          method: 'PATCH',
+          headers: fetchHeaders(),
+          body: JSON.stringify({ widgets: next }),
+        }).catch(() => {});
+      }
+    }, 1000);
+  }, [activeDashboardId, fetchHeaders]);
+
+  async function createDashboard(name: string) {
+    if (!name.trim()) return;
+    setCreatingDashboard(true);
+    try {
+      const res = await fetch(`${API}/dashboards`, {
+        method: 'POST',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ name: name.trim(), widgets: buildDefaults() }),
+      });
+      const created = await res.json();
+      const newDB: DashboardRecord = { id: created.id, name: created.name, widgets: buildDefaults(), isOwner: true, canEdit: true, shares: [] };
+      setDashboards(prev => [...prev, newDB]);
+      setActiveDashboardId(newDB.id);
+      setNewDashboardName('');
+      setShowDashboardSelector(false);
+    } catch { /* ignore */ } finally {
+      setCreatingDashboard(false);
+    }
+  }
+
+  async function deleteDashboard(id: number) {
+    try {
+      await fetch(`${API}/dashboards/${id}`, { method: 'DELETE', headers: fetchHeaders() });
+      setDashboards(prev => prev.filter(d => d.id !== id));
+      if (activeDashboardId === id) {
+        const remaining = dashboards.filter(d => d.id !== id);
+        setActiveDashboardId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch { /* ignore */ }
+  }
 
   const activeWidgets = useMemo(() => widgets.filter(w => w.active), [widgets]);
   const poolWidgets = useMemo(() => widgets.filter(w => !w.active), [widgets]);
@@ -1108,27 +1220,80 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
     <div className="h-full flex flex-col bg-background overflow-hidden">
 
       {/* Header */}
-      <div className="flex-none px-5 py-4 border-b border-border bg-card flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-display font-bold text-foreground flex items-center gap-2">
+      <div className="flex-none px-5 py-4 border-b border-border bg-card flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <h2 className="text-xl font-display font-bold text-foreground flex items-center gap-2 flex-shrink-0">
             <LayoutDashboard className="w-5 h-5 text-primary" />
             Dashboards
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Drag widgets from the pool back onto the board.</p>
+          {/* Dashboard selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowDashboardSelector(o => !o)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-border rounded-xl bg-secondary/40 hover:bg-secondary transition-colors max-w-[180px]"
+            >
+              <span className="truncate">{activeDashboard?.name ?? '…'}</span>
+              <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform", showDashboardSelector && "rotate-180")} />
+            </button>
+            {showDashboardSelector && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-popover border border-border rounded-xl shadow-xl z-40 overflow-hidden">
+                {dashboards.map(d => (
+                  <button
+                    key={d.id}
+                    onClick={() => { setActiveDashboardId(d.id); setShowDashboardSelector(false); }}
+                    className={cn("w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-secondary transition-colors text-left", d.id === activeDashboardId && "bg-primary/10 text-primary font-medium")}
+                  >
+                    <LayoutDashboard className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="flex-1 truncate">{d.name}</span>
+                    {d.id === activeDashboardId && <ChevronRight className="w-3.5 h-3.5" />}
+                  </button>
+                ))}
+                <div className="border-t border-border p-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      value={newDashboardName}
+                      onChange={e => setNewDashboardName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') createDashboard(newDashboardName); }}
+                      placeholder="New dashboard name…"
+                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
+                    />
+                    <button
+                      onClick={() => createDashboard(newDashboardName)}
+                      disabled={!newDashboardName.trim() || creatingDashboard}
+                      className="px-2.5 py-1.5 bg-primary text-primary-foreground text-xs rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="relative">
-          <button onClick={() => { setShowAdd(v => !v); setAddMode('picker'); }}
-            className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors">
-            <Plus className="w-4 h-4" />Add Chart
-          </button>
-
-          {showAdd && (
-            <div className="absolute right-0 top-full mt-2 w-72 bg-card border border-border rounded-xl shadow-2xl z-30 overflow-hidden">
-              {addMode === 'picker' ? (
-                <ChartConfigPanel onConfirm={addChart} onCancel={() => { setShowAdd(false); setAddMode('picker'); }} />
-              ) : null}
-            </div>
+        <div className="flex items-center gap-2">
+          {activeDashboard && (
+            <button
+              onClick={() => setShowSharingModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm rounded-xl bg-secondary/50 hover:bg-secondary text-foreground border border-border transition-colors"
+            >
+              <Share2 className="w-4 h-4" />
+              Share
+            </button>
           )}
+          <div className="relative">
+            <button onClick={() => { setShowAdd(v => !v); setAddMode('picker'); }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors">
+              <Plus className="w-4 h-4" />Add Chart
+            </button>
+
+            {showAdd && (
+              <div className="absolute right-0 top-full mt-2 w-72 bg-card border border-border rounded-xl shadow-2xl z-30 overflow-hidden">
+                {addMode === 'picker' ? (
+                  <ChartConfigPanel onConfirm={addChart} onCancel={() => { setShowAdd(false); setAddMode('picker'); }} />
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1296,6 +1461,20 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
       )}
 
       {showAdd && <div className="fixed inset-0 z-20" onClick={() => { setShowAdd(false); setAddMode('picker'); }} />}
+      {showDashboardSelector && <div className="fixed inset-0 z-30" onClick={() => setShowDashboardSelector(false)} />}
+
+      {/* Share Dashboard Modal */}
+      {showSharingModal && activeDashboard && (
+        <ShareModal
+          resourceType="dashboard"
+          resourceId={activeDashboard.id}
+          resourceName={activeDashboard.name}
+          isOwner={activeDashboard.isOwner ?? false}
+          initialShares={activeDashboard.shares as any}
+          onClose={() => setShowSharingModal(false)}
+          onSaved={loadDashboards}
+        />
+      )}
 
       {/* Dashboard drill-down panels */}
       {drillDown && !drillProcess && (

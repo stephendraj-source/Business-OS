@@ -10,6 +10,8 @@ import checklistsRouter from "./checklists";
 import { usersRouter } from "./users";
 import { orgRouter } from "./org";
 import { initiativesRouter } from "./initiatives";
+import { reportsRouter } from "./reports";
+import { dashboardsRouter } from "./dashboards";
 
 const router: IRouter = Router();
 
@@ -24,5 +26,7 @@ router.use(checklistsRouter);
 router.use('/users', usersRouter);
 router.use(orgRouter);
 router.use(initiativesRouter);
+router.use(reportsRouter);
+router.use(dashboardsRouter);
 
 export default router;
