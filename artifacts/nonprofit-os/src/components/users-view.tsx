@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User,
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search,
-  Database, Layers, Lock, Mail, Copy, KeyRound,
+  Database, Layers, Lock, Mail, Copy, KeyRound, Eye, EyeOff,
   Building2, Tag, FolderOpen, Network, ChevronRight, Pencil, Globe, Briefcase,
 } from 'lucide-react';
 import { cn, copyToClipboard } from '@/lib/utils';
@@ -1057,7 +1057,8 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
   const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', phone: '', role: 'user' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [resetLink, setResetLink] = useState('');
+  const [createdUser, setCreatedUser] = useState<{ name: string; email: string; tempPassword: string } | null>(null);
+  const [showTempPassword, setShowTempPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const handleFirstName = (value: string) => {
@@ -1087,51 +1088,49 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed to create user'); return; }
       const d = await r.json();
-      const link = window.location.origin + d.resetLink;
-      setResetLink(link);
+      setCreatedUser({ name: d.name || [form.firstName, form.lastName].filter(Boolean).join(' ') || form.email, email: d.email, tempPassword: d.tempPassword });
       await onCreate();
     } finally {
       setSaving(false);
     }
   };
 
-  const copyLink = () => {
-    copyToClipboard(resetLink);
+  const copyPassword = () => {
+    if (createdUser) copyToClipboard(createdUser.tempPassword);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (resetLink) {
+  if (createdUser) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-        <div className="w-[480px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+        <div className="w-[440px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
               <Check className="w-5 h-5 text-green-500" />
             </div>
             <div>
               <h2 className="font-display font-bold text-lg">User Created</h2>
-              <p className="text-xs text-muted-foreground">Share this password setup link with the new user</p>
+              <p className="text-xs text-muted-foreground">Share these credentials securely with the new user</p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-2">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Mail className="w-3.5 h-3.5" />
-              <span>In production this link would be emailed automatically. Please share it manually for now.</span>
+          <div className="space-y-2 text-sm">
+            <div className="flex gap-2"><span className="text-muted-foreground w-16">Name:</span><span className="font-medium">{createdUser.name}</span></div>
+            <div className="flex gap-2"><span className="text-muted-foreground w-16">Email:</span><span className="font-medium">{createdUser.email}</span></div>
+            <div className="flex gap-2 items-center">
+              <span className="text-muted-foreground w-16">Password:</span>
+              <div className="flex items-center gap-2">
+                <code className="font-mono bg-muted px-2 py-0.5 rounded text-xs">{showTempPassword ? createdUser.tempPassword : '••••••••••••'}</code>
+                <button onClick={() => setShowTempPassword(v => !v)} className="text-muted-foreground hover:text-foreground transition-colors">
+                  {showTempPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+                <button onClick={copyPassword} className="text-muted-foreground hover:text-foreground transition-colors">
+                  {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <input readOnly value={resetLink}
-                className="flex-1 text-xs bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none font-mono truncate" />
-              <button onClick={copyLink}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors flex-shrink-0',
-                  copied ? 'border-green-500 text-green-500 bg-green-500/10' : 'border-border text-muted-foreground hover:bg-secondary'
-                )}>
-                <Copy className="w-3.5 h-3.5" />
-                {copied ? 'Copied!' : 'Copy'}
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground pt-1">The user must set a new password on their first login.</p>
           </div>
 
           <button onClick={onClose}
@@ -1152,8 +1151,8 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
         </div>
 
         <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-secondary/50 text-xs text-muted-foreground">
-          <Mail className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-          <span>The user will receive a password setup link after their account is created.</span>
+          <KeyRound className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>A temporary password will be generated. Share it securely — the user must set a new password on first login.</span>
         </div>
 
         {error && <div className="px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>}

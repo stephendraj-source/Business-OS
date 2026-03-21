@@ -721,7 +721,7 @@ function CredentialCard({ user, tempPassword, showPassword, setShowPassword, cop
           </button>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">Share these credentials securely. The user can change their password after first login.</p>
+      <p className="text-xs text-muted-foreground">Share these credentials securely. The user must set a new password on their first login.</p>
     </div>
   );
 }

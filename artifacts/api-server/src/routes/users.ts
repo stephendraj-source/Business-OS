@@ -61,16 +61,15 @@ usersRouter.post('/', async (req, res) => {
     const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', phone = '', isActive = true, dataScope = 'categories' } = req.body;
     const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
     if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
-    const tempPassword = crypto.randomUUID();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const [row] = await db.insert(users).values({
-      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, phone, isActive, dataScope,
+      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, phone, isActive, dataScope, mustChangePassword: true,
     }).returning();
     await db.insert(userModuleAccess).values(
       ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: false }))
     );
-    const token = crypto.randomUUID().replace(/-/g, '');
-    const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
-    res.status(201).json({ ...safeUser(row), resetLink, resetToken: token });
+    res.status(201).json({ ...safeUser(row), tempPassword });
   } catch (e: any) {
     if (e.message?.includes('unique')) return res.status(409).json({ error: 'An account with that email address already exists.' });
     res.status(500).json({ error: e.message });
