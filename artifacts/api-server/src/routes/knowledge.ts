@@ -3,9 +3,9 @@ import path from "path";
 import fs from "fs";
 import multer from "multer";
 import {
-  db, knowledgeFoldersTable, knowledgeItemsTable,
+  db, knowledgeItemsTable,
 } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -20,102 +20,6 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
-
-// ── Category seeding ──────────────────────────────────────────────────────────
-
-const MASTER_CATALOGUE_CATEGORIES = [
-  "Finance & Compliance",
-  "Fundraising & Donor Management",
-  "Grant Management",
-  "HR, Volunteers & Talent",
-  "Marketing, Brand & Communications",
-  "Program Delivery & Operations",
-  "Strategy & Governance",
-  "Technology & Data",
-];
-
-async function seedCategoryFolders(tenantId: number | null) {
-  const rootCond = tenantId !== null
-    ? and(eq(knowledgeFoldersTable.tenantId, tenantId), isNull(knowledgeFoldersTable.parentId))
-    : isNull(knowledgeFoldersTable.parentId);
-  const existing = await db.select({ name: knowledgeFoldersTable.name }).from(knowledgeFoldersTable).where(rootCond);
-  const existingNames = new Set(existing.map(r => r.name));
-  const missing = MASTER_CATALOGUE_CATEGORIES.filter(cat => !existingNames.has(cat));
-  if (missing.length > 0) {
-    await db.insert(knowledgeFoldersTable).values(
-      missing.map(name => ({ name, parentId: null, tenantId: tenantId ?? null }))
-    );
-  }
-}
-
-// ── Knowledge Folders ─────────────────────────────────────────────────────────
-
-router.get("/knowledge-folders", async (req, res) => {
-  try {
-    const auth = (req as any).auth;
-    if (auth?.tenantId !== undefined) {
-      await seedCategoryFolders(auth.tenantId ?? null);
-    }
-    const query = db.select().from(knowledgeFoldersTable);
-    const folders = auth?.tenantId
-      ? await query.where(eq(knowledgeFoldersTable.tenantId, auth.tenantId)).orderBy(knowledgeFoldersTable.createdAt)
-      : await query.orderBy(knowledgeFoldersTable.createdAt);
-    res.json(folders);
-  } catch (err) {
-    req.log.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.post("/knowledge-folders", async (req, res) => {
-  try {
-    const auth = (req as any).auth;
-    const tenantId = auth?.tenantId ?? null;
-    const { name = "New Folder", parentId = null } = req.body as Record<string, any>;
-    const [folder] = await db.insert(knowledgeFoldersTable).values({
-      name: String(name).trim() || "New Folder",
-      parentId: parentId ? Number(parentId) : null,
-      tenantId,
-    }).returning();
-    res.status(201).json(folder);
-  } catch (err) {
-    req.log.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.patch("/knowledge-folders/:id", async (req, res) => {
-  try {
-    const auth = (req as any).auth;
-    const id = Number(req.params.id);
-    const { name } = req.body as Record<string, any>;
-    if (!name?.trim()) return res.status(400).json({ error: "Name required" });
-    const cond = auth?.tenantId
-      ? and(eq(knowledgeFoldersTable.id, id), eq(knowledgeFoldersTable.tenantId, auth.tenantId))
-      : eq(knowledgeFoldersTable.id, id);
-    const [folder] = await db.update(knowledgeFoldersTable).set({ name: String(name).trim() }).where(cond).returning();
-    if (!folder) return res.status(404).json({ error: "Not found" });
-    res.json(folder);
-  } catch (err) {
-    req.log.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
-router.delete("/knowledge-folders/:id", async (req, res) => {
-  try {
-    const auth = (req as any).auth;
-    const id = Number(req.params.id);
-    const cond = auth?.tenantId
-      ? and(eq(knowledgeFoldersTable.id, id), eq(knowledgeFoldersTable.tenantId, auth.tenantId))
-      : eq(knowledgeFoldersTable.id, id);
-    await db.delete(knowledgeFoldersTable).where(cond);
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 // ── Knowledge Items ───────────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ import {
   GitBranch, ExternalLink, Radio, AlertCircle, Phone,
   Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
   Database, RefreshCw, PenLine, Inbox,
+  BookMarked, FileText, Upload, Download, FileUp, File, Pencil,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,6 +53,25 @@ interface FormFolder {
 interface FolderTreeNode extends FormFolder {
   children: FolderTreeNode[];
   forms: FormSummary[];
+  knowledgeItems: KnowledgeItem[];
+}
+
+type KnowledgeItemType = "wiki" | "url" | "document";
+
+interface KnowledgeItem {
+  id: number;
+  tenantId: number | null;
+  folderId: number | null;
+  type: KnowledgeItemType;
+  title: string;
+  content: string;
+  url: string | null;
+  fileName: string | null;
+  filePath: string | null;
+  fileSize: number | null;
+  mimeType: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface WorkflowItem { id: number; name: string; workflowNumber: number; }
@@ -111,11 +131,18 @@ function buildSampleJson(fields: FormField[]): string {
 
 // ── Folder Helpers ────────────────────────────────────────────────────────────
 
-function buildFolderTree(folders: FormFolder[], forms: FormSummary[]): { roots: FolderTreeNode[]; uncategorized: FormSummary[] } {
+function buildFolderTree(
+  folders: FormFolder[],
+  forms: FormSummary[],
+  knowledgeItems: KnowledgeItem[] = [],
+): { roots: FolderTreeNode[]; uncategorized: FormSummary[]; uncategorizedKnowledge: KnowledgeItem[] } {
   const nodeMap = new Map<number, FolderTreeNode>();
-  for (const f of folders) nodeMap.set(f.id, { ...f, children: [], forms: [] });
+  for (const f of folders) nodeMap.set(f.id, { ...f, children: [], forms: [], knowledgeItems: [] });
   for (const form of forms) {
     if (form.folderId && nodeMap.has(form.folderId)) nodeMap.get(form.folderId)!.forms.push(form);
+  }
+  for (const item of knowledgeItems) {
+    if (item.folderId && nodeMap.has(item.folderId)) nodeMap.get(item.folderId)!.knowledgeItems.push(item);
   }
   const roots: FolderTreeNode[] = [];
   for (const node of nodeMap.values()) {
@@ -123,7 +150,26 @@ function buildFolderTree(folders: FormFolder[], forms: FormSummary[]): { roots: 
     else roots.push(node);
   }
   const uncategorized = forms.filter(f => !f.folderId || !nodeMap.has(f.folderId));
-  return { roots, uncategorized };
+  const uncategorizedKnowledge = knowledgeItems.filter(i => !i.folderId || !nodeMap.has(i.folderId));
+  return { roots, uncategorized, uncategorizedKnowledge };
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function knowledgeItemIcon(type: KnowledgeItemType, className = "w-3.5 h-3.5") {
+  if (type === "wiki") return <BookMarked className={cn(className, "text-violet-400")} />;
+  if (type === "url") return <Link2 className={cn(className, "text-blue-400")} />;
+  return <FileText className={cn(className, "text-orange-400")} />;
+}
+
+function knowledgeItemBg(type: KnowledgeItemType) {
+  if (type === "wiki") return "from-violet-500/30 to-violet-500/10";
+  if (type === "url") return "from-blue-500/30 to-blue-500/10";
+  return "from-orange-500/30 to-orange-500/10";
 }
 
 function flattenFoldersForSelect(nodes: FolderTreeNode[], depth = 0): { id: number; name: string; depth: number }[] {
@@ -138,24 +184,31 @@ function flattenFoldersForSelect(nodes: FolderTreeNode[], depth = 0): { id: numb
 // ── Folder Tree Node ──────────────────────────────────────────────────────────
 
 function FolderNode({
-  node, depth, selectedId, expanded, onToggle, onSelectForm, onDeleteForm,
-  onCreateSubfolder, onRenameFolder, onDeleteFolder, onCreateFormInFolder,
+  node, depth, selectedId, selectedKnowledgeId, expanded, onToggle,
+  onSelectForm, onDeleteForm, onSelectKnowledge, onDeleteKnowledge,
+  onCreateSubfolder, onRenameFolder, onDeleteFolder,
+  onCreateFormInFolder, onCreateKnowledgeItem,
 }: {
   node: FolderTreeNode;
   depth: number;
   selectedId: number | null;
+  selectedKnowledgeId: number | null;
   expanded: Set<number>;
   onToggle: (id: number) => void;
   onSelectForm: (id: number) => void;
   onDeleteForm: (id: number, e: React.MouseEvent) => void;
+  onSelectKnowledge: (id: number) => void;
+  onDeleteKnowledge: (id: number, e: React.MouseEvent) => void;
   onCreateSubfolder: (parentId: number) => void;
   onRenameFolder: (id: number, name: string) => void;
   onDeleteFolder: (id: number) => void;
   onCreateFormInFolder: (folderId: number) => void;
+  onCreateKnowledgeItem: (folderId: number, type: KnowledgeItemType) => void;
 }) {
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState(node.name);
+  const [showNewPicker, setShowNewPicker] = useState(false);
   const indent = depth * 12;
 
   const commitRename = () => {
@@ -165,11 +218,14 @@ function FolderNode({
     setRenaming(false);
   };
 
+  const totalItems = (n: FolderTreeNode): number =>
+    n.forms.length + n.knowledgeItems.length + n.children.reduce((s, c) => s + totalItems(c), 0);
+
   return (
     <div>
       {/* Folder header row */}
       <div
-        className="flex items-center gap-1 px-2 py-1 group hover:bg-secondary/50 cursor-pointer select-none"
+        className="flex items-center gap-1 px-2 py-1 group hover:bg-secondary/50 cursor-pointer select-none relative"
         style={{ paddingLeft: `${8 + indent}px` }}
       >
         <button
@@ -200,22 +256,42 @@ function FolderNode({
             onDoubleClick={() => { setRenameName(node.name); setRenaming(true); }}
           >
             {node.name}
-            {(node.forms.length > 0 || node.children.length > 0) && (
-              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
-                ({node.forms.length + node.children.reduce((acc, c) => acc + c.forms.length, 0)})
-              </span>
+            {totalItems(node) > 0 && (
+              <span className="ml-1 text-[10px] text-muted-foreground font-normal">({totalItems(node)})</span>
             )}
           </span>
         )}
         {/* Hover actions */}
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
+        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 relative">
           <button
-            onClick={e => { e.stopPropagation(); onCreateFormInFolder(node.id); }}
-            title="New form in this folder"
+            onClick={e => { e.stopPropagation(); setShowNewPicker(v => !v); }}
+            title="New item"
             className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
           >
             <FilePlus className="w-3 h-3" />
           </button>
+          {showNewPicker && (
+            <div
+              className="absolute top-full left-0 z-50 mt-1 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[150px]"
+              onMouseLeave={() => setShowNewPicker(false)}
+            >
+              <button
+                onClick={e => { e.stopPropagation(); setShowNewPicker(false); onCreateFormInFolder(node.id); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary transition-colors text-left"
+              >
+                <ClipboardList className="w-3.5 h-3.5 text-primary" /> Form
+              </button>
+              {(["wiki", "url", "document"] as KnowledgeItemType[]).map(t => (
+                <button
+                  key={t}
+                  onClick={e => { e.stopPropagation(); setShowNewPicker(false); onCreateKnowledgeItem(node.id, t); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary transition-colors text-left"
+                >
+                  {knowledgeItemIcon(t)} {t === "wiki" ? "Wiki page" : t === "url" ? "URL / Link" : "Document"}
+                </button>
+              ))}
+            </div>
+          )}
           <button
             onClick={e => { e.stopPropagation(); onCreateSubfolder(node.id); }}
             title="New subfolder"
@@ -250,14 +326,18 @@ function FolderNode({
               node={child}
               depth={depth + 1}
               selectedId={selectedId}
+              selectedKnowledgeId={selectedKnowledgeId}
               expanded={expanded}
               onToggle={onToggle}
               onSelectForm={onSelectForm}
               onDeleteForm={onDeleteForm}
+              onSelectKnowledge={onSelectKnowledge}
+              onDeleteKnowledge={onDeleteKnowledge}
               onCreateSubfolder={onCreateSubfolder}
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onCreateFormInFolder={onCreateFormInFolder}
+              onCreateKnowledgeItem={onCreateKnowledgeItem}
             />
           ))}
           {/* Forms inside folder */}
@@ -266,7 +346,7 @@ function FolderNode({
             try { fieldCount = JSON.parse(form.fields).length; } catch {}
             return (
               <div
-                key={form.id}
+                key={`form-${form.id}`}
                 onClick={() => onSelectForm(form.id)}
                 role="button"
                 tabIndex={0}
@@ -277,8 +357,8 @@ function FolderNode({
                   selectedId === form.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
                 )}
               >
-                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <ClipboardList className="w-3 h-3 text-primary" />
+                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <ClipboardList className="w-2.5 h-2.5 text-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1">
@@ -297,8 +377,34 @@ function FolderNode({
               </div>
             );
           })}
+          {/* Knowledge items inside folder */}
+          {node.knowledgeItems.map(item => (
+            <div
+              key={`ki-${item.id}`}
+              onClick={() => onSelectKnowledge(item.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && onSelectKnowledge(item.id)}
+              style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }}
+              className={cn(
+                "w-full flex items-center gap-2 pr-3 py-1.5 text-left transition-colors border-b border-border/30 group cursor-pointer",
+                selectedKnowledgeId === item.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+              )}
+            >
+              <div className={cn("w-5 h-5 rounded flex items-center justify-center flex-shrink-0 bg-gradient-to-br", knowledgeItemBg(item.type))}>
+                {knowledgeItemIcon(item.type, "w-2.5 h-2.5")}
+              </div>
+              <span className="flex-1 min-w-0 text-xs truncate">{item.title}</span>
+              <button
+                onClick={e => onDeleteKnowledge(item.id, e)}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
           {/* Empty folder hint */}
-          {node.forms.length === 0 && node.children.length === 0 && (
+          {node.forms.length === 0 && node.knowledgeItems.length === 0 && node.children.length === 0 && (
             <div style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }} className="py-1.5 pr-3 text-[10px] text-muted-foreground italic">
               Empty folder
             </div>
@@ -1028,6 +1134,278 @@ function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName, ag
   );
 }
 
+// ── Knowledge Item Editors ────────────────────────────────────────────────────
+
+function WikiEditor({ item, onSave, saving }: {
+  item: KnowledgeItem;
+  onSave: (title: string, content: string) => Promise<void>;
+  saving: boolean;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [content, setContent] = useState(item.content);
+  const [preview, setPreview] = useState(false);
+  const dirty = title !== item.title || content !== item.content;
+
+  useEffect(() => { setTitle(item.title); setContent(item.content); }, [item.id, item.title, item.content]);
+
+  const renderMarkdown = (text: string) =>
+    text
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/^#{3} (.+)/gm, '<h3 class="text-base font-semibold mt-4 mb-1">$1</h3>')
+      .replace(/^#{2} (.+)/gm, '<h2 class="text-lg font-semibold mt-5 mb-2">$1</h2>')
+      .replace(/^# (.+)/gm, '<h1 class="text-xl font-bold mt-6 mb-2">$1</h1>')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code class="bg-secondary px-1 rounded text-xs font-mono">$1</code>')
+      .replace(/^- (.+)/gm, '<li class="ml-4 list-disc">$1</li>')
+      .replace(/^(\d+)\. (.+)/gm, '<li class="ml-4 list-decimal">$2</li>')
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" class="text-primary underline">$1</a>')
+      .replace(/\n{2,}/g, '</p><p class="mb-2">')
+      .replace(/\n/g, '<br/>');
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/30 to-violet-500/10 flex items-center justify-center flex-shrink-0">
+          <BookMarked className="w-4 h-4 text-violet-400" />
+        </div>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          className="flex-1 text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground"
+          placeholder="Page title..."
+        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPreview(v => !v)}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", preview ? "bg-primary text-primary-foreground" : "border border-border hover:bg-secondary")}
+          >
+            {preview ? <Pencil className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+            {preview ? "Edit" : "Preview"}
+          </button>
+          <button
+            onClick={() => onSave(title, content)}
+            disabled={!dirty || saving}
+            className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {dirty ? "Save" : "Saved"}
+          </button>
+        </div>
+      </div>
+      <div className="flex-1 overflow-auto">
+        {preview ? (
+          <div
+            className="px-8 py-6 prose prose-sm max-w-none text-sm leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: `<p class="mb-2">${renderMarkdown(content || "*Nothing written yet*")}</p>` }}
+          />
+        ) : (
+          <textarea
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            placeholder={"# Start writing...\n\nSupports basic Markdown: **bold**, *italic*, # headings, - lists, [links](url)\n"}
+            className="w-full h-full resize-none bg-transparent px-8 py-6 text-sm font-mono leading-relaxed outline-none"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UrlItemEditor({ item, onSave, saving }: {
+  item: KnowledgeItem;
+  onSave: (title: string, url: string, content: string) => Promise<void>;
+  saving: boolean;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [url, setUrl] = useState(item.url || "");
+  const [desc, setDesc] = useState(item.content);
+  const dirty = title !== item.title || url !== (item.url || "") || desc !== item.content;
+
+  useEffect(() => { setTitle(item.title); setUrl(item.url || ""); setDesc(item.content); }, [item.id]);
+
+  const safeUrl = url.startsWith("http") ? url : `https://${url}`;
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/30 to-blue-500/10 flex items-center justify-center flex-shrink-0">
+          <Link2 className="w-4 h-4 text-blue-400" />
+        </div>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          className="flex-1 text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground"
+          placeholder="Link title..."
+        />
+        <button
+          onClick={() => onSave(title, url, desc)}
+          disabled={!dirty || saving}
+          className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {dirty ? "Save" : "Saved"}
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto px-6 py-6 space-y-6">
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">URL</label>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 border border-border rounded-md px-3 py-2 bg-secondary/30">
+              <Globe className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <input
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                placeholder="https://example.com"
+                className="flex-1 text-sm bg-transparent outline-none"
+              />
+            </div>
+            {url && (
+              <a href={safeUrl} target="_blank" rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-border hover:bg-secondary text-xs transition-colors">
+                <ExternalLink className="w-3.5 h-3.5" /> Open
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description (optional)</label>
+          <textarea
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+            placeholder="What is this link about?"
+            rows={4}
+            className="w-full resize-none border border-border rounded-md px-3 py-2 text-sm bg-secondary/30 outline-none focus:border-primary transition-colors"
+          />
+        </div>
+        {url && (
+          <div className="border border-border rounded-lg overflow-hidden">
+            <div className="px-3 py-2 bg-secondary/40 text-xs text-muted-foreground flex items-center gap-2">
+              <ExternalLink className="w-3 h-3" /> Preview
+            </div>
+            <div className="p-4 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500/20 to-blue-500/5 flex items-center justify-center">
+                <Globe className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">{title || "Untitled Link"}</p>
+                <p className="text-xs text-muted-foreground truncate max-w-xs">{url}</p>
+              </div>
+              <a href={safeUrl} target="_blank" rel="noopener noreferrer"
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-xs hover:bg-primary/90 transition-colors">
+                Visit <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DocumentItemEditor({ item, onSave, onUpload, saving }: {
+  item: KnowledgeItem;
+  onSave: (title: string, content: string) => Promise<void>;
+  onUpload: (file: File) => Promise<void>;
+  saving: boolean;
+}) {
+  const [title, setTitle] = useState(item.title);
+  const [desc, setDesc] = useState(item.content);
+  const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dirty = title !== item.title || desc !== item.content;
+
+  useEffect(() => { setTitle(item.title); setDesc(item.content); }, [item.id]);
+
+  const handleFile = async (file: File) => {
+    setUploading(true);
+    try { await onUpload(file); } finally { setUploading(false); }
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border">
+        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/30 to-orange-500/10 flex items-center justify-center flex-shrink-0">
+          <FileText className="w-4 h-4 text-orange-400" />
+        </div>
+        <input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          className="flex-1 text-lg font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground"
+          placeholder="Document title..."
+        />
+        <button
+          onClick={() => onSave(title, desc)}
+          disabled={!dirty || saving}
+          className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors", dirty ? "bg-primary text-primary-foreground hover:bg-primary/90" : "bg-secondary text-muted-foreground cursor-not-allowed")}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {dirty ? "Save" : "Saved"}
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto px-6 py-6 space-y-6">
+        {item.fileName ? (
+          <div className="border border-border rounded-lg p-4 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-orange-500/20 to-orange-500/5 flex items-center justify-center flex-shrink-0">
+              <File className="w-6 h-6 text-orange-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{item.fileName}</p>
+              <p className="text-xs text-muted-foreground">
+                {item.fileSize ? formatFileSize(item.fileSize) : "—"}
+                {item.mimeType && <span className="ml-2 text-muted-foreground/70">{item.mimeType}</span>}
+              </p>
+            </div>
+            <a
+              href={`${API}/knowledge-items/${item.id}/download`}
+              download={item.fileName}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-border hover:bg-secondary text-xs transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" /> Download
+            </a>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-md border border-border hover:bg-secondary text-xs transition-colors"
+              title="Replace file"
+            >
+              <Upload className="w-3.5 h-3.5" /> Replace
+            </button>
+          </div>
+        ) : (
+          <div
+            onDragOver={e => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(
+              "border-2 border-dashed rounded-xl p-10 flex flex-col items-center gap-3 cursor-pointer transition-colors",
+              dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-secondary/30"
+            )}
+          >
+            {uploading ? <Loader2 className="w-8 h-8 text-muted-foreground animate-spin" /> : <FileUp className="w-8 h-8 text-muted-foreground" />}
+            <div className="text-center">
+              <p className="text-sm font-medium">{uploading ? "Uploading..." : "Drop a file here or click to browse"}</p>
+              <p className="text-xs text-muted-foreground mt-1">PDF, DOCX, XLSX, images, and more — up to 100 MB</p>
+            </div>
+          </div>
+        )}
+        <input ref={fileInputRef} type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Notes (optional)</label>
+          <textarea
+            value={desc}
+            onChange={e => setDesc(e.target.value)}
+            placeholder="Add notes about this document..."
+            rows={4}
+            className="w-full resize-none border border-border rounded-md px-3 py-2 text-sm bg-secondary/30 outline-none focus:border-primary transition-colors"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Forms View ───────────────────────────────────────────────────────────
 
 export function FormsView() {
@@ -1056,6 +1434,11 @@ export function FormsView() {
   const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
   const [editFolderId, setEditFolderId] = useState<number | null>(null);
 
+  // Knowledge items state
+  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
+  const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<number | null>(null);
+  const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+
   // Publish / linking state
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
@@ -1067,6 +1450,7 @@ export function FormsView() {
   const [urlCopied, setUrlCopied] = useState(false);
 
   const selectedForm = forms.find(f => f.id === selectedId) ?? null;
+  const selectedKnowledgeItem = knowledgeItems.find(i => i.id === selectedKnowledgeId) ?? null;
 
   const fetchFolders = useCallback(async () => {
     try {
@@ -1086,7 +1470,15 @@ export function FormsView() {
     finally { setLoading(false); }
   }, [fetchHeaders]);
 
-  useEffect(() => { fetchForms(); fetchFolders(); }, [fetchForms, fetchFolders]);
+  const fetchKnowledgeItems = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/knowledge-items`, { headers: fetchHeaders() });
+      const data = await r.json();
+      if (Array.isArray(data)) setKnowledgeItems(data);
+    } catch {}
+  }, [fetchHeaders]);
+
+  useEffect(() => { fetchForms(); fetchFolders(); fetchKnowledgeItems(); }, [fetchForms, fetchFolders, fetchKnowledgeItems]);
 
   const createFolder = async (parentId: number | null = null) => {
     const name = prompt("Folder name:", parentId ? "New Subfolder" : "New Folder");
@@ -1221,6 +1613,65 @@ export function FormsView() {
     await fetch(`${API}/forms/${id}`, { method: "DELETE", headers: fetchHeaders() });
     if (selectedId === id) { setSelectedId(null); setFields([]); }
     fetchForms();
+  };
+
+  // ── Knowledge item handlers ────────────────────────────────────────────────
+
+  const createKnowledgeItem = async (folderId: number, type: KnowledgeItemType) => {
+    const defaults: Record<KnowledgeItemType, string> = {
+      wiki: "New Wiki Page", url: "New Link", document: "New Document",
+    };
+    const r = await fetch(`${API}/knowledge-items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({ type, title: defaults[type], folderId }),
+    });
+    if (r.ok) {
+      const item: KnowledgeItem = await r.json();
+      setKnowledgeItems(prev => [...prev, item]);
+      setSelectedKnowledgeId(item.id);
+      setSelectedId(null);
+      setExpandedFolders(prev => new Set([...prev, folderId]));
+    }
+  };
+
+  const deleteKnowledgeItem = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this item? This cannot be undone.")) return;
+    await fetch(`${API}/knowledge-items/${id}`, { method: "DELETE", headers: fetchHeaders() });
+    if (selectedKnowledgeId === id) setSelectedKnowledgeId(null);
+    setKnowledgeItems(prev => prev.filter(i => i.id !== id));
+  };
+
+  const saveKnowledgeItem = async (updates: Partial<Pick<KnowledgeItem, 'title' | 'content' | 'url'>>) => {
+    if (!selectedKnowledgeId) return;
+    setKnowledgeSaving(true);
+    try {
+      const r = await fetch(`${API}/knowledge-items/${selectedKnowledgeId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
+        body: JSON.stringify(updates),
+      });
+      if (r.ok) {
+        const updated: KnowledgeItem = await r.json();
+        setKnowledgeItems(prev => prev.map(i => i.id === selectedKnowledgeId ? updated : i));
+      }
+    } finally { setKnowledgeSaving(false); }
+  };
+
+  const uploadKnowledgeDocument = async (file: File) => {
+    if (!selectedKnowledgeId) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    const r = await fetch(`${API}/knowledge-items/${selectedKnowledgeId}/upload`, {
+      method: "POST",
+      headers: fetchHeaders(),
+      body: formData,
+    });
+    if (r.ok) {
+      const updated: KnowledgeItem = await r.json();
+      setKnowledgeItems(prev => prev.map(i => i.id === selectedKnowledgeId ? updated : i));
+    }
   };
 
   const save = async () => {
@@ -1405,7 +1856,7 @@ export function FormsView() {
 
       {/* Left panel — form list with folder tree */}
       {(() => {
-        const { roots: folderTree, uncategorized } = buildFolderTree(folders, forms);
+        const { roots: folderTree, uncategorized, uncategorizedKnowledge } = buildFolderTree(folders, forms, knowledgeItems);
         const flatFolders = flattenFoldersForSelect(folderTree);
         const toggleFolder = (id: number) => setExpandedFolders(prev => {
           const next = new Set(prev);
@@ -1418,10 +1869,8 @@ export function FormsView() {
             <div className="px-3 py-3 border-b border-border flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-primary flex-shrink-0" />
-                <span className="text-sm font-semibold">
-                  {mode === 'templates' ? 'Forms Templates' : 'Templates'}
-                </span>
-                <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length}</span>
+                <span className="text-sm font-semibold">Library</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length + knowledgeItems.length}</span>
               </div>
               {mode === 'templates' && (
               <div className="flex items-center gap-1">
@@ -1462,19 +1911,23 @@ export function FormsView() {
                       node={node}
                       depth={0}
                       selectedId={selectedId}
+                      selectedKnowledgeId={selectedKnowledgeId}
                       expanded={expandedFolders}
                       onToggle={toggleFolder}
-                      onSelectForm={setSelectedId}
+                      onSelectForm={(id) => { setSelectedId(id); setSelectedKnowledgeId(null); }}
                       onDeleteForm={deleteForm}
+                      onSelectKnowledge={(id) => { setSelectedKnowledgeId(id); setSelectedId(null); }}
+                      onDeleteKnowledge={deleteKnowledgeItem}
                       onCreateSubfolder={createFolder}
                       onRenameFolder={renameFolder}
                       onDeleteFolder={deleteFolder}
                       onCreateFormInFolder={createFormInFolder}
+                      onCreateKnowledgeItem={createKnowledgeItem}
                     />
                   ))}
 
-                  {/* Uncategorized forms */}
-                  {uncategorized.length > 0 && (
+                  {/* Uncategorized items */}
+                  {(uncategorized.length > 0 || uncategorizedKnowledge.length > 0) && (
                     <>
                       {folderTree.length > 0 && (
                         <div className="px-3 pt-3 pb-1 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
@@ -1486,8 +1939,8 @@ export function FormsView() {
                         try { fieldCount = JSON.parse(form.fields).length; } catch {}
                         return (
                           <div
-                            key={form.id}
-                            onClick={() => setSelectedId(form.id)}
+                            key={`form-${form.id}`}
+                            onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); }}
                             role="button"
                             tabIndex={0}
                             onKeyDown={e => e.key === 'Enter' && setSelectedId(form.id)}
@@ -1521,14 +1974,31 @@ export function FormsView() {
                           </div>
                         );
                       })}
+                      {uncategorizedKnowledge.map(item => (
+                        <div
+                          key={`ki-${item.id}`}
+                          onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => e.key === 'Enter' && setSelectedKnowledgeId(item.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-b border-border/50 group cursor-pointer",
+                            selectedKnowledgeId === item.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                          )}
+                        >
+                          <div className={cn("w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br", knowledgeItemBg(item.type))}>
+                            {knowledgeItemIcon(item.type, "w-3.5 h-3.5")}
+                          </div>
+                          <span className="flex-1 min-w-0 text-sm font-medium truncate">{item.title}</span>
+                          <button
+                            onClick={e => deleteKnowledgeItem(item.id, e)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </>
-                  )}
-
-                  {/* Empty state when all forms are in folders */}
-                  {forms.length === 0 && folders.length > 0 && (
-                    <div className="px-4 py-4 text-center">
-                      <button onClick={createForm} className="text-xs text-primary hover:underline">+ New Form</button>
-                    </div>
                   )}
                 </>
               )}
@@ -1559,19 +2029,44 @@ export function FormsView() {
       })()}
 
       {/* Right panel */}
-      {!selectedForm ? (
+      {selectedKnowledgeItem ? (
+        <div className="flex-1 min-w-0">
+          {selectedKnowledgeItem.type === "wiki" && (
+            <WikiEditor
+              item={selectedKnowledgeItem}
+              saving={knowledgeSaving}
+              onSave={async (title, content) => { await saveKnowledgeItem({ title, content }); }}
+            />
+          )}
+          {selectedKnowledgeItem.type === "url" && (
+            <UrlItemEditor
+              item={selectedKnowledgeItem}
+              saving={knowledgeSaving}
+              onSave={async (title, url, content) => { await saveKnowledgeItem({ title, url, content }); }}
+            />
+          )}
+          {selectedKnowledgeItem.type === "document" && (
+            <DocumentItemEditor
+              item={selectedKnowledgeItem}
+              saving={knowledgeSaving}
+              onSave={async (title, content) => { await saveKnowledgeItem({ title, content }); }}
+              onUpload={uploadKnowledgeDocument}
+            />
+          )}
+        </div>
+      ) : !selectedForm ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-8">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
             {mode === 'entry' ? <PenLine className="w-8 h-8 text-primary/60" /> : <ClipboardList className="w-8 h-8 text-primary/60" />}
           </div>
           <div>
             <h2 className="text-lg font-semibold mb-1">
-              {mode === 'entry' ? 'Select a Template' : 'Forms Template Builder'}
+              {mode === 'entry' ? 'Select a Template' : 'Forms & Knowledge Library'}
             </h2>
             <p className="text-sm text-muted-foreground max-w-sm">
               {mode === 'entry'
                 ? 'Choose a report template from the left to fill in data. All submissions are stored and can be viewed by administrators.'
-                : 'Create report templates to collect structured data. Templates define the fields users will fill in during Data Entry.'}
+                : 'Create forms, wiki pages, URL bookmarks, and documents — all organized in one shared folder structure.'}
             </p>
           </div>
           {mode === 'templates' && (

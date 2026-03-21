@@ -1,20 +1,11 @@
 import { pgTable, serial, text, integer, timestamp, bigint } from "drizzle-orm/pg-core";
 import { tenants } from "./tenants";
-
-export const knowledgeFoldersTable = pgTable("knowledge_folders", {
-  id: serial("id").primaryKey(),
-  name: text("name").notNull().default("New Folder"),
-  parentId: integer("parent_id"),
-  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
-export type KnowledgeFolder = typeof knowledgeFoldersTable.$inferSelect;
+import { formFoldersTable } from "./forms";
 
 export const knowledgeItemsTable = pgTable("knowledge_items", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
-  folderId: integer("folder_id").references(() => knowledgeFoldersTable.id, { onDelete: "set null" }),
+  folderId: integer("folder_id").references(() => formFoldersTable.id, { onDelete: "set null" }),
   type: text("type").notNull().default("wiki"),
   title: text("title").notNull().default("Untitled"),
   content: text("content").notNull().default(""),
