@@ -20,24 +20,24 @@ export function ProcessMap() {
     return processes.find(p => p.id === selectedProcess.id) ?? selectedProcess;
   }, [selectedProcess, processes]);
 
-  const includedProcesses = useMemo(() => {
+  const allSortedProcesses = useMemo(() => {
     if (!processes) return [];
-    return processes.filter(p => p.included).sort((a, b) => a.number - b.number);
+    return [...processes].sort((a, b) => a.number - b.number);
   }, [processes]);
 
   const categories = useMemo(() => {
     const seen = new Set<string>();
     const result: string[] = [];
-    for (const p of includedProcesses) {
+    for (const p of allSortedProcesses) {
       if (!seen.has(p.category)) { seen.add(p.category); result.push(p.category); }
     }
     return result.sort();
-  }, [includedProcesses]);
+  }, [allSortedProcesses]);
 
   const categoryProcesses = useMemo(() => {
     if (!selectedCategory) return [];
-    return includedProcesses.filter(p => p.category === selectedCategory);
-  }, [includedProcesses, selectedCategory]);
+    return allSortedProcesses.filter(p => p.category === selectedCategory);
+  }, [allSortedProcesses, selectedCategory]);
 
   const handleSave = useCallback((field: string, value: string) => {
     if (!liveSelectedProcess) return;
@@ -52,13 +52,13 @@ export function ProcessMap() {
     );
   }
 
-  if (includedProcesses.length === 0) {
+  if (allSortedProcesses.length === 0) {
     return (
       <div className="h-full w-full flex flex-col items-center justify-center text-muted-foreground bg-background/50 gap-4">
         <Map className="w-16 h-16 opacity-20" />
         <div className="text-center">
-          <p className="text-lg font-medium">No processes included yet</p>
-          <p className="text-sm mt-1 text-muted-foreground/70">Check the "Include" checkbox in the Process Matrix to add processes here.</p>
+          <p className="text-lg font-medium">No processes found</p>
+          <p className="text-sm mt-1 text-muted-foreground/70">Add processes in the Process Matrix to see them here.</p>
         </div>
       </div>
     );
@@ -71,11 +71,11 @@ export function ProcessMap() {
       <div className="flex-none w-72 border-r border-border bg-sidebar flex flex-col h-full shrink-0">
         <div className="p-6 border-b border-border bg-sidebar/50">
           <h2 className="text-xl font-display font-bold text-foreground">Process Map</h2>
-          <p className="text-sm text-muted-foreground mt-1">{includedProcesses.length} included processes</p>
+          <p className="text-sm text-muted-foreground mt-1">{allSortedProcesses.length} processes across {categories.length} categories</p>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
           {categories.map((cat) => {
-            const count = includedProcesses.filter(p => p.category === cat).length;
+            const count = allSortedProcesses.filter(p => p.category === cat).length;
             const isActive = selectedCategory === cat;
             return (
               <button
