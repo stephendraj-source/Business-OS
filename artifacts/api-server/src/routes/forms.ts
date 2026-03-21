@@ -73,6 +73,22 @@ router.delete("/form-folders/:id", async (req, res) => {
   }
 });
 
+// ── Public form (no auth) ──────────────────────────────────────────────────────
+
+router.get("/forms/public/:slug", async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const [form] = await db.select().from(formsTable).where(
+      and(eq(formsTable.publishSlug, slug), eq(formsTable.isPublished, true))
+    );
+    if (!form) return res.status(404).json({ error: "Form not found or not published" });
+    res.json({ id: form.id, name: form.name, description: form.description, fields: form.fields });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── Forms ─────────────────────────────────────────────────────────────────────
 
 router.get("/forms", async (req, res) => {

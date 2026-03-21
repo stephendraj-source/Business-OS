@@ -69,7 +69,14 @@ function getFieldIcon(type: FieldType) {
   return FIELD_TYPES.find(f => f.value === type)?.icon ?? <Type className="w-3.5 h-3.5" />;
 }
 
-function uid() { return crypto.randomUUID().slice(0, 8); }
+function uid() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID().slice(0, 8);
+    }
+  } catch {}
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+}
 
 // ── JSON Preview ──────────────────────────────────────────────────────────────
 
@@ -1398,11 +1405,11 @@ export function FormsView() {
                       <div className="flex items-center gap-2">
                         <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl border border-green-500/30 bg-green-500/5 font-mono text-xs text-green-700 dark:text-green-400 overflow-hidden min-w-0">
                           <Globe className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{window.location.origin}/f/{selectedForm.publishSlug}</span>
+                          <span className="truncate">{window.location.origin}{import.meta.env.BASE_URL}f/{selectedForm.publishSlug}</span>
                         </div>
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText(`${window.location.origin}/f/${selectedForm!.publishSlug}`);
+                            navigator.clipboard.writeText(`${window.location.origin}${import.meta.env.BASE_URL}f/${selectedForm!.publishSlug}`);
                             setUrlCopied(true);
                             setTimeout(() => setUrlCopied(false), 2000);
                           }}
@@ -1412,7 +1419,7 @@ export function FormsView() {
                           {urlCopied ? 'Copied' : 'Copy'}
                         </button>
                         <a
-                          href={`/f/${selectedForm.publishSlug}`}
+                          href={`${import.meta.env.BASE_URL}f/${selectedForm.publishSlug}`}
                           target="_blank"
                           rel="noreferrer"
                           className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium hover:bg-secondary transition-colors flex-shrink-0"

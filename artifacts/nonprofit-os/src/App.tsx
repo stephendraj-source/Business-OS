@@ -1,9 +1,10 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
+import { PublicFormPage } from "@/pages/public-form";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LoginPage } from "@/components/login-page";
 import { TenantManagementPage } from "@/components/tenant-management-page";
@@ -19,6 +20,16 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   const { currentUser, isLoading, isSuperUser } = useAuth();
+  const [location] = useLocation();
+
+  // Public routes — accessible without login
+  if (location.startsWith('/f/')) {
+    return (
+      <Switch>
+        <Route path="/f/:slug" component={PublicFormPage} />
+      </Switch>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -38,12 +49,10 @@ function AppRoutes() {
 
   return (
     <TooltipProvider>
-      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route component={NotFound} />
-        </Switch>
-      </WouterRouter>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route component={NotFound} />
+      </Switch>
       <Toaster />
     </TooltipProvider>
   );
@@ -52,9 +61,11 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
+      </WouterRouter>
     </QueryClientProvider>
   );
 }
