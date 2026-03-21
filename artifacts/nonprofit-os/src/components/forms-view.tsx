@@ -4,7 +4,7 @@ import {
   GripVertical, Type, Hash, Mail, AlignLeft, ChevronDown, Calendar,
   CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
   GitBranch, ExternalLink, Radio, AlertCircle,
-  Folder, FolderOpen, FolderPlus, ChevronRight,
+  Folder, FolderOpen, FolderPlus, FilePlus, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -125,7 +125,7 @@ function flattenFoldersForSelect(nodes: FolderTreeNode[], depth = 0): { id: numb
 
 function FolderNode({
   node, depth, selectedId, expanded, onToggle, onSelectForm, onDeleteForm,
-  onCreateSubfolder, onRenameFolder, onDeleteFolder,
+  onCreateSubfolder, onRenameFolder, onDeleteFolder, onCreateFormInFolder,
 }: {
   node: FolderTreeNode;
   depth: number;
@@ -137,6 +137,7 @@ function FolderNode({
   onCreateSubfolder: (parentId: number) => void;
   onRenameFolder: (id: number, name: string) => void;
   onDeleteFolder: (id: number) => void;
+  onCreateFormInFolder: (folderId: number) => void;
 }) {
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
@@ -195,6 +196,13 @@ function FolderNode({
         {/* Hover actions */}
         <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
           <button
+            onClick={e => { e.stopPropagation(); onCreateFormInFolder(node.id); }}
+            title="New form in this folder"
+            className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
+          >
+            <FilePlus className="w-3 h-3" />
+          </button>
+          <button
             onClick={e => { e.stopPropagation(); onCreateSubfolder(node.id); }}
             title="New subfolder"
             className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
@@ -235,6 +243,7 @@ function FolderNode({
               onCreateSubfolder={onCreateSubfolder}
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
+              onCreateFormInFolder={onCreateFormInFolder}
             />
           ))}
           {/* Forms inside folder */}
@@ -776,6 +785,28 @@ export function FormsView() {
     }
   };
 
+  const createFormInFolder = async (folderId: number) => {
+    const r = await fetch(`${API}/forms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({}),
+    });
+    if (r.ok) {
+      const form: FormSummary = await r.json();
+      // Immediately assign to the target folder
+      await fetch(`${API}/forms/${form.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
+        body: JSON.stringify({ folderId }),
+      });
+      await fetchForms();
+      setSelectedId(form.id);
+      setEditFolderId(folderId);
+      // Ensure the folder is expanded so the new form is visible
+      setExpandedFolders(prev => new Set([...prev, folderId]));
+    }
+  };
+
   const deleteForm = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!confirm("Delete this form? This cannot be undone.")) return;
@@ -1001,6 +1032,7 @@ export function FormsView() {
                       onCreateSubfolder={createFolder}
                       onRenameFolder={renameFolder}
                       onDeleteFolder={deleteFolder}
+                      onCreateFormInFolder={createFormInFolder}
                     />
                   ))}
 
