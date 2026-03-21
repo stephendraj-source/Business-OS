@@ -44,12 +44,56 @@ authRouter.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // If the user must change their password, return a short-lived change-token instead of a real session
+    if (user.mustChangePassword) {
+      const changeToken = jwt.sign(
+        { userId: user.id, mustChangePassword: true },
+        JWT_SECRET,
+        { expiresIn: '15m' },
+      );
+      return res.json({ mustChangePassword: true, changeToken });
+    }
+
     const payload: AuthPayload = {
       userId: user.id,
       tenantId: user.tenantId ?? null,
       role: user.role,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
+    res.json({ token, user: safeUser(user) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Force-password-change endpoint ────────────────────────────────────────────
+authRouter.post('/set-password', async (req, res) => {
+  try {
+    const { changeToken, newPassword } = req.body;
+    if (!changeToken || !newPassword) return res.status(400).json({ error: 'changeToken and newPassword required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    let payload: any;
+    try {
+      payload = jwt.verify(changeToken, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired token. Please log in again.' });
+    }
+    if (!payload.mustChangePassword) return res.status(400).json({ error: 'Invalid token type' });
+
+    const [user] = await db
+      .update(users)
+      .set({ passwordHash: hashPassword(newPassword), mustChangePassword: false })
+      .where(eq(users.id, payload.userId))
+      .returning();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const sessionPayload: AuthPayload = {
+      userId: user.id,
+      tenantId: user.tenantId ?? null,
+      role: user.role,
+    };
+    const token = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: safeUser(user) });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -144,6 +188,7 @@ authRouter.post('/tenants', requireAuth, requireSuperUser, async (req, res) => {
         designation: '',
         dataScope: 'all',
         isActive: true,
+        mustChangePassword: true,
       }).returning();
       adminResult = { user: safeUser(adminUser), tempPassword };
     }
@@ -191,6 +236,7 @@ authRouter.post('/tenants/:id/admin', requireAuth, requireSuperUser, async (req,
       designation: '',
       dataScope: 'all',
       isActive: true,
+      mustChangePassword: true,
     }).returning();
 
     res.status(201).json({

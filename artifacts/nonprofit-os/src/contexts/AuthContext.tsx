@@ -21,7 +21,8 @@ interface AuthContextValue {
   isAdmin: boolean;
   isSuperUser: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ error?: string }>;
+  login: (email: string, password: string) => Promise<{ error?: string; mustChangePassword?: boolean; changeToken?: string }>;
+  completeSetPassword: (changeToken: string, newPassword: string) => Promise<{ error?: string }>;
   logout: () => void;
   fetchHeaders: () => Record<string, string>;
   users: AppUser[];
@@ -35,6 +36,7 @@ const AuthContext = createContext<AuthContextValue>({
   isSuperUser: false,
   isLoading: true,
   login: async () => ({}),
+  completeSetPassword: async () => ({}),
   logout: () => {},
   fetchHeaders: () => ({}),
   users: [],
@@ -94,6 +96,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       const data = await r.json();
       if (!r.ok) return { error: data.error || 'Login failed' };
+      // Intercept force-password-change flow
+      if (data.mustChangePassword) {
+        return { mustChangePassword: true, changeToken: data.changeToken };
+      }
+      localStorage.setItem(TOKEN_KEY, data.token);
+      setToken(data.token);
+      setCurrentUser(data.user);
+      return {};
+    } catch {
+      return { error: 'Network error' };
+    }
+  }, []);
+
+  const completeSetPassword = useCallback(async (changeToken: string, newPassword: string) => {
+    try {
+      const r = await fetch(`${API}/auth/set-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ changeToken, newPassword }),
+      });
+      const data = await r.json();
+      if (!r.ok) return { error: data.error || 'Failed to set password' };
       localStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
       setCurrentUser(data.user);
@@ -127,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isSuperUser,
       isLoading,
       login,
+      completeSetPassword,
       logout,
       fetchHeaders,
       users,

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Building2, Mail, Lock, LogIn, Eye, EyeOff, ArrowLeft, Copy, Check, KeyRound } from 'lucide-react';
+import { Building2, Mail, Lock, LogIn, Eye, EyeOff, ArrowLeft, Copy, Check, KeyRound, ShieldCheck } from 'lucide-react';
 import { copyToClipboard } from '@/lib/utils';
 
-type View = 'login' | 'forgot' | 'temp-password';
+type View = 'login' | 'forgot' | 'temp-password' | 'set-password';
 
 export function LoginPage() {
-  const { login } = useAuth();
+  const { login, completeSetPassword } = useAuth();
   const [view, setView] = useState<View>('login');
 
   const [email, setEmail] = useState('');
@@ -22,13 +22,37 @@ export function LoginPage() {
   const [recipientName, setRecipientName] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // Force-change-password state
+  const [changeToken, setChangeToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [setPasswordError, setSetPasswordError] = useState('');
+  const [setPasswordLoading, setSetPasswordLoading] = useState(false);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     const result = await login(email.trim(), password);
     setLoading(false);
-    if (result.error) setError(result.error);
+    if (result.error) { setError(result.error); return; }
+    if (result.mustChangePassword && result.changeToken) {
+      setChangeToken(result.changeToken);
+      setView('set-password');
+    }
+  }
+
+  async function handleSetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSetPasswordError('');
+    if (newPassword.length < 8) { setSetPasswordError('Password must be at least 8 characters'); return; }
+    if (newPassword !== confirmPassword) { setSetPasswordError('Passwords do not match'); return; }
+    setSetPasswordLoading(true);
+    const result = await completeSetPassword(changeToken, newPassword);
+    setSetPasswordLoading(false);
+    if (result.error) setSetPasswordError(result.error);
+    // On success, AuthContext sets the token and user — app will redirect automatically
   }
 
   async function handleForgot(e: React.FormEvent) {
@@ -78,7 +102,10 @@ export function LoginPage() {
           </div>
           <h1 className="text-2xl font-display font-bold tracking-tight">BusinessOS</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {view === 'login' ? 'Sign in to your account' : view === 'forgot' ? 'Reset your password' : 'Temporary password generated'}
+            {view === 'login' ? 'Sign in to your account'
+              : view === 'forgot' ? 'Reset your password'
+              : view === 'set-password' ? 'Set your new password'
+              : 'Temporary password generated'}
           </p>
         </div>
 
@@ -205,6 +232,73 @@ export function LoginPage() {
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Back to sign in
               </button>
+            </div>
+          )}
+
+          {/* ── Force set password ──────────────────── */}
+          {view === 'set-password' && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                <ShieldCheck className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  Welcome! Your account requires a new password before you can continue.
+                </p>
+              </div>
+              <form onSubmit={handleSetPassword} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">New password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      required
+                      autoFocus
+                      className="w-full pl-9 pr-10 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(v => !v)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Confirm new password</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter your new password"
+                      required
+                      className="w-full pl-9 pr-4 py-2.5 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                    />
+                  </div>
+                </div>
+                {setPasswordError && (
+                  <div className="px-4 py-3 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive">
+                    {setPasswordError}
+                  </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={setPasswordLoading}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                >
+                  {setPasswordLoading ? (
+                    <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                  ) : (
+                    <ShieldCheck className="w-4 h-4" />
+                  )}
+                  {setPasswordLoading ? 'Saving…' : 'Set password & continue'}
+                </button>
+              </form>
             </div>
           )}
 
