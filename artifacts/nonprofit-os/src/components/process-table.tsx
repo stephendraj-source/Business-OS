@@ -33,6 +33,7 @@ const FIXED_START: ColumnDef[] = [
 
 const REORDERABLE: ColumnDef[] = [
   { key: 'category',             label: 'Category',             defaultWidth: 185, minWidth: 110 },
+  { key: 'priority',             label: 'Priority',             defaultWidth: 90,  minWidth: 70  },
   { key: 'processName',          label: 'Process Name',          defaultWidth: 175, minWidth: 110 },
   { key: 'processDescription',   label: 'Process Description',   defaultWidth: 260, minWidth: 140 },
   { key: 'aiAgent',              label: 'AI Agent',              defaultWidth: 175, minWidth: 110 },
@@ -321,6 +322,42 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             >
               {(categories as string[]).map(c => <option key={c} value={c}>{c}</option>)}
             </select>
+          </div>
+
+          {/* Priority – 1-5 selector */}
+          <div>
+            <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Priority <span className="text-muted-foreground/50 normal-case font-normal">(1 = highest)</span></div>
+            <div className="flex gap-2">
+              {[1,2,3,4,5].map(n => {
+                const colorMap: Record<number, { sel: string; idle: string; label: string }> = {
+                  1: { sel: 'bg-red-500 border-red-500 text-white shadow-red-500/40',      idle: 'border-border/60 text-muted-foreground hover:border-red-400 hover:text-red-400',    label: 'Critical' },
+                  2: { sel: 'bg-orange-500 border-orange-500 text-white shadow-orange-500/40', idle: 'border-border/60 text-muted-foreground hover:border-orange-400 hover:text-orange-400', label: 'High' },
+                  3: { sel: 'bg-amber-400 border-amber-400 text-white shadow-amber-400/40',  idle: 'border-border/60 text-muted-foreground hover:border-amber-400 hover:text-amber-400', label: 'Medium' },
+                  4: { sel: 'bg-blue-500 border-blue-500 text-white shadow-blue-500/40',    idle: 'border-border/60 text-muted-foreground hover:border-blue-400 hover:text-blue-400',   label: 'Low' },
+                  5: { sel: 'bg-muted border-muted-foreground/40 text-foreground',          idle: 'border-border/60 text-muted-foreground hover:border-muted-foreground/60',            label: 'Lowest' },
+                };
+                const c = colorMap[n];
+                const isSelected = (process as any).priority === n;
+                return (
+                  <button
+                    key={n}
+                    title={`Priority ${n} — ${c.label}`}
+                    onClick={() => save('priority', isSelected ? null : n)}
+                    className={cn(
+                      "flex-1 py-1.5 rounded-lg border text-sm font-bold transition-all duration-150",
+                      isSelected ? `${c.sel} shadow-md` : `bg-transparent ${c.idle}`
+                    )}
+                  >
+                    {n}
+                  </button>
+                );
+              })}
+            </div>
+            {(process as any).priority && (
+              <p className="text-[10px] text-muted-foreground mt-1">
+                {{1:'Critical',2:'High',3:'Medium',4:'Low',5:'Lowest'}[(process as any).priority as number]} — click again to clear
+              </p>
+            )}
           </div>
 
           {/* Status – cycling traffic light */}
@@ -883,6 +920,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         case 'kpi':                  av = a.kpi ?? '';                       bv = b.kpi ?? ''; break;
         case 'target':               av = a.target ?? '';                    bv = b.target ?? ''; break;
         case 'achievement':          av = a.achievement ?? '';               bv = b.achievement ?? ''; break;
+        case 'priority':             av = (a as any).priority ?? 999;           bv = (b as any).priority ?? 999; break;
         case 'trafficLight':         av = TL_ORD[(a as any).trafficLight] ?? 0; bv = TL_ORD[(b as any).trafficLight] ?? 0; break;
         case 'estimatedValueImpact': av = a.estimatedValueImpact ?? '';      bv = b.estimatedValueImpact ?? ''; break;
         case 'industryBenchmark':    av = a.industryBenchmark ?? '';         bv = b.industryBenchmark ?? ''; break;
@@ -1104,6 +1142,37 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <EditableCell processId={process.id} field="achievement" initialValue={process.achievement} multiline onSaved={cellSaved(process, 'achievement')} />
           </td>
         );
+      case 'priority': {
+        const pv = (process as any).priority as number | null ?? null;
+        const PCYCLE = [null, 1, 2, 3, 4, 5] as const;
+        const nextP = PCYCLE[(PCYCLE.indexOf(pv as any) + 1) % PCYCLE.length];
+        const priorityMeta: Record<number, { cls: string; label: string }> = {
+          1: { cls: 'bg-red-500 text-white border-red-500',           label: 'P1 — Critical' },
+          2: { cls: 'bg-orange-500 text-white border-orange-500',     label: 'P2 — High' },
+          3: { cls: 'bg-amber-400 text-white border-amber-400',       label: 'P3 — Medium' },
+          4: { cls: 'bg-blue-500 text-white border-blue-500',         label: 'P4 — Low' },
+          5: { cls: 'bg-muted text-muted-foreground border-border',   label: 'P5 — Lowest' },
+        };
+        const pm = pv ? priorityMeta[pv] : null;
+        return (
+          <td key="priority" className="align-middle p-0" style={{ width: widths['priority'] }}>
+            <div className="flex items-center justify-center py-2 px-2">
+              <button
+                title={pm ? `${pm.label} — click to change` : 'Click to set priority'}
+                onClick={() => updateProcess({ id: process.id, data: { priority: nextP } })}
+                className={cn(
+                  "w-7 h-7 rounded-full text-[11px] font-bold border-2 transition-all duration-150 flex items-center justify-center",
+                  pm
+                    ? `${pm.cls} hover:scale-110`
+                    : "border-dashed border-muted-foreground/30 text-muted-foreground/40 hover:border-muted-foreground/60 hover:scale-105"
+                )}
+              >
+                {pv ?? '·'}
+              </button>
+            </div>
+          </td>
+        );
+      }
       case 'trafficLight': {
         const tl = (process as any).trafficLight as string ?? '';
         const CYCLE = ['', 'green', 'orange', 'red'] as const;
