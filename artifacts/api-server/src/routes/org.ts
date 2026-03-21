@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  db, users,
+  db, users, tenants,
   groups, userGroups, groupBusinessUnits, groupRegions,
   roles, groupRoles, roleBusinessUnits, roleRegions,
   roleModuleAccess, roleAllowedCategories, roleAllowedProcesses, roleFieldPermissions,
@@ -692,6 +692,45 @@ orgRouter.put('/org/roles/:id/regions', async (req, res) => {
       await db.insert(roleRegions).values(regionIds.map(regionId => ({ roleId: id, regionId })));
     }
     res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Organisation Profile ───────────────────────────────────────────────────────
+
+orgRouter.get('/org/profile', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const [row] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    const { id, name, address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email } = row;
+    res.json({ id, name, address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/profile', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const {
+      name, address, websiteUrl,
+      contact1Name, contact1Phone, contact1Email,
+      contact2Name, contact2Phone, contact2Email,
+    } = req.body;
+    const updates: Partial<typeof tenants.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (address !== undefined) updates.address = address;
+    if (websiteUrl !== undefined) updates.websiteUrl = websiteUrl;
+    if (contact1Name !== undefined) updates.contact1Name = contact1Name;
+    if (contact1Phone !== undefined) updates.contact1Phone = contact1Phone;
+    if (contact1Email !== undefined) updates.contact1Email = contact1Email;
+    if (contact2Name !== undefined) updates.contact2Name = contact2Name;
+    if (contact2Phone !== undefined) updates.contact2Phone = contact2Phone;
+    if (contact2Email !== undefined) updates.contact2Email = contact2Email;
+    const [row] = await db.update(tenants).set(updates).where(eq(tenants.id, tenantId)).returning();
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    const { id, name: n, address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e } = row;
+    res.json({ id, name: n, address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

@@ -10,6 +10,15 @@ export const tenants = pgTable('tenants', {
   firstName: text('first_name'),
   lastName: text('last_name'),
   preferredName: text('preferred_name'),
+  // Organisation profile
+  address: text('address'),
+  websiteUrl: text('website_url'),
+  contact1Name: text('contact1_name'),
+  contact1Phone: text('contact1_phone'),
+  contact1Email: text('contact1_email'),
+  contact2Name: text('contact2_name'),
+  contact2Phone: text('contact2_phone'),
+  contact2Email: text('contact2_email'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

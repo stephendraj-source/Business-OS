@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2 } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -330,6 +330,152 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
   );
 }
 
+interface OrgProfile {
+  id?: number;
+  name: string;
+  address: string;
+  websiteUrl: string;
+  contact1Name: string;
+  contact1Phone: string;
+  contact1Email: string;
+  contact2Name: string;
+  contact2Phone: string;
+  contact2Email: string;
+}
+
+const EMPTY_PROFILE: OrgProfile = {
+  name: '', address: '', websiteUrl: '',
+  contact1Name: '', contact1Phone: '', contact1Email: '',
+  contact2Name: '', contact2Phone: '', contact2Email: '',
+};
+
+function OrgProfileSection({ fetchHeaders }: { fetchHeaders: () => Record<string, string> }) {
+  const [profile, setProfile] = useState<OrgProfile>(EMPTY_PROFILE);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch(`${API}/org/profile`, { headers: fetchHeaders() });
+        if (r.ok) {
+          const data = await r.json();
+          setProfile({ ...EMPTY_PROFILE, ...data });
+        }
+      } finally { setLoading(false); }
+    })();
+  }, []);
+
+  const handleChange = (field: keyof OrgProfile) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    setProfile(prev => ({ ...prev, [field]: e.target.value }));
+    setSaved(false);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/org/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify(profile),
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setProfile({ ...EMPTY_PROFILE, ...data });
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
+    } finally { setSaving(false); }
+  };
+
+  const field = (label: string, icon: React.ReactNode, key: keyof OrgProfile, type: 'text' | 'email' | 'url' | 'tel' = 'text') => (
+    <div className="space-y-1">
+      <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+        {icon}{label}
+      </label>
+      <input
+        type={type}
+        value={(profile[key] as string) ?? ''}
+        onChange={handleChange(key)}
+        placeholder={label}
+        className="w-full text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50 transition-colors"
+      />
+    </div>
+  );
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-secondary/20">
+        <div className="flex items-center gap-3">
+          <span className="text-primary"><Building2 className="w-4 h-4" /></span>
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Organisation Profile</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Name, address, website and key contacts for your organisation</p>
+          </div>
+        </div>
+        <button
+          onClick={save}
+          disabled={saving}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border",
+            saved
+              ? "bg-green-500/10 text-green-600 border-green-500/20"
+              : "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20"
+          )}
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+          {saved ? 'Saved' : 'Save'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="w-5 h-5 animate-spin text-primary/40" />
+        </div>
+      ) : (
+        <div className="p-5 space-y-5">
+          {/* Organisation basics */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {field('Organisation Name', <Building2 className="w-3 h-3" />, 'name')}
+            {field('Website URL', <Link className="w-3 h-3" />, 'websiteUrl', 'url')}
+          </div>
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <MapPin className="w-3 h-3" />Address
+            </label>
+            <textarea
+              value={profile.address ?? ''}
+              onChange={e => { setProfile(prev => ({ ...prev, address: e.target.value })); setSaved(false); }}
+              placeholder="Street address, city, postcode, country"
+              rows={2}
+              className="w-full text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50 transition-colors resize-none"
+            />
+          </div>
+
+          {/* Contacts */}
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            {/* Contact 1 */}
+            <div className="space-y-3 p-4 bg-secondary/20 rounded-lg border border-border/50">
+              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><User className="w-3 h-3 text-primary" />Contact 1</p>
+              {field('Name', <User className="w-3 h-3" />, 'contact1Name')}
+              {field('Phone', <Phone className="w-3 h-3" />, 'contact1Phone', 'tel')}
+              {field('Email', <Mail className="w-3 h-3" />, 'contact1Email', 'email')}
+            </div>
+            {/* Contact 2 */}
+            <div className="space-y-3 p-4 bg-secondary/20 rounded-lg border border-border/50">
+              <p className="text-xs font-semibold text-foreground flex items-center gap-1.5"><User className="w-3 h-3 text-primary" />Contact 2</p>
+              {field('Name', <User className="w-3 h-3" />, 'contact2Name')}
+              {field('Phone', <Phone className="w-3 h-3" />, 'contact2Phone', 'tel')}
+              {field('Email', <Mail className="w-3 h-3" />, 'contact2Email', 'email')}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ConfigurationView() {
   const { fetchHeaders } = useAuth();
 
@@ -375,6 +521,7 @@ export function ConfigurationView() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
+          <OrgProfileSection fetchHeaders={fetchHeaders} />
           {sections.map(s => (
             <ConfigSection
               key={s.endpoint}
