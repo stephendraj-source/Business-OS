@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Plus, Trash2, Upload, ExternalLink, Edit2, Check, X, Download, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
 
@@ -42,6 +43,7 @@ function getFileIcon(mime: string) {
 }
 
 export function GovernanceView() {
+  const { fetchHeaders } = useAuth();
   const [standards, setStandards] = useState<GovernanceStandard[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<number | 'new' | null>(null);
@@ -56,7 +58,7 @@ export function GovernanceView() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/governance`);
+      const res = await fetch(`${API}/governance`, { headers: fetchHeaders() });
       const data = await res.json();
       setStandards(data);
     } finally {
@@ -89,7 +91,7 @@ export function GovernanceView() {
     try {
       const res = await fetch(`${API}/governance/ai-populate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ complianceName: editState.complianceName }),
       });
       if (!res.ok) throw new Error('AI request failed');
@@ -114,13 +116,13 @@ export function GovernanceView() {
       if (editingId === 'new') {
         await fetch(`${API}/governance`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify(editState),
         });
       } else {
         await fetch(`${API}/governance/${editingId}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify(editState),
         });
       }
@@ -134,7 +136,7 @@ export function GovernanceView() {
   async function deleteStandard(id: number) {
     setDeletingId(id);
     try {
-      await fetch(`${API}/governance/${id}`, { method: 'DELETE' });
+      await fetch(`${API}/governance/${id}`, { method: 'DELETE', headers: fetchHeaders() });
       await load();
     } finally {
       setDeletingId(null);
@@ -147,7 +149,7 @@ export function GovernanceView() {
     const formData = new FormData();
     Array.from(files).forEach(f => formData.append('files', f));
     try {
-      await fetch(`${API}/governance/${governanceId}/documents`, { method: 'POST', body: formData });
+      await fetch(`${API}/governance/${governanceId}/documents`, { method: 'POST', headers: fetchHeaders(), body: formData });
       await load();
     } finally {
       setUploadingFor(null);
@@ -156,7 +158,7 @@ export function GovernanceView() {
   }
 
   async function deleteDocument(docId: number) {
-    await fetch(`${API}/governance/documents/${docId}`, { method: 'DELETE' });
+    await fetch(`${API}/governance/documents/${docId}`, { method: 'DELETE', headers: fetchHeaders() });
     await load();
   }
 

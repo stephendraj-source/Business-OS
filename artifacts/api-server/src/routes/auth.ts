@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, users, tenants } from '@workspace/db';
+import { db, users, tenants, groups, userGroups } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -32,6 +32,17 @@ function safeUser(u: typeof users.$inferSelect) {
   return rest;
 }
 
+async function resolveRole(user: typeof users.$inferSelect): Promise<string> {
+  if (user.role === 'superuser') return 'superuser';
+  const memberships = await db
+    .select({ isAdminGroup: groups.isAdminGroup })
+    .from(userGroups)
+    .innerJoin(groups, eq(userGroups.groupId, groups.id))
+    .where(eq(userGroups.userId, user.id));
+  if (memberships.some(g => g.isAdminGroup)) return 'admin';
+  return user.role;
+}
+
 authRouter.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -54,10 +65,11 @@ authRouter.post('/login', async (req, res) => {
       return res.json({ mustChangePassword: true, changeToken });
     }
 
+    const effectiveRole = await resolveRole(user);
     const payload: AuthPayload = {
       userId: user.id,
       tenantId: user.tenantId ?? null,
-      role: user.role,
+      role: effectiveRole,
     };
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: safeUser(user) });
@@ -88,10 +100,11 @@ authRouter.post('/set-password', async (req, res) => {
       .returning();
     if (!user) return res.status(404).json({ error: 'User not found' });
 
+    const effectiveRole = await resolveRole(user);
     const sessionPayload: AuthPayload = {
       userId: user.id,
       tenantId: user.tenantId ?? null,
-      role: user.role,
+      role: effectiveRole,
     };
     const token = jwt.sign(sessionPayload, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: safeUser(user) });

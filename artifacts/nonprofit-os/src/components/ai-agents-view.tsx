@@ -431,6 +431,7 @@ function formatOutput(raw: string, fmt: OutputFormat): string {
 }
 
 function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
+  const { fetchHeaders } = useUser();
   const [running, setRunning] = useState(false);
   const [output, setOutput] = useState("");
   const [error, setError] = useState("");
@@ -442,7 +443,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
   const lastRunKey = useRef(0);
 
   const fetchLogs = useCallback(async () => {
-    const r = await fetch(`${API}/ai-agents/${agentId}/logs`);
+    const r = await fetch(`${API}/ai-agents/${agentId}/logs`, { headers: fetchHeaders() });
     if (r.ok) setLogs(await r.json());
   }, [agentId]);
 
@@ -466,7 +467,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
     setOutput("");
     setError("");
     try {
-      const res = await fetch(`${API}/ai-agents/${agentId}/run`, { method: "POST" });
+      const res = await fetch(`${API}/ai-agents/${agentId}/run`, { method: "POST", headers: fetchHeaders() });
       if (!res.body) throw new Error("No response body");
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -639,6 +640,7 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
 // ── Schedule Panel ────────────────────────────────────────────────────────────
 
 function SchedulePanel({ agentId }: { agentId: number }) {
+  const { fetchHeaders } = useUser();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [schedType, setSchedType] = useState("once");
   const [schedAt, setSchedAt] = useState(() => {
@@ -650,7 +652,7 @@ function SchedulePanel({ agentId }: { agentId: number }) {
   const [adding, setAdding] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
-    const r = await fetch(`${API}/ai-agents/${agentId}/schedules`);
+    const r = await fetch(`${API}/ai-agents/${agentId}/schedules`, { headers: fetchHeaders() });
     if (r.ok) setSchedules(await r.json());
   }, [agentId]);
 
@@ -661,7 +663,7 @@ function SchedulePanel({ agentId }: { agentId: number }) {
     try {
       const r = await fetch(`${API}/ai-agents/${agentId}/schedules`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { ...fetchHeaders(), "Content-Type": "application/json" },
         body: JSON.stringify({ scheduleType: schedType, scheduledAt: schedAt }),
       });
       if (r.ok) fetchSchedules();
@@ -671,14 +673,14 @@ function SchedulePanel({ agentId }: { agentId: number }) {
   const toggleSchedule = async (sched: Schedule) => {
     await fetch(`${API}/ai-agents/${agentId}/schedules/${sched.id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...fetchHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !sched.isActive }),
     });
     fetchSchedules();
   };
 
   const deleteSchedule = async (id: number) => {
-    await fetch(`${API}/ai-agents/${agentId}/schedules/${id}`, { method: "DELETE" });
+    await fetch(`${API}/ai-agents/${agentId}/schedules/${id}`, { method: "DELETE", headers: fetchHeaders() });
     fetchSchedules();
   };
 
@@ -763,6 +765,7 @@ function SchedulePanel({ agentId }: { agentId: number }) {
 // ── Knowledge Panel ───────────────────────────────────────────────────────────
 
 function KnowledgePanel({ agentId }: { agentId: number }) {
+  const { fetchHeaders } = useUser();
   const [urls, setUrls] = useState<KnowledgeUrl[]>([]);
   const [files, setFiles] = useState<KnowledgeFile[]>([]);
   const [newUrl, setNewUrl] = useState("");
@@ -772,8 +775,8 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
 
   const fetchKnowledge = useCallback(async () => {
     const [ur, fr] = await Promise.all([
-      fetch(`${API}/ai-agents/${agentId}/knowledge/urls`).then(r => r.ok ? r.json() : []),
-      fetch(`${API}/ai-agents/${agentId}/knowledge/files`).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/ai-agents/${agentId}/knowledge/urls`, { headers: fetchHeaders() }).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/ai-agents/${agentId}/knowledge/files`, { headers: fetchHeaders() }).then(r => r.ok ? r.json() : []),
     ]);
     setUrls(ur); setFiles(fr);
   }, [agentId]);
@@ -784,7 +787,7 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
     if (!newUrl.trim()) return;
     await fetch(`${API}/ai-agents/${agentId}/knowledge/urls`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { ...fetchHeaders(), "Content-Type": "application/json" },
       body: JSON.stringify({ url: newUrl.trim(), label: newUrlLabel.trim() }),
     });
     setNewUrl(""); setNewUrlLabel("");
@@ -792,7 +795,7 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
   };
 
   const removeUrl = async (id: number) => {
-    await fetch(`${API}/ai-agents/${agentId}/knowledge/urls/${id}`, { method: "DELETE" });
+    await fetch(`${API}/ai-agents/${agentId}/knowledge/urls/${id}`, { method: "DELETE", headers: fetchHeaders() });
     fetchKnowledge();
   };
 
@@ -802,14 +805,14 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
     setUploading(true);
     const fd = new FormData();
     Array.from(f).forEach(file => fd.append("files", file));
-    await fetch(`${API}/ai-agents/${agentId}/knowledge/files`, { method: "POST", body: fd });
+    await fetch(`${API}/ai-agents/${agentId}/knowledge/files`, { method: "POST", headers: fetchHeaders(), body: fd });
     setUploading(false);
     fetchKnowledge();
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeFile = async (id: number) => {
-    await fetch(`${API}/ai-agents/${agentId}/knowledge/files/${id}`, { method: "DELETE" });
+    await fetch(`${API}/ai-agents/${agentId}/knowledge/files/${id}`, { method: "DELETE", headers: fetchHeaders() });
     fetchKnowledge();
   };
 
@@ -957,6 +960,7 @@ type AgentPermTab = 'modules' | 'data-access' | 'fields';
 interface ProcessMetaAP { id: number; processName: string; category: string; }
 
 function AgentPermissionsPanel({ agentId }: { agentId: number }) {
+  const { fetchHeaders } = useUser();
   const [permTab, setPermTab] = useState<AgentPermTab>('modules');
   const [moduleAccess, setModuleAccess] = useState<Record<string, boolean>>({});
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
@@ -969,7 +973,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
   const [saveMsg, setSaveMsg] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/ai-agents/${agentId}/permissions`).then(r => r.json()).then(p => {
+    fetch(`${API}/ai-agents/${agentId}/permissions`, { headers: fetchHeaders() }).then(r => r.json()).then(p => {
       const mmap: Record<string, boolean> = Object.fromEntries(AP_MODULES.map(m => [m.key, true]));
       p.modules.forEach((m: any) => { mmap[m.module] = m.hasAccess; });
       setModuleAccess(mmap);
@@ -985,14 +989,14 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
 
   useEffect(() => {
     if (scope === 'processes' && processList.length === 0)
-      fetch(`${API}/processes`).then(r => r.json()).then(setProcessList);
+      fetch(`${API}/processes`, { headers: fetchHeaders() }).then(r => r.json()).then(setProcessList);
   }, [scope]);
 
   const saveModules = async () => {
     setSaving(true);
     try {
       await fetch(`${API}/ai-agents/${agentId}/permissions/modules`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ modules: AP_MODULES.map(m => ({ module: m.key, hasAccess: moduleAccess[m.key] ?? true })) }),
       });
       setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);
@@ -1003,11 +1007,11 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
     setSaving(true);
     try {
       await fetch(`${API}/ai-agents/${agentId}/permissions/categories`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ categories: scope === 'categories' ? Array.from(selectedCategories) : [] }),
       });
       await fetch(`${API}/ai-agents/${agentId}/permissions/processes`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ processes: scope === 'processes' ? Array.from(processAccess.entries()).map(([processId, canEdit]) => ({ processId, canEdit })) : [] }),
       });
       setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);
@@ -1023,7 +1027,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
         return { catalogueType: f.type, fieldKey: f.key, canView: v.canView, canEdit: v.canEdit };
       });
       await fetch(`${API}/ai-agents/${agentId}/permissions/field-permissions`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ permissions }),
       });
       setSaveMsg('Saved ✓'); setTimeout(() => setSaveMsg(''), 2000);

@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Message {
   id: number;
@@ -41,6 +42,7 @@ const SUGGESTIONS = [
 ];
 
 export function Chatbot() {
+  const { fetchHeaders } = useAuth();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<Position>(() => defaultPosition());
   const [isDragging, setIsDragging] = useState(false);
@@ -106,14 +108,14 @@ export function Chatbot() {
 
   const fetchConversations = async () => {
     try {
-      const res = await fetch('/api/anthropic/conversations');
+      const res = await fetch('/api/anthropic/conversations', { headers: fetchHeaders() });
       setConversations(await res.json());
     } catch {}
   };
 
   const loadConversation = async (id: number) => {
     try {
-      const res = await fetch(`/api/anthropic/conversations/${id}`);
+      const res = await fetch(`/api/anthropic/conversations/${id}`, { headers: fetchHeaders() });
       const data = await res.json();
       setActiveConvId(id);
       setMessages(data.messages ?? []);
@@ -125,7 +127,7 @@ export function Chatbot() {
     const title = firstMessage.length > 50 ? firstMessage.slice(0, 47) + '...' : firstMessage;
     const res = await fetch('/api/anthropic/conversations', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ title }),
     });
     const conv = await res.json();
@@ -137,7 +139,7 @@ export function Chatbot() {
 
   const deleteConversation = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    await fetch(`/api/anthropic/conversations/${id}`, { method: 'DELETE' });
+    await fetch(`/api/anthropic/conversations/${id}`, { method: 'DELETE', headers: fetchHeaders() });
     setConversations(prev => prev.filter(c => c.id !== id));
     if (activeConvId === id) { setActiveConvId(null); setMessages([]); }
   };
@@ -158,7 +160,7 @@ export function Chatbot() {
 
       const res = await fetch(`/api/anthropic/conversations/${convId}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
       });
 

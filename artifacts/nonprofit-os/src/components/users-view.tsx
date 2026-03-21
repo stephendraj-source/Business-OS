@@ -106,7 +106,7 @@ type Tab = 'profile' | 'modules' | 'data-access' | 'fields' | 'org';
 type ViewTab = 'users' | 'roles' | 'org-structure';
 
 interface Group { id: number; name: string; description: string; color: string; }
-interface Role { id: number; name: string; description: string; color: string; }
+interface Role { id: number; name: string; description: string; color: string; isSystem: boolean; }
 interface Project { id: number; name: string; description: string; }
 interface BusinessUnit { id: number; name: string; description: string; color: string; }
 interface Region { id: number; name: string; description: string; color: string; }
@@ -573,28 +573,6 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
           onChange={val => setForm(f => ({ ...f, phone: val }))}
           placeholder="Mobile number"
         />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</label>
-        <div className="flex gap-3">
-          {['user', 'admin'].map(r => (
-            <button
-              key={r}
-              onClick={() => setForm(f => ({ ...f, role: r }))}
-              className={cn(
-                'flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all',
-                form.role === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'
-              )}
-            >
-              {r === 'admin' ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
-              {r === 'admin' ? 'Admin' : 'User'}
-            </button>
-          ))}
-        </div>
-        {form.role === 'admin' && (
-          <p className="text-xs text-muted-foreground pl-1">Admins have full access to all modules and can manage users.</p>
-        )}
       </div>
 
       <div className="flex items-center justify-between py-3 px-4 bg-secondary/40 rounded-xl">
@@ -1229,21 +1207,6 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Role</label>
-            <div className="flex gap-2">
-              {['user', 'admin'].map(r => (
-                <button key={r} onClick={() => setForm(f => ({ ...f, role: r }))}
-                  className={cn(
-                    'flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-all',
-                    form.role === r ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/40'
-                  )}>
-                  {r === 'admin' ? <Shield className="w-4 h-4" /> : <User className="w-4 h-4" />}
-                  {r === 'admin' ? 'Admin' : 'User'}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="flex gap-3 pt-2">
@@ -1752,7 +1715,11 @@ function RolesView() {
                     {r.description && <div className="text-xs text-muted-foreground truncate">{r.description}</div>}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {confirmDelete === r.id ? (
+                    {r.isSystem ? (
+                      <span title="System role cannot be deleted" className="p-1.5 text-muted-foreground/40">
+                        <Lock className="w-3.5 h-3.5" />
+                      </span>
+                    ) : confirmDelete === r.id ? (
                       <>
                         <button onClick={e => { e.stopPropagation(); deleteRole(r.id); }}
                           className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
@@ -1760,7 +1727,7 @@ function RolesView() {
                           className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
                       </>
                     ) : (
-                      <button onClick={e => { e.stopPropagation(); deleteRole(r.id); }}
+                      <button onClick={e => { e.stopPropagation(); setConfirmDelete(r.id); }}
                         className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

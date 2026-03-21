@@ -8,6 +8,7 @@ import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, 
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
+import { useAuth } from '@/contexts/AuthContext';
 import type { Process } from '@workspace/api-client-react';
 
 const API = '/api';
@@ -128,6 +129,7 @@ function PanelTextField({ label, value, onSave, multiline }: {
 }
 
 function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Process; onClose: () => void }) {
+  const { fetchHeaders } = useAuth();
   const { data: processes } = useProcessesData();
   const process = (processes?.find(p => p.id === initialProcess.id) ?? initialProcess) as Process;
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
@@ -151,7 +153,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   const [evalError, setEvalError] = useState<string | null>(null);
 
   const fetchLinks = useCallback(async () => {
-    const r = await fetch(`${API}/processes/${initialProcess.id}/links`);
+    const r = await fetch(`${API}/processes/${initialProcess.id}/links`, { headers: fetchHeaders() });
     if (r.ok) {
       const data = await r.json();
       setLinkedAgents(data.agents || []);
@@ -160,15 +162,15 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   }, [initialProcess.id]);
 
   const fetchAssignees = useCallback(async () => {
-    const r = await fetch(`${API}/processes/${initialProcess.id}/assignees`);
+    const r = await fetch(`${API}/processes/${initialProcess.id}/assignees`, { headers: fetchHeaders() });
     if (r.ok) setAssignedUsers(await r.json());
   }, [initialProcess.id]);
 
   const fetchAllOptions = useCallback(async () => {
     const [ar, wr, ur] = await Promise.all([
-      fetch(`${API}/ai-agents`),
-      fetch(`${API}/workflows`),
-      fetch(`${API}/users`),
+      fetch(`${API}/ai-agents`, { headers: fetchHeaders() }),
+      fetch(`${API}/workflows`, { headers: fetchHeaders() }),
+      fetch(`${API}/users`, { headers: fetchHeaders() }),
     ]);
     if (ar.ok) setAllAgents(await ar.json());
     if (wr.ok) setAllWorkflows(await wr.json());
@@ -181,7 +183,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
     setLinksSaving(true);
     await fetch(`${API}/processes/${initialProcess.id}/links`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ agentIds: agents.map(a => a.id), workflowIds: workflows.map(w => w.id) }),
     });
     setLinksSaving(false);
@@ -219,7 +221,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
     setAssigneesSaving(true);
     await fetch(`${API}/processes/${initialProcess.id}/assignees`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ userIds: next.map(u => u.id) }),
     });
     setAssigneesSaving(false);
@@ -258,7 +260,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
     setEvaluating(true);
     setEvalError(null);
     try {
-      const r = await fetch(`${API}/processes/${process.id}/evaluate`, { method: 'POST' });
+      const r = await fetch(`${API}/processes/${process.id}/evaluate`, { method: 'POST', headers: fetchHeaders() });
       if (!r.ok) {
         const e = await r.json().catch(() => ({}));
         throw new Error(e.error || 'Evaluation failed');
@@ -654,6 +656,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
 }
 
 export function ProcessTable({ mode = 'matrix' }: TableProps) {
+  const { fetchHeaders } = useAuth();
   const { data: processes, isLoading, error } = useProcessesData();
   const { data: categories } = useCategoriesData();
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
@@ -671,7 +674,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    fetch('/api/checklists/counts').then(r => r.ok ? r.json() : {}).then(setChecklistCounts).catch(() => {});
+    fetch('/api/checklists/counts', { headers: fetchHeaders() }).then(r => r.ok ? r.json() : {}).then(setChecklistCounts).catch(() => {});
   }, []);
 
   const pushUndo = useCallback((label: string, restore: () => void) => {
@@ -729,7 +732,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     try {
       const res = await fetch(`/api/processes/${processId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ number: newNumber }),
       });
       const data = await res.json();
@@ -747,10 +750,10 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   }
 
   useEffect(() => {
-    fetch('/api/governance').then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
+    fetch('/api/governance', { headers: fetchHeaders() }).then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
       setGovStandards(data.map(d => ({ id: d.id, complianceName: d.complianceName })));
     }).catch(() => {});
-    fetch('/api/processes/governance-map').then(r => r.json()).then((data: GovMap) => {
+    fetch('/api/processes/governance-map', { headers: fetchHeaders() }).then(r => r.json()).then((data: GovMap) => {
       setGovMap(data);
     }).catch(() => {});
   }, []);
@@ -763,7 +766,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     setGovMap(prev => ({ ...prev, [processId]: next }));
     await fetch(`/api/processes/${processId}/governance`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ governanceIds: next }),
     });
   };
@@ -799,7 +802,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('/api/processes/import', { method: 'POST', body: formData });
+      const res = await fetch('/api/processes/import', { method: 'POST', headers: fetchHeaders(), body: formData });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Import failed');
       setImportResult(result);

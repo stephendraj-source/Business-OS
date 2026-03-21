@@ -163,7 +163,10 @@ orgRouter.patch('/org/roles/:id', async (req, res) => {
 
 orgRouter.delete('/org/roles/:id', async (req, res) => {
   try {
-    await db.delete(roles).where(eq(roles.id, parseInt(req.params.id)));
+    const id = parseInt(req.params.id);
+    const [role] = await db.select({ isSystem: roles.isSystem }).from(roles).where(eq(roles.id, id));
+    if (role?.isSystem) return res.status(403).json({ error: 'System roles cannot be deleted.' });
+    await db.delete(roles).where(eq(roles.id, id));
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
