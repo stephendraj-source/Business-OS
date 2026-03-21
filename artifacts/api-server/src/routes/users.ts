@@ -5,8 +5,25 @@ import crypto from 'crypto';
 
 export const usersRouter = Router();
 
-function hashPassword(plain: string) {
-  return crypto.createHash('sha256').update(plain + 'npos-salt-2024').digest('hex');
+function hashPassword(plain: string): string {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(plain, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(plain: string, stored: string): boolean {
+  try {
+    if (stored.includes(':')) {
+      const [salt, hash] = stored.split(':');
+      const derived = crypto.scryptSync(plain, salt, 64).toString('hex');
+      return crypto.timingSafeEqual(Buffer.from(derived, 'hex'), Buffer.from(hash, 'hex'));
+    }
+    // Legacy SHA-256 fallback
+    const legacy = crypto.createHash('sha256').update(plain + 'npos-salt-2024').digest('hex');
+    return crypto.timingSafeEqual(Buffer.from(legacy), Buffer.from(stored));
+  } catch {
+    return false;
+  }
 }
 
 function safeUser(u: typeof users.$inferSelect) {
