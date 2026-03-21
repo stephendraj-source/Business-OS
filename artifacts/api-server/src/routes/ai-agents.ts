@@ -456,22 +456,13 @@ router.get("/ai-agents/:id/logs", async (req, res) => {
 
 router.get("/ai-agents/meta/process-fields", async (_req, res) => {
   const fields = [
-    { key: "processName", label: "Process Name" },
-    { key: "processDescription", label: "Process Description" },
-    { key: "category", label: "Category" },
-    { key: "aiAgent", label: "AI Agent" },
-    { key: "purpose", label: "Purpose" },
-    { key: "inputs", label: "Inputs" },
-    { key: "outputs", label: "Outputs" },
-    { key: "humanInTheLoop", label: "Human in the Loop" },
-    { key: "kpi", label: "KPI" },
-    { key: "target", label: "Target" },
-    { key: "achievement", label: "Achievement" },
-    { key: "estimatedValueImpact", label: "Estimated Value Impact" },
-    { key: "industryBenchmark", label: "Industry Benchmark" },
+    { key: "process",      label: "Process",              hasSublist: true },
+    { key: "category",     label: "Category" },
+    { key: "aiAgent",      label: "AI Agent" },
+    { key: "target",       label: "Target" },
+    { key: "achievement",  label: "Achievement" },
     { key: "trafficLight", label: "Traffic Light Status" },
-    { key: "included", label: "In Portfolio" },
-    { key: "number", label: "Process Number" },
+    { key: "included",     label: "In Portfolio" },
   ];
   res.json(fields);
 });

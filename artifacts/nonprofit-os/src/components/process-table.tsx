@@ -2,7 +2,8 @@ import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList } from 'lucide-react';
+import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
 
@@ -250,6 +251,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [showAddModal, setShowAddModal] = useState(false);
   const [detailProcess, setDetailProcess] = useState<Process | null>(null);
+  const [checklistProcess, setChecklistProcess] = useState<Process | null>(null);
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
@@ -805,6 +807,13 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           <td key="actions" className="align-middle p-2 text-center" style={{ width: widths['actions'] }}>
             <div className="flex items-center justify-center gap-1">
               <button
+                onClick={() => setChecklistProcess(process)}
+                title="Checklists"
+                className="p-1.5 rounded-lg transition-all text-muted-foreground hover:text-primary hover:bg-primary/10"
+              >
+                <ClipboardList className="w-3.5 h-3.5" />
+              </button>
+              <button
                 onClick={() => setDetailProcess(process)}
                 title="View details"
                 className="p-1.5 rounded-lg transition-all text-muted-foreground hover:text-primary hover:bg-primary/10"
@@ -1044,6 +1053,12 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       </div>
 
       {/* Process Detail Panel */}
+      {checklistProcess && (
+        <ChecklistPanel
+          process={{ id: checklistProcess.id, processName: checklistProcess.processName, category: checklistProcess.category }}
+          onClose={() => setChecklistProcess(null)}
+        />
+      )}
       {detailProcess && (
         <ProcessDetailPanel process={detailProcess} onClose={() => setDetailProcess(null)} />
       )}

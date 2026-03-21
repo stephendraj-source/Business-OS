@@ -367,6 +367,53 @@ function EditForm({
   );
 }
 
+function GovernanceCardBody({ standard }: { standard: GovernanceStandard }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => setExpanded(e => !e)}
+          className="font-semibold text-foreground text-base hover:text-primary transition-colors text-left group flex items-center gap-1.5"
+          title={expanded ? "Collapse details" : "Click to view details"}
+        >
+          {standard.complianceName}
+          <span className="text-xs text-muted-foreground group-hover:text-primary transition-colors">
+            {expanded ? '▲' : '▼'}
+          </span>
+        </button>
+        {standard.documents.length > 0 && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">
+            {standard.documents.length} doc{standard.documents.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      {expanded && (
+        <div className="space-y-1.5 pl-1">
+          {standard.complianceAuthority && (
+            <div className="text-sm text-muted-foreground">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Authority: </span>
+              {standard.complianceAuthority}
+            </div>
+          )}
+          {standard.referenceUrl && (
+            <a
+              href={standard.referenceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <ExternalLink className="w-3 h-3" />
+              {standard.referenceUrl}
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GovernanceCard({
   standard,
   isEditing,
@@ -418,30 +465,7 @@ function GovernanceCard({
               saving={savingId === standard.id}
             />
           ) : (
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-foreground text-base">{standard.complianceName}</span>
-                {standard.documents.length > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">
-                    {standard.documents.length} doc{standard.documents.length !== 1 ? 's' : ''}
-                  </span>
-                )}
-              </div>
-              {standard.complianceAuthority && (
-                <div className="text-sm text-muted-foreground">{standard.complianceAuthority}</div>
-              )}
-              {standard.referenceUrl && (
-                <a
-                  href={standard.referenceUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  {standard.referenceUrl}
-                </a>
-              )}
-            </div>
+            <GovernanceCardBody standard={standard} />
           )}
         </div>
 

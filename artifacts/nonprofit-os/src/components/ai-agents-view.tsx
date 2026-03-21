@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown,
+  Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
-  ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch,
+  ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -100,6 +100,9 @@ function statusBadge(status: string) {
 // ── Instructions Editor with "/" field picker ────────────────────────────────
 
 interface WorkflowMeta { id: number; workflowNumber: number; name: string; description: string; }
+interface ProcessMeta { id: number; processName: string; category: string; }
+
+type PickerMode = 'fields' | 'processes';
 
 function InstructionsEditor({
   value, onChange, processFields, workflows = [],
@@ -113,50 +116,61 @@ function InstructionsEditor({
   const [showPicker, setShowPicker] = useState(false);
   const [pickerPos, setPickerPos] = useState({ top: 0, left: 0 });
   const [pickerFilter, setPickerFilter] = useState("");
+  const [pickerMode, setPickerMode] = useState<PickerMode>('fields');
+  const [processList, setProcessList] = useState<ProcessMeta[]>([]);
   const slashIndexRef = useRef<number>(-1);
 
+  const openPicker = (ta: HTMLTextAreaElement) => {
+    slashIndexRef.current = ta.selectionStart;
+    const rect = ta.getBoundingClientRect();
+    setPickerPos({ top: rect.bottom + 4, left: rect.left });
+    setPickerFilter("");
+    setPickerMode('fields');
+    setShowPicker(true);
+  };
+
+  const closePicker = () => { setShowPicker(false); setPickerMode('fields'); };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (showPicker) {
-      if (e.key === "Escape") { setShowPicker(false); e.preventDefault(); }
-      return;
-    }
-    if (e.key === "/" && textareaRef.current) {
-      const ta = textareaRef.current;
-      slashIndexRef.current = ta.selectionStart;
-      const rect = ta.getBoundingClientRect();
-      setPickerPos({ top: rect.bottom + 4, left: rect.left });
-      setPickerFilter("");
-      setShowPicker(true);
-    }
+    if (showPicker) { if (e.key === "Escape") { closePicker(); e.preventDefault(); } return; }
+    if (e.key === "/" && textareaRef.current) openPicker(textareaRef.current);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
-    if (showPicker) {
+    if (showPicker && pickerMode === 'fields') {
       const afterSlash = e.target.value.slice(slashIndexRef.current + 1, e.target.selectionStart);
-      if (afterSlash.includes(" ") || afterSlash.includes("\n")) {
-        setShowPicker(false);
-      } else {
-        setPickerFilter(afterSlash.toLowerCase());
-      }
+      if (afterSlash.includes(" ") || afterSlash.includes("\n")) closePicker();
+      else setPickerFilter(afterSlash.toLowerCase());
     }
   };
 
   const insertRaw = (token: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = slashIndexRef.current;
-    const end = ta.selectionStart;
-    const before = value.slice(0, start);
-    const after = value.slice(end);
-    const newVal = `${before}${token}${after}`;
-    onChange(newVal);
-    setShowPicker(false);
+    const ta = textareaRef.current; if (!ta) return;
+    const before = value.slice(0, slashIndexRef.current);
+    const after = value.slice(ta.selectionStart);
+    onChange(`${before}${token}${after}`);
+    closePicker();
     setTimeout(() => { ta.focus(); }, 0);
   };
 
-  const insertField = (field: ProcessField) => insertRaw(`{{${field.key}}}`);
-  const insertWorkflow = (wf: WorkflowMeta) => insertRaw(`{{workflow:${wf.name}}}`);
+  const loadProcesses = async () => {
+    if (processList.length > 0) return;
+    try {
+      const r = await fetch(`${API}/processes`);
+      if (r.ok) setProcessList(await r.json());
+    } catch {}
+  };
+
+  const handleFieldSelect = (field: ProcessField) => {
+    if ((field as any).hasSublist) {
+      loadProcesses();
+      setPickerFilter("");
+      setPickerMode('processes');
+    } else {
+      insertRaw(`{{${field.key}}}`);
+    }
+  };
 
   const filteredFields = processFields.filter(f =>
     f.key.toLowerCase().includes(pickerFilter) || f.label.toLowerCase().includes(pickerFilter)
@@ -164,7 +178,10 @@ function InstructionsEditor({
   const filteredWorkflows = workflows.filter(w =>
     w.name.toLowerCase().includes(pickerFilter) || `wf${w.workflowNumber}`.includes(pickerFilter)
   );
-  const hasResults = filteredFields.length > 0 || filteredWorkflows.length > 0;
+  const filteredProcesses = processList.filter(p =>
+    (p.processName || '').toLowerCase().includes(pickerFilter) ||
+    (p.category || '').toLowerCase().includes(pickerFilter)
+  );
 
   return (
     <div className="relative">
@@ -174,62 +191,105 @@ function InstructionsEditor({
         onChange={handleChange}
         onKeyDown={handleKeyDown}
         rows={8}
-        placeholder={`Write the agent's instructions here.\nType / to insert a database field or workflow reference, e.g. {{processName}}...`}
+        placeholder={`Write the agent's instructions here.\nType / to insert a reference (process, category, AI agent, target, achievement, traffic light, portfolio, or workflow)...`}
         className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-1 focus:ring-primary font-mono"
       />
       <div className="flex items-center gap-2 mt-1">
         <Cpu className="w-3 h-3 text-muted-foreground" />
-        <span className="text-xs text-muted-foreground">Type <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> to insert a process field or workflow reference</span>
+        <span className="text-xs text-muted-foreground">Type <kbd className="px-1 py-0.5 bg-secondary rounded text-xs font-mono">/</kbd> to insert: process, category, AI agent, target, achievement, traffic light, portfolio, or workflow</span>
       </div>
       {showPicker && (
-        <div
-          className="fixed z-[99] w-80 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden"
-          style={{ top: pickerPos.top, left: pickerPos.left }}
-        >
-          <div className="px-3 py-2 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            Insert reference
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {!hasResults && (
-              <div className="px-3 py-3 text-xs text-muted-foreground text-center">No matches</div>
-            )}
-            {filteredFields.length > 0 && (
-              <>
-                <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider bg-secondary/40">Process Fields</div>
-                {filteredFields.map(f => (
+        <div className="fixed z-[99] w-80 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden" style={{ top: pickerPos.top, left: pickerPos.left }}>
+          {pickerMode === 'fields' ? (
+            <>
+              <div className="px-3 py-2 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Insert reference
+              </div>
+              <div className="max-h-72 overflow-y-auto">
+                {filteredFields.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/30">Fields</div>
+                    {filteredFields.map(f => (
+                      <button
+                        key={f.key}
+                        onMouseDown={e => { e.preventDefault(); handleFieldSelect(f); }}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-accent text-sm transition-colors"
+                      >
+                        <div className="flex items-start gap-2">
+                          <Hash className="w-3.5 h-3.5 mt-0.5 text-primary flex-shrink-0" />
+                          <div>
+                            <div className="font-medium">{f.label}</div>
+                            <div className="text-xs text-muted-foreground font-mono">
+                              {(f as any).hasSublist ? 'Select a process →' : `{{${f.key}}}`}
+                            </div>
+                          </div>
+                        </div>
+                        {(f as any).hasSublist && <ChevronRight className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
+                      </button>
+                    ))}
+                  </>
+                )}
+                {filteredWorkflows.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/30 border-t border-border">Workflows</div>
+                    {filteredWorkflows.map(wf => (
+                      <button
+                        key={wf.id}
+                        onMouseDown={e => { e.preventDefault(); insertRaw(`{{workflow:${wf.name}}}`); }}
+                        className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-accent text-sm transition-colors"
+                      >
+                        <GitBranch className="w-3.5 h-3.5 mt-0.5 text-orange-400 flex-shrink-0" />
+                        <div>
+                          <div className="font-medium">{wf.name}</div>
+                          <div className="text-xs text-muted-foreground font-mono">{`{{workflow:${wf.name}}}`}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {filteredFields.length === 0 && filteredWorkflows.length === 0 && (
+                  <div className="px-3 py-3 text-xs text-muted-foreground text-center">No matches</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+                <button onMouseDown={e => { e.preventDefault(); setPickerMode('fields'); setPickerFilter(""); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors">
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex-1">Select Process</span>
+                <input
+                  value={pickerFilter}
+                  onChange={e => setPickerFilter(e.target.value.toLowerCase())}
+                  onMouseDown={e => e.stopPropagation()}
+                  placeholder="Filter…"
+                  className="w-24 text-xs bg-background border border-border rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                  autoFocus
+                />
+              </div>
+              <div className="max-h-64 overflow-y-auto">
+                {processList.length === 0 ? (
+                  <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+                ) : filteredProcesses.length === 0 ? (
+                  <div className="px-3 py-3 text-xs text-muted-foreground text-center">No matches</div>
+                ) : filteredProcesses.map(p => (
                   <button
-                    key={f.key}
-                    onMouseDown={e => { e.preventDefault(); insertField(f); }}
+                    key={p.id}
+                    onMouseDown={e => { e.preventDefault(); insertRaw(`{{process:${p.processName}}}`); }}
                     className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-accent text-sm transition-colors"
                   >
-                    <Hash className="w-3.5 h-3.5 mt-0.5 text-primary flex-shrink-0" />
+                    <FileText className="w-3.5 h-3.5 mt-0.5 text-primary flex-shrink-0" />
                     <div>
-                      <div className="font-medium">{f.label}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{`{{${f.key}}}`}</div>
+                      <div className="font-medium">{p.processName || '(unnamed)'}</div>
+                      <div className="text-xs text-muted-foreground">{p.category}</div>
                     </div>
                   </button>
                 ))}
-              </>
-            )}
-            {filteredWorkflows.length > 0 && (
-              <>
-                <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider bg-secondary/40 border-t border-border">Workflows</div>
-                {filteredWorkflows.map(wf => (
-                  <button
-                    key={wf.id}
-                    onMouseDown={e => { e.preventDefault(); insertWorkflow(wf); }}
-                    className="w-full flex items-start gap-2 px-3 py-2 text-left hover:bg-accent text-sm transition-colors"
-                  >
-                    <GitBranch className="w-3.5 h-3.5 mt-0.5 text-orange-400 flex-shrink-0" />
-                    <div>
-                      <div className="font-medium">{wf.name}</div>
-                      <div className="text-xs text-muted-foreground font-mono">{`{{workflow:${wf.name}}}`}</div>
-                    </div>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
