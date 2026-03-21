@@ -12,11 +12,12 @@ import { GovernanceView } from '@/components/governance-view';
 import { SettingsView } from '@/components/settings-view';
 import { AiAgentsView } from '@/components/ai-agents-view';
 import { WorkflowsView } from '@/components/workflows-view';
+import { FormsView } from '@/components/forms-view';
 import { UsersView } from '@/components/users-view';
 import { InitiativesView } from '@/components/initiatives-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users' | 'initiatives';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -117,6 +118,11 @@ export default function Dashboard() {
         {activeView === 'workflows' && (
           <motion.div key="workflows" {...fadeSlide} className="w-full h-full">
             <WorkflowsView />
+          </motion.div>
+        )}
+        {activeView === 'forms' && (
+          <motion.div key="forms" {...fadeSlide} className="w-full h-full">
+            <FormsView />
           </motion.div>
         )}
         {activeView === 'users' && (

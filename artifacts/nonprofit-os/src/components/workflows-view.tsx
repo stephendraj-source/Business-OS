@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
-  Play, AlertCircle, X, Check, ChevronRight,
-  ArrowRight, Code2, Workflow,
+  Play, X, Check,
+  Code2, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,13 +19,17 @@ export interface WCondition {
 
 export interface WStep {
   id: string;
-  type: 'action' | 'condition';
+  type: 'action' | 'condition' | 'form';
   label: string;
   description: string;
   condition?: WCondition;
   thenSteps?: WStep[];
   elseSteps?: WStep[];
+  formId?: number | null;
+  formName?: string;
 }
+
+interface FormOption { id: number; name: string; formNumber: number; }
 
 interface WorkflowSummary {
   id: number;
@@ -228,7 +232,7 @@ function FieldPickerTextarea({
 
 // ── Add Step Button ───────────────────────────────────────────────────────────
 
-function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition') => void }) {
+function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition' | 'form') => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -258,6 +262,10 @@ function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition') => voi
             <button onClick={() => { setOpen(false); onAdd('condition'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
               <GitBranch className="w-3.5 h-3.5 text-orange-400" />Condition (If/Then/Else)
+            </button>
+            <button onClick={() => { setOpen(false); onAdd('form'); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
+              <ClipboardList className="w-3.5 h-3.5 text-violet-400" />Collect Form Data
             </button>
           </div>
         )}
@@ -557,24 +565,149 @@ function ConditionStepCard({ step, onUpdate, onDelete, processFields }: {
   );
 }
 
+// ── Form Step Card ────────────────────────────────────────────────────────────
+
+function FormStepCard({ step, onUpdate, onDelete, forms }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+  forms: FormOption[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [draftFormId, setDraftFormId] = useState<number | null>(step.formId ?? null);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftLabel(step.label);
+      setDraftFormId(step.formId ?? null);
+    }
+  }, [step.label, step.formId, editing]);
+
+  const commitEdit = () => {
+    const selectedForm = forms.find(f => f.id === draftFormId);
+    onUpdate({
+      label: draftLabel,
+      formId: draftFormId,
+      formName: selectedForm?.name ?? '',
+    });
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraftLabel(step.label);
+    setDraftFormId(step.formId ?? null);
+    setEditing(false);
+  };
+
+  const linkedForm = forms.find(f => f.id === step.formId);
+
+  return (
+    <div className={cn(
+      "relative mx-auto w-full max-w-xs rounded-xl border-2 transition-all shadow-sm",
+      editing ? "border-violet-400 bg-violet-400/5 shadow-md" : "border-border bg-card hover:border-violet-400/50"
+    )}>
+      {editing ? (
+        <div className="px-4 pt-3 pb-3 space-y-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded-md bg-violet-500/15 flex items-center justify-center flex-shrink-0">
+              <ClipboardList className="w-2.5 h-2.5 text-violet-400" />
+            </div>
+            <span className="text-xs font-semibold text-violet-400 uppercase tracking-wider">Collect Form Data</span>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Step Label (optional)</label>
+            <input
+              value={draftLabel}
+              onChange={e => setDraftLabel(e.target.value)}
+              placeholder="Step label…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Select Form</label>
+            <select
+              value={draftFormId ?? ''}
+              onChange={e => setDraftFormId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="">— Choose a form —</option>
+              {forms.map(f => (
+                <option key={f.id} value={f.id}>#{f.formNumber} {f.name}</option>
+              ))}
+            </select>
+            {forms.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">No forms available. Create one in the Forms section.</p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={cancelEdit} className="px-3 py-1 rounded-lg text-xs border border-border hover:bg-secondary transition-colors text-muted-foreground">Cancel</button>
+            <button onClick={commitEdit} className="px-3 py-1 rounded-lg text-xs bg-violet-500 text-white hover:bg-violet-600 transition-colors flex items-center gap-1">
+              <Check className="w-3 h-3" />Apply
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 px-4 py-3 group">
+          <div className="w-6 h-6 rounded-md bg-violet-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <ClipboardList className="w-3 h-3 text-violet-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-violet-400 uppercase tracking-wider mb-0.5">Collect Form Data</div>
+            {linkedForm ? (
+              <div className="text-sm font-medium truncate">{linkedForm.name}</div>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">No form linked — click Edit</div>
+            )}
+            {step.label && <div className="text-xs text-muted-foreground mt-0.5 truncate">{step.label}</div>}
+            {linkedForm && (
+              <div className="text-xs text-muted-foreground mt-0.5">Sends JSON data to next step</div>
+            )}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={() => setEditing(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+              title="Edit form step"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={onDelete}
+              className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              title="Delete step"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Recursive Step Branch Renderer ────────────────────────────────────────────
 
 function StepBranch({
-  steps, branchKey, onUpdate, onDelete, onAdd, processFields,
+  steps, branchKey, onUpdate, onDelete, onAdd, processFields, forms,
 }: {
   steps: WStep[];
   branchKey: string;
   onUpdate: (id: string, updates: Partial<WStep>) => void;
   onDelete: (id: string) => void;
-  onAdd: (branchKey: string, afterId: string | null, type: 'action' | 'condition') => void;
+  onAdd: (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => void;
   processFields: ProcessField[];
+  forms: FormOption[];
 }) {
   return (
     <div className="flex flex-col items-center">
       <AddStepButton onAdd={type => onAdd(branchKey, null, type)} />
       {steps.map((step) => (
         <div key={step.id} className="w-full flex flex-col items-center">
-          {step.type === 'action' ? (
+          {step.type === 'action' && (
             <div className="w-full px-2">
               <ActionStepCard
                 step={step}
@@ -583,7 +716,18 @@ function StepBranch({
                 processFields={processFields}
               />
             </div>
-          ) : (
+          )}
+          {step.type === 'form' && (
+            <div className="w-full px-2">
+              <FormStepCard
+                step={step}
+                onUpdate={updates => onUpdate(step.id, updates)}
+                onDelete={() => onDelete(step.id)}
+                forms={forms}
+              />
+            </div>
+          )}
+          {step.type === 'condition' && (
             <div className="w-full flex flex-col items-center">
               <div className="w-full px-2">
                 <ConditionStepCard
@@ -608,6 +752,7 @@ function StepBranch({
                     onDelete={onDelete}
                     onAdd={onAdd}
                     processFields={processFields}
+                    forms={forms}
                   />
                 </div>
                 {/* Divider */}
@@ -624,6 +769,7 @@ function StepBranch({
                     onDelete={onDelete}
                     onAdd={onAdd}
                     processFields={processFields}
+                    forms={forms}
                   />
                 </div>
               </div>
@@ -640,13 +786,14 @@ function StepBranch({
 // ── Workflow Designer ─────────────────────────────────────────────────────────
 
 function WorkflowDesigner({
-  steps, onChange, processFields,
+  steps, onChange, processFields, forms,
 }: {
   steps: WStep[];
   onChange: (steps: WStep[]) => void;
   processFields: ProcessField[];
+  forms: FormOption[];
 }) {
-  const handleAdd = (branchKey: string, afterId: string | null, type: 'action' | 'condition') => {
+  const handleAdd = (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => {
     const newStep: WStep = {
       id: uid(),
       type,
@@ -688,6 +835,7 @@ function WorkflowDesigner({
           onDelete={handleDelete}
           onAdd={handleAdd}
           processFields={processFields}
+          forms={forms}
         />
 
         {/* END node */}
@@ -723,6 +871,7 @@ export function WorkflowsView() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [processFields, setProcessFields] = useState<ProcessField[]>([]);
+  const [availableForms, setAvailableForms] = useState<FormOption[]>([]);
 
   const selectedWorkflow = workflows.find(w => w.id === selectedId) ?? null;
 
@@ -741,7 +890,15 @@ export function WorkflowsView() {
     if (r.ok) setProcessFields(await r.json());
   }, [fetchHeaders]);
 
-  useEffect(() => { fetchWorkflows(); fetchFields(); }, [fetchWorkflows, fetchFields]);
+  const fetchForms = useCallback(async () => {
+    const r = await fetch(`${API}/forms`, { headers: fetchHeaders() });
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data)) setAvailableForms(data.map((f: any) => ({ id: f.id, name: f.name, formNumber: f.formNumber })));
+    }
+  }, [fetchHeaders]);
+
+  useEffect(() => { fetchWorkflows(); fetchFields(); fetchForms(); }, [fetchWorkflows, fetchFields, fetchForms]);
 
   const loadWorkflow = useCallback(async (id: number) => {
     const r = await fetch(`${API}/workflows/${id}`, { headers: fetchHeaders() });
@@ -944,6 +1101,7 @@ export function WorkflowsView() {
               steps={steps}
               onChange={newSteps => { setSteps(newSteps); markDirty(); }}
               processFields={processFields}
+              forms={availableForms}
             />
           </div>
         </div>

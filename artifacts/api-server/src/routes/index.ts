@@ -15,6 +15,7 @@ import { dashboardsRouter } from "./dashboards";
 import { authRouter } from "./auth";
 import { blueprintRouter } from "./blueprint";
 import { creditsRouter } from "./credits";
+import { formsRouter } from "./forms";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(initiativesRouter);
 router.use(reportsRouter);
 router.use(dashboardsRouter);
 router.use(creditsRouter);
+router.use(formsRouter);
 
 export default router;
