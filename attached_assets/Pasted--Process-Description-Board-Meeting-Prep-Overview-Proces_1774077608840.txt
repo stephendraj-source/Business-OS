@@ -1,0 +1,86 @@
+# Process Description: Board Meeting Prep
+
+## Overview
+
+**Process Name:** Board Meeting Prep
+
+**Purpose:** Compile decision-ready materials for board and committee meetings.
+
+---
+
+## Process Description
+
+The Board Meeting Prep process is a structured workflow designed to ensure that board members and committee participants receive comprehensive, well-organized, and timely materials to facilitate effective governance and decision-making.
+
+### Key Activities
+
+1. **Calendar Coordination**
+   - Review board calendar to identify upcoming meetings
+   - Confirm meeting dates, times, and participants
+   - Align preparation timelines with distribution deadlines
+
+2. **Information Gathering**
+   - Collect management reports from relevant departments
+   - Compile risk issues and updates from risk management
+   - Review committee charters for agenda alignment
+   - Gather supporting documentation and data
+
+3. **Agenda Development**
+   - Draft meeting agendas based on standing items and emerging topics
+   - Prioritize discussion items requiring board decisions
+   - Allocate appropriate time for each agenda item
+
+4. **Board Pack Assembly**
+   - Organize all materials into a cohesive board pack
+   - Ensure consistency in formatting and presentation
+   - Include executive summaries for complex items
+   - Verify completeness and accuracy of all documents
+
+5. **Action Tracking**
+   - Update action tracker with items from previous meetings
+   - Document status of outstanding actions
+   - Flag overdue items for follow-up
+
+6. **Distribution**
+   - Distribute board packs within required timeframes
+   - Confirm receipt by all board members
+   - Handle any last-minute updates or corrections
+
+---
+
+## Inputs
+
+| Input | Description |
+|-------|-------------|
+| Board Calendar | Schedule of upcoming board and committee meetings |
+| Management Reports | Operational, financial, and strategic updates from leadership |
+| Risk Issues | Current risk assessments and emerging concerns |
+| Committee Charters | Governing documents defining committee scope and responsibilities |
+
+---
+
+## Outputs
+
+| Output | Description |
+|--------|-------------|
+| Agenda Drafts | Proposed meeting agendas for review and approval |
+| Board Packs | Complete meeting materials for distribution to members |
+| Action Tracker | Log of decisions, action items, and accountability assignments |
+
+---
+
+## Key Performance Indicators (KPIs)
+
+| KPI | Measurement |
+|-----|-------------|
+| **Board Pack Preparation Time** | Duration from initiation to completion of board pack assembly |
+| **On-Time Distribution Rate** | Percentage of board packs distributed by the required deadline |
+
+---
+
+## Success Criteria
+
+- All materials are accurate, complete, and decision-ready
+- Board packs delivered on schedule to all participants
+- Clear documentation of actions and accountability
+- Continuous improvement in preparation efficiency

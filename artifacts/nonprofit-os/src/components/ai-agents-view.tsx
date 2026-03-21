@@ -890,6 +890,7 @@ type Tab = "overview" | "knowledge" | "schedule" | "run";
 
 export function AiAgentsView() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [loadingAgents, setLoadingAgents] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>("overview");
   const [runKey, setRunKey] = useState(0);
@@ -908,11 +909,13 @@ export function AiAgentsView() {
   const selectedAgent = agents.find(a => a.id === selectedId) ?? null;
 
   const fetchAgents = useCallback(async () => {
-    const r = await fetch(`${API}/ai-agents`);
-    if (r.ok) {
-      const data: Agent[] = await r.json();
-      setAgents(data);
-    }
+    setLoadingAgents(true);
+    try {
+      const r = await fetch(`${API}/ai-agents`);
+      const data = await r.json();
+      if (Array.isArray(data)) setAgents(data);
+    } catch {}
+    finally { setLoadingAgents(false); }
   }, []);
 
   const fetchFields = useCallback(async () => {
@@ -1021,18 +1024,25 @@ export function AiAgentsView() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          {agents.length === 0 ? (
+          {loadingAgents ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : agents.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <Bot className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">No agents yet.</p>
               <button onClick={createAgent} className="mt-2 text-xs text-primary hover:underline">Create your first agent</button>
             </div>
           ) : agents.map(agent => (
-            <button
+            <div
               key={agent.id}
               onClick={() => { setSelectedId(agent.id); setTab("overview"); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && (setSelectedId(agent.id), setTab("overview"))}
               className={cn(
-                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group",
+                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group cursor-pointer",
                 selectedId === agent.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
               )}
             >
@@ -1057,7 +1067,7 @@ export function AiAgentsView() {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-            </button>
+            </div>
           ))}
         </div>
       </div>
