@@ -1,6 +1,38 @@
 import { pgTable, serial, integer, text, boolean } from 'drizzle-orm/pg-core';
 import { users } from './users';
 
+// ── Business Units ──────────────────────────────────────────────────────────────
+
+export const businessUnits = pgTable('business_units', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id'),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  color: text('color').notNull().default(''),
+});
+
+export const userBusinessUnits = pgTable('user_business_units', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  businessUnitId: integer('business_unit_id').notNull().references(() => businessUnits.id, { onDelete: 'cascade' }),
+});
+
+// ── Regions ─────────────────────────────────────────────────────────────────────
+
+export const regions = pgTable('regions', {
+  id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id'),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  color: text('color').notNull().default(''),
+});
+
+export const userRegions = pgTable('user_regions', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  regionId: integer('region_id').notNull().references(() => regions.id, { onDelete: 'cascade' }),
+});
+
 // ── Groups ─────────────────────────────────────────────────────────────────────
 // Users are members of Groups.
 
@@ -18,6 +50,18 @@ export const userGroups = pgTable('user_groups', {
   groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
 });
 
+export const groupBusinessUnits = pgTable('group_business_units', {
+  id: serial('id').primaryKey(),
+  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  businessUnitId: integer('business_unit_id').notNull().references(() => businessUnits.id, { onDelete: 'cascade' }),
+});
+
+export const groupRegions = pgTable('group_regions', {
+  id: serial('id').primaryKey(),
+  groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
+  regionId: integer('region_id').notNull().references(() => regions.id, { onDelete: 'cascade' }),
+});
+
 // ── Roles ──────────────────────────────────────────────────────────────────────
 // Groups are members of Roles. Roles carry access permissions.
 
@@ -33,6 +77,18 @@ export const groupRoles = pgTable('group_roles', {
   id: serial('id').primaryKey(),
   groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
   roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+});
+
+export const roleBusinessUnits = pgTable('role_business_units', {
+  id: serial('id').primaryKey(),
+  roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  businessUnitId: integer('business_unit_id').notNull().references(() => businessUnits.id, { onDelete: 'cascade' }),
+});
+
+export const roleRegions = pgTable('role_regions', {
+  id: serial('id').primaryKey(),
+  roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+  regionId: integer('region_id').notNull().references(() => regions.id, { onDelete: 'cascade' }),
 });
 
 // ── Role Permissions ───────────────────────────────────────────────────────────

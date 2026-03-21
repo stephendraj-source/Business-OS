@@ -3,7 +3,7 @@ import {
   Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User,
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search,
   Database, Layers, Lock, Mail, Copy, KeyRound,
-  Building2, Tag, FolderOpen, Network, ChevronRight, Pencil,
+  Building2, Tag, FolderOpen, Network, ChevronRight, Pencil, Globe, Briefcase,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -100,6 +100,8 @@ type ViewTab = 'users' | 'roles' | 'org-structure';
 interface Group { id: number; name: string; description: string; color: string; }
 interface Role { id: number; name: string; description: string; color: string; }
 interface Project { id: number; name: string; description: string; }
+interface BusinessUnit { id: number; name: string; description: string; color: string; }
+interface Region { id: number; name: string; description: string; color: string; }
 interface UserGroups { groups: { id: number; name: string; color: string; description: string }[]; }
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -1237,40 +1239,59 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
 function OrgTab({ userId }: { userId: number }) {
   const [userGroups, setUserGroups] = useState<{ id: number; name: string; color: string; description: string }[]>([]);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const [allBUs, setAllBUs] = useState<BusinessUnit[]>([]);
+  const [allRegions, setAllRegions] = useState<Region[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [groupIds, setGroupIds] = useState<Set<number>>(new Set());
+  const [buIds, setBuIds] = useState<Set<number>>(new Set());
+  const [regionIds, setRegionIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
-    const [ug, ag] = await Promise.all([
+    const [ug, ag, ubu, abu, ur, ar] = await Promise.all([
       fetch(`${API}/org/users/${userId}/groups`).then(x => x.json()),
       fetch(`${API}/org/groups`).then(x => x.json()),
+      fetch(`${API}/org/users/${userId}/business-units`).then(x => x.json()),
+      fetch(`${API}/org/business-units`).then(x => x.json()),
+      fetch(`${API}/org/users/${userId}/regions`).then(x => x.json()),
+      fetch(`${API}/org/regions`).then(x => x.json()),
     ]);
     setUserGroups(ug);
     setAllGroups(ag);
+    setAllBUs(abu);
+    setAllRegions(ar);
     setGroupIds(new Set(ug.map((g: any) => g.id)));
+    setBuIds(new Set(ubu.map((b: any) => b.id)));
+    setRegionIds(new Set(ur.map((r: any) => r.id)));
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
 
-  const toggle = (id: number) => {
-    setGroupIds(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
-  };
-
   const save = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/org/users/${userId}/groups`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groupIds: Array.from(groupIds) }),
-      });
+      await Promise.all([
+        fetch(`${API}/org/users/${userId}/groups`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupIds: Array.from(groupIds) }),
+        }),
+        fetch(`${API}/org/users/${userId}/business-units`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessUnitIds: Array.from(buIds) }),
+        }),
+        fetch(`${API}/org/users/${userId}/regions`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ regionIds: Array.from(regionIds) }),
+        }),
+      ]);
       setSaveMsg('Saved ✓');
       setTimeout(() => setSaveMsg(''), 2000);
     } finally { setSaving(false); }
   };
 
   return (
-    <div className="p-6 space-y-5 max-w-lg">
+    <div className="p-6 space-y-6 max-w-lg">
+      {/* Groups */}
       <div className="space-y-1.5">
         <div className="flex items-center gap-2">
           <Network className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1282,7 +1303,7 @@ function OrgTab({ userId }: { userId: number }) {
           <div className="border border-border rounded-xl overflow-hidden">
             {allGroups.map(g => (
               <label key={g.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
-                <input type="checkbox" checked={groupIds.has(g.id)} onChange={() => toggle(g.id)} className="w-3.5 h-3.5 rounded accent-primary" />
+                <input type="checkbox" checked={groupIds.has(g.id)} onChange={() => setGroupIds(s => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
                 <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: g.color || 'hsl(var(--secondary))' }} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">{g.name}</div>
@@ -1292,12 +1313,7 @@ function OrgTab({ userId }: { userId: number }) {
             ))}
           </div>
         )}
-      </div>
-
-      {userGroups.length > 0 && (
-        <div className="space-y-1.5">
-          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roles via Groups</div>
-          <div className="text-xs text-muted-foreground">Permissions are inherited from the Roles that the user's groups belong to.</div>
+        {userGroups.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {userGroups.map(g => (
               <span key={g.id} className="text-xs px-2.5 py-1 rounded-full font-medium border"
@@ -1306,14 +1322,62 @@ function OrgTab({ userId }: { userId: number }) {
               </span>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Business Units */}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Business Units ({buIds.size} assigned)</span>
         </div>
-      )}
+        {allBUs.length === 0 ? (
+          <div className="text-xs text-muted-foreground pl-5 py-2 italic">No business units defined yet — create them in the Org Structure tab</div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-hidden">
+            {allBUs.map(b => (
+              <label key={b.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                <input type="checkbox" checked={buIds.has(b.id)} onChange={() => setBuIds(s => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: b.color || 'hsl(var(--secondary))' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{b.name}</div>
+                  {b.description && <div className="text-xs text-muted-foreground">{b.description}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Regions */}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Regions ({regionIds.size} assigned)</span>
+        </div>
+        {allRegions.length === 0 ? (
+          <div className="text-xs text-muted-foreground pl-5 py-2 italic">No regions defined yet — create them in the Org Structure tab</div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-hidden">
+            {allRegions.map(r => (
+              <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                <input type="checkbox" checked={regionIds.has(r.id)} onChange={() => setRegionIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{r.name}</div>
+                  {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="flex items-center gap-3 pt-1">
         <button onClick={save} disabled={saving}
           className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-          Save Group Assignments
+          Save Org Assignments
         </button>
         {saveMsg && <span className="text-xs text-green-400 font-medium">{saveMsg}</span>}
       </div>
@@ -1776,15 +1840,379 @@ function RolesView() {
 
 // ── Org Structure View (Groups) ───────────────────────────────────────────────
 
+type OrgSubTab = 'groups' | 'business-units' | 'regions';
+
 function OrgStructureView() {
+  const [subTab, setSubTab] = useState<OrgSubTab>('groups');
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex-none flex items-center gap-1 px-6 pt-4 pb-0 border-b border-border">
+        {([
+          { key: 'groups', label: 'Groups', icon: Network },
+          { key: 'business-units', label: 'Business Units', icon: Briefcase },
+          { key: 'regions', label: 'Regions', icon: Globe },
+        ] as { key: OrgSubTab; label: string; icon: React.ElementType }[]).map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key)}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-xs font-semibold border-b-2 transition-colors -mb-px',
+              subTab === t.key
+                ? 'border-primary text-foreground bg-background'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}>
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div className="flex-1 min-h-0">
+        {subTab === 'groups' && <GroupsManageView />}
+        {subTab === 'business-units' && <OrgEntityManageView entityType="business-units" label="Business Unit" Icon={Briefcase} emptyMsg="Organize users into business units" />}
+        {subTab === 'regions' && <OrgEntityManageView entityType="regions" label="Region" Icon={Globe} emptyMsg="Organize users into geographic regions" />}
+      </div>
+    </div>
+  );
+}
+
+// ── Shared entity panel (Business Units / Regions) ─────────────────────────────
+
+function OrgEntityManageView({
+  entityType, label, Icon, emptyMsg,
+}: {
+  entityType: 'business-units' | 'regions';
+  label: string;
+  Icon: React.ElementType;
+  emptyMsg: string;
+}) {
+  const [items, setItems] = useState<BusinessUnit[] | Region[]>([]);
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<BusinessUnit | Region | null>(null);
+  const [editForm, setEditForm] = useState<{ name: string; description: string; color: string } | null>(null);
+  const [memberUserIds, setMemberUserIds] = useState<Set<number>>(new Set());
+  const [memberGroupIds, setMemberGroupIds] = useState<Set<number>>(new Set());
+  const [memberRoleIds, setMemberRoleIds] = useState<Set<number>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', description: '', color: '' });
+
+  const COLORS = ['', '#6366f1', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [it, u, g, r] = await Promise.all([
+        fetch(`${API}/org/${entityType}`).then(x => x.json()),
+        fetch(`${API}/users`).then(x => x.json()),
+        fetch(`${API}/org/groups`).then(x => x.json()),
+        fetch(`${API}/org/roles`).then(x => x.json()),
+      ]);
+      setItems(it);
+      setAllUsers(u);
+      setAllGroups(g);
+      setAllRoles(r);
+    } finally { setLoading(false); }
+  }, [entityType]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const openItem = async (item: BusinessUnit | Region) => {
+    setSelected(item);
+    setEditForm({ name: item.name, description: item.description, color: item.color });
+    const [uRows, gRows, rRows] = await Promise.all([
+      fetch(`${API}/org/${entityType}/${item.id}/users`).then(x => x.json()),
+      fetch(`${API}/org/${entityType}/${item.id}/groups`).then(x => x.json()),
+      fetch(`${API}/org/${entityType}/${item.id}/roles`).then(x => x.json()),
+    ]);
+    setMemberUserIds(new Set(uRows.map((x: any) => x.id)));
+    setMemberGroupIds(new Set(gRows.map((x: any) => x.id)));
+    setMemberRoleIds(new Set(rRows.map((x: any) => x.id)));
+  };
+
+  const closeItem = () => { setSelected(null); setEditForm(null); };
+
+  const saveItem = async () => {
+    if (!selected || !editForm) return;
+    setSaving(true);
+    try {
+      await Promise.all([
+        fetch(`${API}/org/${entityType}/${selected.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
+        }),
+        fetch(`${API}/org/${entityType}/${selected.id}/users`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds: Array.from(memberUserIds) }),
+        }),
+        fetch(`${API}/org/${entityType}/${selected.id}/groups`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupIds: Array.from(memberGroupIds) }),
+        }),
+        fetch(`${API}/org/${entityType}/${selected.id}/roles`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleIds: Array.from(memberRoleIds) }),
+        }),
+      ]);
+      await load();
+    } finally { setSaving(false); }
+  };
+
+  const deleteItem = async (id: number) => {
+    if (confirmDelete !== id) { setConfirmDelete(id); return; }
+    await fetch(`${API}/org/${entityType}/${id}`, { method: 'DELETE' });
+    setConfirmDelete(null);
+    if (selected?.id === id) closeItem();
+    await load();
+  };
+
+  const createItem = async () => {
+    if (!createForm.name) return;
+    setSaving(true);
+    try {
+      const row = await fetch(`${API}/org/${entityType}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(createForm),
+      }).then(x => x.json());
+      setCreating(false);
+      setCreateForm({ name: '', description: '', color: '' });
+      await load();
+      openItem(row);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="flex h-full min-h-0">
+      {/* List */}
+      <div className={cn('flex flex-col h-full border-r border-border transition-all', selected ? 'w-72 flex-shrink-0' : 'flex-1')}>
+        <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
+          <div>
+            <h1 className="text-2xl font-display font-bold">{label}s</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">{emptyMsg}</p>
+          </div>
+          <button onClick={() => setCreating(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors">
+            <Plus className="w-4 h-4" /> Add
+          </button>
+        </div>
+        {loading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="flex-1 overflow-y-auto divide-y divide-border">
+            {items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Icon className="w-10 h-10 mb-3 opacity-25" />
+                <p className="text-sm">No {label.toLowerCase()}s yet — click Add to create one</p>
+              </div>
+            ) : (items as any[]).map((item: any) => (
+              <div key={item.id} role="button" tabIndex={0}
+                onKeyDown={(e: any) => { if (e.key === 'Enter') openItem(item); }}
+                onClick={() => openItem(item)}
+                className={cn('flex items-center gap-3 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors group', selected?.id === item.id && 'bg-primary/5')}>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ background: item.color || 'hsl(var(--secondary))', color: item.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                  {item.name.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{item.name}</div>
+                  {item.description && <div className="text-xs text-muted-foreground truncate">{item.description}</div>}
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {confirmDelete === item.id ? (
+                    <>
+                      <button onClick={(e: any) => { e.stopPropagation(); deleteItem(item.id); }}
+                        className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
+                      <button onClick={(e: any) => { e.stopPropagation(); setConfirmDelete(null); }}
+                        className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+                    </>
+                  ) : (
+                    <button onClick={(e: any) => { e.stopPropagation(); deleteItem(item.id); }}
+                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Detail panel */}
+      {selected && editForm && (
+        <div className="flex-1 min-w-0 flex flex-col bg-card/40">
+          <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                style={{ background: editForm.color || 'hsl(var(--secondary))', color: editForm.color ? '#fff' : 'hsl(var(--muted-foreground))' }}>
+                {editForm.name.slice(0, 2).toUpperCase()}
+              </div>
+              <span className="font-semibold">{selected.name}</span>
+            </div>
+            <button onClick={closeItem} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-5 space-y-5 max-w-lg">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
+              <input value={editForm.name} onChange={e => setEditForm(f => f && ({ ...f, name: e.target.value }))}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description</label>
+              <input value={editForm.description} onChange={e => setEditForm(f => f && ({ ...f, description: e.target.value }))}
+                placeholder="Optional description…"
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {COLORS.map(c => (
+                  <button key={c} onClick={() => setEditForm(f => f && ({ ...f, color: c }))}
+                    className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', editForm.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                    style={{ background: c || 'hsl(var(--secondary))' }} />
+                ))}
+              </div>
+            </div>
+            {/* Users */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Users ({memberUserIds.size})</span>
+              </div>
+              {allUsers.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No users available</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                  {allUsers.map(u => (
+                    <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={memberUserIds.has(u.id)} onChange={() => setMemberUserIds(s => { const n = new Set(s); if (n.has(u.id)) n.delete(u.id); else n.add(u.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {u.name.split(' ').map((p: string) => p[0]).join('').slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{u.name}</div>
+                        <div className="text-xs text-muted-foreground">{u.email}</div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Groups */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Network className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Groups ({memberGroupIds.size})</span>
+              </div>
+              {allGroups.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No groups yet</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                  {allGroups.map(g => (
+                    <label key={g.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={memberGroupIds.has(g.id)} onChange={() => setMemberGroupIds(s => { const n = new Set(s); if (n.has(g.id)) n.delete(g.id); else n.add(g.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: g.color || 'hsl(var(--secondary))' }} />
+                      <div>
+                        <div className="text-sm font-medium">{g.name}</div>
+                        {g.description && <div className="text-xs text-muted-foreground">{g.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Roles */}
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roles ({memberRoleIds.size})</span>
+              </div>
+              {allRoles.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No roles yet</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden max-h-44 overflow-y-auto">
+                  {allRoles.map(r => (
+                    <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={memberRoleIds.has(r.id)} onChange={() => setMemberRoleIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
+                      <div>
+                        <div className="text-sm font-medium">{r.name}</div>
+                        {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={saveItem} disabled={saving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+              Save {label}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Create Modal */}
+      {creating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-[420px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display font-bold text-lg">Add {label}</h2>
+              <button onClick={() => setCreating(false)} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Name</label>
+                <input value={createForm.name} onChange={e => setCreateForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder={`${label} name…`}
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Description <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
+                <input value={createForm.description} onChange={e => setCreateForm(f => ({ ...f, description: e.target.value }))}
+                  placeholder="Optional description…"
+                  className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Color</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLORS.map(c => (
+                    <button key={c} onClick={() => setCreateForm(f => ({ ...f, color: c }))}
+                      className={cn('w-7 h-7 rounded-full border-2 transition-transform hover:scale-110', createForm.color === c ? 'border-primary scale-110' : 'border-transparent')}
+                      style={{ background: c || 'hsl(var(--secondary))' }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setCreating(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+              <button onClick={createItem} disabled={saving || !createForm.name}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Create {label}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Groups manage view ─────────────────────────────────────────────────────────
+
+function GroupsManageView() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [allUsers, setAllUsers] = useState<UserRow[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [allBUs, setAllBUs] = useState<BusinessUnit[]>([]);
+  const [allRegions, setAllRegions] = useState<Region[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [groupMemberIds, setGroupMemberIds] = useState<Set<number>>(new Set());
   const [groupRoleIds, setGroupRoleIds] = useState<Set<number>>(new Set());
+  const [groupBUIds, setGroupBUIds] = useState<Set<number>>(new Set());
+  const [groupRegionIds, setGroupRegionIds] = useState<Set<number>>(new Set());
   const [editForm, setEditForm] = useState<{ name: string; description: string; color: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1796,14 +2224,14 @@ function OrgStructureView() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [g, u, r] = await Promise.all([
+      const [g, u, r, bu, reg] = await Promise.all([
         fetch(`${API}/org/groups`).then(x => x.json()),
         fetch(`${API}/users`).then(x => x.json()),
         fetch(`${API}/org/roles`).then(x => x.json()),
+        fetch(`${API}/org/business-units`).then(x => x.json()),
+        fetch(`${API}/org/regions`).then(x => x.json()),
       ]);
-      setGroups(g);
-      setAllUsers(u);
-      setAllRoles(r);
+      setGroups(g); setAllUsers(u); setAllRoles(r); setAllBUs(bu); setAllRegions(reg);
     } finally { setLoading(false); }
   }, []);
 
@@ -1812,12 +2240,16 @@ function OrgStructureView() {
   const openGroup = async (group: Group) => {
     setSelectedGroup(group);
     setEditForm({ name: group.name, description: group.description, color: group.color });
-    const [members, roles] = await Promise.all([
+    const [members, roles, bus, regs] = await Promise.all([
       fetch(`${API}/org/groups/${group.id}/members`).then(x => x.json()),
       fetch(`${API}/org/groups/${group.id}/roles`).then(x => x.json()),
+      fetch(`${API}/org/groups/${group.id}/business-units`).then(x => x.json()),
+      fetch(`${API}/org/groups/${group.id}/regions`).then(x => x.json()),
     ]);
     setGroupMemberIds(new Set(members.map((u: any) => u.id)));
     setGroupRoleIds(new Set(roles.map((r: any) => r.id)));
+    setGroupBUIds(new Set(bus.map((b: any) => b.id)));
+    setGroupRegionIds(new Set(regs.map((r: any) => r.id)));
   };
 
   const closeGroup = () => { setSelectedGroup(null); setEditForm(null); };
@@ -1826,17 +2258,27 @@ function OrgStructureView() {
     if (!selectedGroup || !editForm) return;
     setSaving(true);
     try {
-      await fetch(`${API}/org/groups/${selectedGroup.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
-      });
-      await fetch(`${API}/org/groups/${selectedGroup.id}/members`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userIds: Array.from(groupMemberIds) }),
-      });
-      await fetch(`${API}/org/groups/${selectedGroup.id}/roles`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roleIds: Array.from(groupRoleIds) }),
-      });
+      await Promise.all([
+        fetch(`${API}/org/groups/${selectedGroup.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(editForm),
+        }),
+        fetch(`${API}/org/groups/${selectedGroup.id}/members`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userIds: Array.from(groupMemberIds) }),
+        }),
+        fetch(`${API}/org/groups/${selectedGroup.id}/roles`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleIds: Array.from(groupRoleIds) }),
+        }),
+        fetch(`${API}/org/groups/${selectedGroup.id}/business-units`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessUnitIds: Array.from(groupBUIds) }),
+        }),
+        fetch(`${API}/org/groups/${selectedGroup.id}/regions`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ regionIds: Array.from(groupRegionIds) }),
+        }),
+      ]);
       await load();
     } finally { setSaving(false); }
   };
@@ -1866,7 +2308,7 @@ function OrgStructureView() {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Main tree */}
+      {/* Main list */}
       <div className={cn('flex flex-col h-full border-r border-border transition-all', selectedGroup ? 'w-72 flex-shrink-0' : 'flex-1')}>
         <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
           <div>
@@ -1877,13 +2319,10 @@ function OrgStructureView() {
             <Plus className="w-4 h-4" /> Add Group
           </button>
         </div>
-
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
         ) : (
           <div className="flex-1 overflow-y-auto divide-y divide-border">
-
-            {/* Groups list */}
             {groups.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Network className="w-10 h-10 mb-3 opacity-25" />
@@ -1919,7 +2358,6 @@ function OrgStructureView() {
                 </div>
               </div>
             ))}
-
           </div>
         )}
       </div>
@@ -1964,7 +2402,7 @@ function OrgStructureView() {
               {allUsers.length === 0 ? (
                 <div className="text-xs text-muted-foreground italic">No users available</div>
               ) : (
-                <div className="border border-border rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                <div className="border border-border rounded-xl overflow-hidden max-h-44 overflow-y-auto">
                   {allUsers.map(u => (
                     <label key={u.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
                       <input type="checkbox" checked={groupMemberIds.has(u.id)} onChange={() => {
@@ -1994,6 +2432,50 @@ function OrgStructureView() {
                       <input type="checkbox" checked={groupRoleIds.has(r.id)} onChange={() => {
                         setGroupRoleIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; });
                       }} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
+                      <div>
+                        <div className="text-sm font-medium">{r.name}</div>
+                        {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Business Units ({groupBUIds.size})</span>
+              </div>
+              {allBUs.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No business units yet — create them in the Business Units tab</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden">
+                  {allBUs.map(b => (
+                    <label key={b.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={groupBUIds.has(b.id)} onChange={() => setGroupBUIds(s => { const n = new Set(s); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                      <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: b.color || 'hsl(var(--secondary))' }} />
+                      <div>
+                        <div className="text-sm font-medium">{b.name}</div>
+                        {b.description && <div className="text-xs text-muted-foreground">{b.description}</div>}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-2">
+                <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Regions ({groupRegionIds.size})</span>
+              </div>
+              {allRegions.length === 0 ? (
+                <div className="text-xs text-muted-foreground italic">No regions yet — create them in the Regions tab</div>
+              ) : (
+                <div className="border border-border rounded-xl overflow-hidden">
+                  {allRegions.map(r => (
+                    <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                      <input type="checkbox" checked={groupRegionIds.has(r.id)} onChange={() => setGroupRegionIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
                       <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
                       <div>
                         <div className="text-sm font-medium">{r.name}</div>
@@ -2061,6 +2543,4 @@ function OrgStructureView() {
 }
 
 // ── dummy used-for-import removal guard ──────────────────────────────────────
-// These were previously used and might be unused now — TypeScript will warn
-// but app runs fine with tsx
-const _unused = { Building2, Layers, FolderOpen }; void _unused;
+const _unused = { Building2, Layers, FolderOpen, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Database, Lock, Mail, Copy, KeyRound, Shield, User, FolderOpen: FolderOpen, Pencil, ChevronRight }; void _unused;

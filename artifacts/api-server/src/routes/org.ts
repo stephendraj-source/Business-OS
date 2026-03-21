@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import {
   db, users,
-  groups, userGroups,
-  roles, groupRoles,
+  groups, userGroups, groupBusinessUnits, groupRegions,
+  roles, groupRoles, roleBusinessUnits, roleRegions,
   roleModuleAccess, roleAllowedCategories, roleAllowedProcesses, roleFieldPermissions,
   projects, userProjects,
+  businessUnits, userBusinessUnits,
+  regions, userRegions,
 } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 
@@ -313,6 +315,382 @@ orgRouter.patch('/org/projects/:id', async (req, res) => {
 orgRouter.delete('/org/projects/:id', async (req, res) => {
   try {
     await db.delete(projects).where(eq(projects.id, parseInt(req.params.id)));
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Business Units ─────────────────────────────────────────────────────────────
+
+orgRouter.get('/org/business-units', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const query = db.select().from(businessUnits);
+    const rows = tenantId
+      ? await query.where(eq(businessUnits.tenantId, tenantId)).orderBy(businessUnits.name)
+      : await query.orderBy(businessUnits.name);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/business-units', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const [row] = await db.insert(businessUnits).values({ name, description, color, tenantId }).returning();
+    res.status(201).json(row);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/business-units/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color } = req.body;
+    const updates: Partial<typeof businessUnits.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (color !== undefined) updates.color = color;
+    const [row] = await db.update(businessUnits).set(updates).where(eq(businessUnits.id, id)).returning();
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/business-units/:id', async (req, res) => {
+  try {
+    await db.delete(businessUnits).where(eq(businessUnits.id, parseInt(req.params.id)));
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/business-units/:id/users', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(userBusinessUnits)
+      .innerJoin(users, eq(userBusinessUnits.userId, users.id))
+      .where(eq(userBusinessUnits.businessUnitId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/business-units/:id/users', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { userIds = [] } = req.body as { userIds?: number[] };
+    await db.delete(userBusinessUnits).where(eq(userBusinessUnits.businessUnitId, id));
+    if (userIds.length > 0) {
+      await db.insert(userBusinessUnits).values(userIds.map(userId => ({ userId, businessUnitId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/business-units/:id/groups', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: groups.id, name: groups.name, color: groups.color, description: groups.description })
+      .from(groupBusinessUnits)
+      .innerJoin(groups, eq(groupBusinessUnits.groupId, groups.id))
+      .where(eq(groupBusinessUnits.businessUnitId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/business-units/:id/groups', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { groupIds = [] } = req.body as { groupIds?: number[] };
+    await db.delete(groupBusinessUnits).where(eq(groupBusinessUnits.businessUnitId, id));
+    if (groupIds.length > 0) {
+      await db.insert(groupBusinessUnits).values(groupIds.map(groupId => ({ groupId, businessUnitId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/business-units/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: roles.id, name: roles.name, color: roles.color, description: roles.description })
+      .from(roleBusinessUnits)
+      .innerJoin(roles, eq(roleBusinessUnits.roleId, roles.id))
+      .where(eq(roleBusinessUnits.businessUnitId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/business-units/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { roleIds = [] } = req.body as { roleIds?: number[] };
+    await db.delete(roleBusinessUnits).where(eq(roleBusinessUnits.businessUnitId, id));
+    if (roleIds.length > 0) {
+      await db.insert(roleBusinessUnits).values(roleIds.map(roleId => ({ roleId, businessUnitId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/users/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: businessUnits.id, name: businessUnits.name, color: businessUnits.color, description: businessUnits.description })
+      .from(userBusinessUnits)
+      .innerJoin(businessUnits, eq(userBusinessUnits.businessUnitId, businessUnits.id))
+      .where(eq(userBusinessUnits.userId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/users/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { businessUnitIds = [] } = req.body as { businessUnitIds?: number[] };
+    await db.delete(userBusinessUnits).where(eq(userBusinessUnits.userId, id));
+    if (businessUnitIds.length > 0) {
+      await db.insert(userBusinessUnits).values(businessUnitIds.map(businessUnitId => ({ userId: id, businessUnitId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/groups/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: businessUnits.id, name: businessUnits.name, color: businessUnits.color, description: businessUnits.description })
+      .from(groupBusinessUnits)
+      .innerJoin(businessUnits, eq(groupBusinessUnits.businessUnitId, businessUnits.id))
+      .where(eq(groupBusinessUnits.groupId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/groups/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { businessUnitIds = [] } = req.body as { businessUnitIds?: number[] };
+    await db.delete(groupBusinessUnits).where(eq(groupBusinessUnits.groupId, id));
+    if (businessUnitIds.length > 0) {
+      await db.insert(groupBusinessUnits).values(businessUnitIds.map(businessUnitId => ({ groupId: id, businessUnitId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/roles/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: businessUnits.id, name: businessUnits.name, color: businessUnits.color, description: businessUnits.description })
+      .from(roleBusinessUnits)
+      .innerJoin(businessUnits, eq(roleBusinessUnits.businessUnitId, businessUnits.id))
+      .where(eq(roleBusinessUnits.roleId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/roles/:id/business-units', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { businessUnitIds = [] } = req.body as { businessUnitIds?: number[] };
+    await db.delete(roleBusinessUnits).where(eq(roleBusinessUnits.roleId, id));
+    if (businessUnitIds.length > 0) {
+      await db.insert(roleBusinessUnits).values(businessUnitIds.map(businessUnitId => ({ roleId: id, businessUnitId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Regions ────────────────────────────────────────────────────────────────────
+
+orgRouter.get('/org/regions', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const query = db.select().from(regions);
+    const rows = tenantId
+      ? await query.where(eq(regions.tenantId, tenantId)).orderBy(regions.name)
+      : await query.orderBy(regions.name);
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/regions', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const [row] = await db.insert(regions).values({ name, description, color, tenantId }).returning();
+    res.status(201).json(row);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/regions/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color } = req.body;
+    const updates: Partial<typeof regions.$inferInsert> = {};
+    if (name !== undefined) updates.name = name;
+    if (description !== undefined) updates.description = description;
+    if (color !== undefined) updates.color = color;
+    const [row] = await db.update(regions).set(updates).where(eq(regions.id, id)).returning();
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    res.json(row);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/regions/:id', async (req, res) => {
+  try {
+    await db.delete(regions).where(eq(regions.id, parseInt(req.params.id)));
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/regions/:id/users', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(userRegions)
+      .innerJoin(users, eq(userRegions.userId, users.id))
+      .where(eq(userRegions.regionId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/regions/:id/users', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { userIds = [] } = req.body as { userIds?: number[] };
+    await db.delete(userRegions).where(eq(userRegions.regionId, id));
+    if (userIds.length > 0) {
+      await db.insert(userRegions).values(userIds.map(userId => ({ userId, regionId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/regions/:id/groups', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: groups.id, name: groups.name, color: groups.color, description: groups.description })
+      .from(groupRegions)
+      .innerJoin(groups, eq(groupRegions.groupId, groups.id))
+      .where(eq(groupRegions.regionId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/regions/:id/groups', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { groupIds = [] } = req.body as { groupIds?: number[] };
+    await db.delete(groupRegions).where(eq(groupRegions.regionId, id));
+    if (groupIds.length > 0) {
+      await db.insert(groupRegions).values(groupIds.map(groupId => ({ groupId, regionId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/regions/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: roles.id, name: roles.name, color: roles.color, description: roles.description })
+      .from(roleRegions)
+      .innerJoin(roles, eq(roleRegions.roleId, roles.id))
+      .where(eq(roleRegions.regionId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/regions/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { roleIds = [] } = req.body as { roleIds?: number[] };
+    await db.delete(roleRegions).where(eq(roleRegions.regionId, id));
+    if (roleIds.length > 0) {
+      await db.insert(roleRegions).values(roleIds.map(roleId => ({ roleId, regionId: id })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/users/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: regions.id, name: regions.name, color: regions.color, description: regions.description })
+      .from(userRegions)
+      .innerJoin(regions, eq(userRegions.regionId, regions.id))
+      .where(eq(userRegions.userId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/users/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { regionIds = [] } = req.body as { regionIds?: number[] };
+    await db.delete(userRegions).where(eq(userRegions.userId, id));
+    if (regionIds.length > 0) {
+      await db.insert(userRegions).values(regionIds.map(regionId => ({ userId: id, regionId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/groups/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: regions.id, name: regions.name, color: regions.color, description: regions.description })
+      .from(groupRegions)
+      .innerJoin(regions, eq(groupRegions.regionId, regions.id))
+      .where(eq(groupRegions.groupId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/groups/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { regionIds = [] } = req.body as { regionIds?: number[] };
+    await db.delete(groupRegions).where(eq(groupRegions.groupId, id));
+    if (regionIds.length > 0) {
+      await db.insert(groupRegions).values(regionIds.map(regionId => ({ groupId: id, regionId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/roles/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: regions.id, name: regions.name, color: regions.color, description: regions.description })
+      .from(roleRegions)
+      .innerJoin(regions, eq(roleRegions.regionId, regions.id))
+      .where(eq(roleRegions.roleId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/roles/:id/regions', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { regionIds = [] } = req.body as { regionIds?: number[] };
+    await db.delete(roleRegions).where(eq(roleRegions.roleId, id));
+    if (regionIds.length > 0) {
+      await db.insert(roleRegions).values(regionIds.map(regionId => ({ roleId: id, regionId })));
+    }
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
