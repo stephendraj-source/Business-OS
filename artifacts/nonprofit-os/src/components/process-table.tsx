@@ -887,7 +887,11 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       const matchesCategory = selectedCategory === "All" || p.category === selectedCategory;
       return matchesSearch && matchesCategory;
     });
-    if (!sortKey) return filtered.sort((a, b) => a.number - b.number);
+    if (!sortKey) return filtered.sort((a, b) => {
+      const catCmp = (a.category ?? '').localeCompare(b.category ?? '');
+      if (catCmp !== 0) return catCmp;
+      return a.number - b.number;
+    });
     const m = sortDir === 'asc' ? 1 : -1;
     return [...filtered].sort((a, b) => {
       let av: string | number = 0, bv: string | number = 0;
@@ -1508,11 +1512,33 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                 </td>
               </tr>
             ) : (
-              filteredProcesses.map(process => (
-                <tr key={process.id} className={cn(process.included && mode === 'matrix' && "bg-primary/[0.03]")}>
-                  {allVisibleCols.map(col => renderCell(process, col.key))}
-                </tr>
-              ))
+              (() => {
+                const rows: React.ReactNode[] = [];
+                let lastCat = '';
+                filteredProcesses.forEach(process => {
+                  if (!sortKey && process.category !== lastCat) {
+                    lastCat = process.category;
+                    rows.push(
+                      <tr key={`cat-header-${process.category}`} className="select-none">
+                        <td colSpan={allVisibleCols.length} className="px-4 py-2 bg-secondary/40 border-y border-border/60">
+                          <span className={cn(
+                            "inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase",
+                            getCategoryColorClass(process.category)
+                          )}>
+                            {process.category}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  rows.push(
+                    <tr key={process.id} className={cn(process.included && mode === 'matrix' && "bg-primary/[0.03]")}>
+                      {allVisibleCols.map(col => renderCell(process, col.key))}
+                    </tr>
+                  );
+                });
+                return rows;
+              })()
             )}
           </tbody>
         </table>

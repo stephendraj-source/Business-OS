@@ -7,15 +7,15 @@ import type { Process } from '@workspace/api-client-react';
 
 function getCatColor(cat: string): string {
   const lower = cat.toLowerCase();
-  if (lower.includes('strategy')) return '#6366f1';
-  if (lower.includes('fundraising')) return '#f59e0b';
-  if (lower.includes('grant')) return '#10b981';
-  if (lower.includes('marketing')) return '#ec4899';
-  if (lower.includes('program')) return '#3b82f6';
-  if (lower.includes('finance')) return '#8b5cf6';
-  if (lower.includes('hr') || lower.includes('talent')) return '#f97316';
-  if (lower.includes('technology') || lower.includes('data')) return '#06b6d4';
-  return '#64748b';
+  if (lower.includes('strategy')) return '#60a5fa';
+  if (lower.includes('fundraising')) return '#34d399';
+  if (lower.includes('grant')) return '#a78bfa';
+  if (lower.includes('marketing')) return '#fbbf24';
+  if (lower.includes('program')) return '#fb7185';
+  if (lower.includes('finance')) return '#22d3ee';
+  if (lower.includes('hr') || lower.includes('talent')) return '#e879f9';
+  if (lower.includes('technology') || lower.includes('data')) return '#818cf8';
+  return '#94a3b8';
 }
 
 interface HorizontalTreeProps {
