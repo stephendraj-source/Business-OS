@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, conversations as conversationsTable, messages as messagesTable, processesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
@@ -128,6 +129,16 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
 
     const chatMessages = history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
     const systemPrompt = await buildSystemPrompt();
+
+    // Deduct 1 credit for this AI call
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
 
     // Set SSE headers
     res.setHeader("Content-Type", "text/event-stream");

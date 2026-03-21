@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, text, timestamp, integer } from 'drizzle-orm/pg-core';
 
 export const tenants = pgTable('tenants', {
   id: serial('id').primaryKey(),
@@ -6,6 +6,7 @@ export const tenants = pgTable('tenants', {
   slug: text('slug').notNull().unique(),
   status: text('status').notNull().default('active'),
   industryBlueprint: text('industry_blueprint'),
+  credits: integer('credits').notNull().default(10000),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

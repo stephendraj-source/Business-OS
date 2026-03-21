@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCredits } from '@/hooks/use-credits';
 
 type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users' | 'initiatives';
 
@@ -41,7 +42,8 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const orgName = useOrgName();
   const meta = VIEW_META[activeView];
   const { currentUser } = useUser();
-  const { logout } = useAuth();
+  const { logout, isSuperUser, isAdmin } = useAuth();
+  const { credits } = useCredits();
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
@@ -123,6 +125,38 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
           </div>
 
         </nav>
+
+        {/* Credits Widget — visible to tenant admins only */}
+        {!isSuperUser && isAdmin && credits !== null && (
+          <div className="px-4 pb-3">
+            <div className={cn(
+              "rounded-xl px-3 py-2.5 border text-xs",
+              credits <= 0
+                ? "bg-red-500/10 border-red-500/30 text-red-400"
+                : credits < 500
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                : "bg-primary/5 border-primary/20 text-sidebar-foreground/70"
+            )}>
+              <div className="flex items-center gap-2 mb-1">
+                <Coins className={cn("w-3.5 h-3.5 flex-shrink-0",
+                  credits <= 0 ? "text-red-400" : credits < 500 ? "text-amber-400" : "text-primary"
+                )} />
+                <span className="font-semibold uppercase tracking-wider text-[10px]">AI Credits</span>
+              </div>
+              <div className={cn("text-lg font-bold tabular-nums leading-none",
+                credits <= 0 ? "text-red-400" : credits < 500 ? "text-amber-400" : "text-foreground"
+              )}>
+                {credits.toLocaleString()}
+              </div>
+              {credits <= 0 && (
+                <div className="mt-1 text-[10px] text-red-400/80">No credits remaining</div>
+              )}
+              {credits > 0 && credits < 500 && (
+                <div className="mt-1 text-[10px] text-amber-400/80">Credits running low</div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* User Profile Footer */}
         <div className="p-4 border-t border-sidebar-border">

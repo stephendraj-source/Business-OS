@@ -13,6 +13,7 @@ import {
 import { userGroups, groupRoles } from "@workspace/db";
 import { eq, desc, max, sql, or, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
@@ -453,6 +454,16 @@ ${toolsList.length > 0 ? toolsList.join(", ") : "No specific tools configured."}
 ${knowledgeSection || "No knowledge sources configured."}
 
 Execute your instructions carefully and thoroughly. Provide a detailed, structured output of your work.`;
+
+    // Deduct 1 credit for this AI agent run
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
 
     const [logEntry] = await db.insert(agentRunLogsTable).values({
       agentId,
