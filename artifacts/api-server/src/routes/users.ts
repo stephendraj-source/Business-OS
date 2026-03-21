@@ -72,7 +72,7 @@ usersRouter.post('/', async (req, res) => {
     const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
     res.status(201).json({ ...safeUser(row), resetLink, resetToken: token });
   } catch (e: any) {
-    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Email already exists' });
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'An account with that email address already exists.' });
     res.status(500).json({ error: e.message });
   }
 });
@@ -133,6 +133,7 @@ usersRouter.patch('/:id', async (req, res) => {
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(safeUser(row));
   } catch (e: any) {
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'An account with that email address already exists.' });
     res.status(500).json({ error: e.message });
   }
 });

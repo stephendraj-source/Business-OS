@@ -460,6 +460,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
   });
   const [form, setForm] = useState(initForm);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [sendingReset, setSendingReset] = useState(false);
   const [resetResult, setResetResult] = useState<{ link: string; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
@@ -487,11 +488,13 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
 
   const save = async () => {
     setSaving(true);
+    setSaveError('');
     try {
-      await authedFetch(`${API}/users/${user.id}`, {
+      const r = await authedFetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, isActive: form.isActive }),
       });
+      if (!r.ok) { const d = await r.json(); setSaveError(d.error || 'Failed to save changes'); return; }
       await onSaved();
     } finally {
       setSaving(false);
@@ -582,6 +585,10 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         </div>
         <Toggle checked={form.isActive} onChange={v => setForm(f => ({ ...f, isActive: v }))} />
       </div>
+
+      {saveError && (
+        <div className="px-3 py-2 rounded-lg bg-red-500/10 text-red-400 text-sm">{saveError}</div>
+      )}
 
       <div className="flex gap-3">
         <button onClick={cancel}
@@ -2537,4 +2544,4 @@ function GroupsManageView() {
 }
 
 // ── dummy used-for-import removal guard ──────────────────────────────────────
-const _unused = { Building2, Layers, FolderOpen, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Database, Lock, Mail, Copy, KeyRound, Shield, User, FolderOpen: FolderOpen, Pencil, ChevronRight }; void _unused;
+const _unused = { Building2, Layers, FolderOpen, Edit2, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Database, Lock, Mail, Copy, KeyRound, Shield, User, Pencil, ChevronRight }; void _unused;

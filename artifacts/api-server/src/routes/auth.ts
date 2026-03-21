@@ -208,7 +208,8 @@ authRouter.post('/tenants', requireAuth, requireSuperUser, async (req, res) => {
 
     res.status(201).json({ ...tenant, admin: adminResult });
   } catch (e: any) {
-    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Slug already exists or email already in use' });
+    if (e.message?.includes('unique') && e.message?.includes('email')) return res.status(409).json({ error: 'An account with that email address already exists.' });
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'A tenant with that slug already exists.' });
     res.status(500).json({ error: e.message });
   }
 });
