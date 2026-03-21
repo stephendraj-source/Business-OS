@@ -215,3 +215,67 @@ authRouter.patch('/tenants/:id/blueprint', requireAuth, requireSuperUser, async 
     res.status(500).json({ error: e.message });
   }
 });
+
+authRouter.patch('/tenants/:id/credits', requireAuth, requireSuperUser, async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const { credits } = req.body;
+    if (credits === undefined || isNaN(Number(credits))) return res.status(400).json({ error: 'credits required' });
+    const [row] = await db.update(tenants)
+      .set({ credits: Number(credits) })
+      .where(eq(tenants.id, tenantId))
+      .returning();
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    res.json(row);
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Superuser Management ────────────────────────────────────────────────────────
+
+authRouter.get('/superusers', requireAuth, requireSuperUser, async (_req, res) => {
+  try {
+    const rows = await db.select().from(users).where(eq(users.role, 'superuser')).orderBy(users.createdAt);
+    res.json(rows.map(safeUser));
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+authRouter.post('/superusers', requireAuth, requireSuperUser, async (req, res) => {
+  try {
+    const { name, email } = req.body;
+    if (!email || !name) return res.status(400).json({ error: 'name and email required' });
+    const tempPassword = Array.from({ length: 12 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'[Math.floor(Math.random() * 57)]).join('');
+    const [row] = await db.insert(users).values({
+      tenantId: null,
+      name,
+      firstName: name.split(' ')[0] ?? '',
+      lastName: name.split(' ').slice(1).join(' ') ?? '',
+      preferredName: '',
+      email: email.trim().toLowerCase(),
+      passwordHash: hashPassword(tempPassword),
+      role: 'superuser',
+      designation: '',
+      dataScope: 'all',
+      isActive: true,
+    }).returning();
+    res.status(201).json({ user: safeUser(row), tempPassword });
+  } catch (e: any) {
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Email already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+authRouter.delete('/superusers/:id', requireAuth, requireSuperUser, async (req, res) => {
+  try {
+    const targetId = parseInt(req.params.id);
+    if (targetId === req.auth!.userId) return res.status(400).json({ error: 'You cannot delete your own account' });
+    const [row] = await db.delete(users).where(eq(users.id, targetId)).returning();
+    if (!row) return res.status(404).json({ error: 'User not found' });
+    res.json({ ok: true, id: targetId });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
