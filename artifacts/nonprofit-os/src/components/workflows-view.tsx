@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
-  Code2, ClipboardList, Bot, ArrowDownToLine,
+  Code2, ClipboardList, Bot, ArrowDownToLine, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +19,7 @@ export interface WCondition {
 
 export interface WStep {
   id: string;
-  type: 'action' | 'condition' | 'form';
+  type: 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call';
   label: string;
   description: string;
   condition?: WCondition;
@@ -30,6 +30,10 @@ export interface WStep {
   dataSourceType?: 'agent' | 'form' | null;
   dataSourceId?: number | null;
   dataSourceName?: string;
+  callWorkflowId?: number | null;
+  callWorkflowName?: string;
+  callAgentId?: number | null;
+  callAgentName?: string;
 }
 
 interface FormOption { id: number; name: string; formNumber: number; }
@@ -236,7 +240,9 @@ function FieldPickerTextarea({
 
 // ── Add Step Button ───────────────────────────────────────────────────────────
 
-function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition' | 'form') => void }) {
+type StepType = 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call';
+
+function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -258,7 +264,7 @@ function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition' | 'form
           <Plus className="w-3 h-3" />
         </button>
         {open && (
-          <div className="absolute z-50 top-8 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-44">
+          <div className="absolute z-50 top-8 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-48">
             <button onClick={() => { setOpen(false); onAdd('action'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left">
               <Play className="w-3.5 h-3.5 text-blue-400" />Action Step
@@ -270,6 +276,14 @@ function AddStepButton({ onAdd }: { onAdd: (type: 'action' | 'condition' | 'form
             <button onClick={() => { setOpen(false); onAdd('form'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
               <ClipboardList className="w-3.5 h-3.5 text-violet-400" />Collect Form Data
+            </button>
+            <button onClick={() => { setOpen(false); onAdd('workflow-call'); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />Call Another Workflow
+            </button>
+            <button onClick={() => { setOpen(false); onAdd('agent-call'); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
+              <Bot className="w-3.5 h-3.5 text-emerald-400" />Run an AI Agent
             </button>
           </div>
         )}
@@ -784,19 +798,259 @@ function FormStepCard({ step, onUpdate, onDelete, forms }: {
   );
 }
 
+// ── Call Another Workflow Step Card ──────────────────────────────────────────
+
+function WorkflowCallStepCard({ step, onUpdate, onDelete, workflows }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+  workflows: WorkflowSummary[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [draftWorkflowId, setDraftWorkflowId] = useState<number | null>(step.callWorkflowId ?? null);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftLabel(step.label);
+      setDraftWorkflowId(step.callWorkflowId ?? null);
+    }
+  }, [step.label, step.callWorkflowId, editing]);
+
+  const commitEdit = () => {
+    const selected = workflows.find(w => w.id === draftWorkflowId);
+    onUpdate({ label: draftLabel, callWorkflowId: draftWorkflowId, callWorkflowName: selected?.name ?? '' });
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraftLabel(step.label);
+    setDraftWorkflowId(step.callWorkflowId ?? null);
+    setEditing(false);
+  };
+
+  const linked = workflows.find(w => w.id === step.callWorkflowId);
+
+  return (
+    <div className={cn(
+      "relative mx-auto w-full max-w-xs rounded-xl border-2 transition-all shadow-sm",
+      editing ? "border-cyan-400 bg-cyan-400/5 shadow-md" : "border-border bg-card hover:border-cyan-400/50"
+    )}>
+      {editing ? (
+        <div className="px-4 pt-3 pb-3 space-y-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded-md bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
+              <Layers className="w-2.5 h-2.5 text-cyan-400" />
+            </div>
+            <span className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">Call Another Workflow</span>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Step Label (optional)</label>
+            <input
+              value={draftLabel}
+              onChange={e => setDraftLabel(e.target.value)}
+              placeholder="Step label…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Select Workflow</label>
+            <select
+              value={draftWorkflowId ?? ''}
+              onChange={e => setDraftWorkflowId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-cyan-500"
+            >
+              <option value="">— Choose a workflow —</option>
+              {workflows.map(w => (
+                <option key={w.id} value={w.id}>#{w.workflowNumber} {w.name}</option>
+              ))}
+            </select>
+            {workflows.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">No other workflows available.</p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={cancelEdit} className="px-3 py-1 rounded-lg text-xs border border-border hover:bg-secondary transition-colors text-muted-foreground">Cancel</button>
+            <button onClick={commitEdit} className="px-3 py-1 rounded-lg text-xs bg-cyan-500 text-white hover:bg-cyan-600 transition-colors flex items-center gap-1">
+              <Check className="w-3 h-3" />Apply
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 px-4 py-3 group">
+          <div className="w-6 h-6 rounded-md bg-cyan-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Layers className="w-3 h-3 text-cyan-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-0.5">Call Workflow</div>
+            {linked ? (
+              <div className="text-sm font-medium truncate">#{linked.workflowNumber} {linked.name}</div>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">No workflow selected — click Edit</div>
+            )}
+            {step.label && <div className="text-xs text-muted-foreground mt-0.5 truncate">{step.label}</div>}
+            {linked && <div className="text-xs text-muted-foreground mt-0.5">Passes output to next step</div>}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => setEditing(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors" title="Edit step">
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onDelete}
+              className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors" title="Delete step">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Run AI Agent Step Card ────────────────────────────────────────────────────
+
+function AgentCallStepCard({ step, onUpdate, onDelete, agents }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+  agents: AgentOption[];
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [draftDesc, setDraftDesc] = useState(step.description);
+  const [draftAgentId, setDraftAgentId] = useState<number | null>(step.callAgentId ?? null);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftLabel(step.label);
+      setDraftDesc(step.description);
+      setDraftAgentId(step.callAgentId ?? null);
+    }
+  }, [step.label, step.description, step.callAgentId, editing]);
+
+  const commitEdit = () => {
+    const selected = agents.find(a => a.id === draftAgentId);
+    onUpdate({ label: draftLabel, description: draftDesc, callAgentId: draftAgentId, callAgentName: selected?.name ?? '' });
+    setEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setDraftLabel(step.label);
+    setDraftDesc(step.description);
+    setDraftAgentId(step.callAgentId ?? null);
+    setEditing(false);
+  };
+
+  const linked = agents.find(a => a.id === step.callAgentId);
+
+  return (
+    <div className={cn(
+      "relative mx-auto w-full max-w-xs rounded-xl border-2 transition-all shadow-sm",
+      editing ? "border-emerald-400 bg-emerald-400/5 shadow-md" : "border-border bg-card hover:border-emerald-400/50"
+    )}>
+      {editing ? (
+        <div className="px-4 pt-3 pb-3 space-y-2.5">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-5 h-5 rounded-md bg-emerald-500/15 flex items-center justify-center flex-shrink-0">
+              <Bot className="w-2.5 h-2.5 text-emerald-400" />
+            </div>
+            <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Run AI Agent</span>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Step Label (optional)</label>
+            <input
+              value={draftLabel}
+              onChange={e => setDraftLabel(e.target.value)}
+              placeholder="Step label…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Select Agent</label>
+            <select
+              value={draftAgentId ?? ''}
+              onChange={e => setDraftAgentId(e.target.value ? Number(e.target.value) : null)}
+              className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            >
+              <option value="">— Choose an agent —</option>
+              {agents.map(a => (
+                <option key={a.id} value={a.id}>#{a.agentNumber} {a.name}</option>
+              ))}
+            </select>
+            {agents.length === 0 && (
+              <p className="text-xs text-muted-foreground mt-1">No agents available. Create one in the AI Agents section.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-medium text-muted-foreground mb-1 uppercase tracking-wider">Instructions / Context (optional)</label>
+            <textarea
+              value={draftDesc}
+              onChange={e => setDraftDesc(e.target.value)}
+              rows={2}
+              placeholder="Any extra context to pass to the agent…"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <button onClick={cancelEdit} className="px-3 py-1 rounded-lg text-xs border border-border hover:bg-secondary transition-colors text-muted-foreground">Cancel</button>
+            <button onClick={commitEdit} className="px-3 py-1 rounded-lg text-xs bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-1">
+              <Check className="w-3 h-3" />Apply
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-start gap-2 px-4 py-3 group">
+          <div className="w-6 h-6 rounded-md bg-emerald-500/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <Bot className="w-3 h-3 text-emerald-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-0.5">Run AI Agent</div>
+            {linked ? (
+              <div className="text-sm font-medium truncate">#{linked.agentNumber} {linked.name}</div>
+            ) : (
+              <div className="text-xs text-muted-foreground italic">No agent selected — click Edit</div>
+            )}
+            {step.label && <div className="text-xs text-muted-foreground mt-0.5 truncate">{step.label}</div>}
+            {step.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2 italic">"{step.description}"</div>}
+            {linked && <div className="text-xs text-muted-foreground mt-0.5">Returns response to next step</div>}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => setEditing(true)}
+              className="p-1 rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors" title="Edit step">
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onDelete}
+              className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors" title="Delete step">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Recursive Step Branch Renderer ────────────────────────────────────────────
 
 function StepBranch({
-  steps, branchKey, onUpdate, onDelete, onAdd, processFields, forms, agents,
+  steps, branchKey, onUpdate, onDelete, onAdd, processFields, forms, agents, workflows,
 }: {
   steps: WStep[];
   branchKey: string;
   onUpdate: (id: string, updates: Partial<WStep>) => void;
   onDelete: (id: string) => void;
-  onAdd: (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => void;
+  onAdd: (branchKey: string, afterId: string | null, type: StepType) => void;
   processFields: ProcessField[];
   forms: FormOption[];
   agents: AgentOption[];
+  workflows: WorkflowSummary[];
 }) {
   return (
     <div className="flex flex-col items-center">
@@ -822,6 +1076,26 @@ function StepBranch({
                 onUpdate={updates => onUpdate(step.id, updates)}
                 onDelete={() => onDelete(step.id)}
                 forms={forms}
+              />
+            </div>
+          )}
+          {step.type === 'workflow-call' && (
+            <div className="w-full px-2">
+              <WorkflowCallStepCard
+                step={step}
+                onUpdate={updates => onUpdate(step.id, updates)}
+                onDelete={() => onDelete(step.id)}
+                workflows={workflows}
+              />
+            </div>
+          )}
+          {step.type === 'agent-call' && (
+            <div className="w-full px-2">
+              <AgentCallStepCard
+                step={step}
+                onUpdate={updates => onUpdate(step.id, updates)}
+                onDelete={() => onDelete(step.id)}
+                agents={agents}
               />
             </div>
           )}
@@ -852,6 +1126,7 @@ function StepBranch({
                     processFields={processFields}
                     forms={forms}
                     agents={agents}
+                    workflows={workflows}
                   />
                 </div>
                 {/* Divider */}
@@ -870,6 +1145,7 @@ function StepBranch({
                     processFields={processFields}
                     forms={forms}
                     agents={agents}
+                    workflows={workflows}
                   />
                 </div>
               </div>
@@ -886,15 +1162,16 @@ function StepBranch({
 // ── Workflow Designer ─────────────────────────────────────────────────────────
 
 function WorkflowDesigner({
-  steps, onChange, processFields, forms, agents,
+  steps, onChange, processFields, forms, agents, workflows,
 }: {
   steps: WStep[];
   onChange: (steps: WStep[]) => void;
   processFields: ProcessField[];
   forms: FormOption[];
   agents: AgentOption[];
+  workflows: WorkflowSummary[];
 }) {
-  const handleAdd = (branchKey: string, afterId: string | null, type: 'action' | 'condition' | 'form') => {
+  const handleAdd = (branchKey: string, afterId: string | null, type: StepType) => {
     const newStep: WStep = {
       id: uid(),
       type,
@@ -938,6 +1215,7 @@ function WorkflowDesigner({
           processFields={processFields}
           forms={forms}
           agents={agents}
+          workflows={workflows}
         />
 
         {/* END node */}
@@ -1214,6 +1492,7 @@ export function WorkflowsView() {
               processFields={processFields}
               forms={availableForms}
               agents={availableAgents}
+              workflows={workflows.filter(w => w.id !== selectedId)}
             />
           </div>
         </div>
