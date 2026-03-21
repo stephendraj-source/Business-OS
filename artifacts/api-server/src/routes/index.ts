@@ -13,10 +13,12 @@ import { initiativesRouter } from "./initiatives";
 import { reportsRouter } from "./reports";
 import { dashboardsRouter } from "./dashboards";
 import { authRouter } from "./auth";
+import { blueprintRouter } from "./blueprint";
 
 const router: IRouter = Router();
 
 router.use('/auth', authRouter);
+router.use(blueprintRouter);
 router.use(healthRouter);
 router.use(governanceRouter);
 router.use(processesRouter);

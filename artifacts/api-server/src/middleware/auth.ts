@@ -44,3 +44,12 @@ export function requireSuperUser(req: Request, res: Response, next: NextFunction
   }
   next();
 }
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.auth) return res.status(401).json({ error: 'Unauthorized' });
+  if (!req.auth.tenantId) return res.status(403).json({ error: 'Forbidden — tenant users only' });
+  if (req.auth.role !== 'admin' && req.auth.role !== 'superuser') {
+    return res.status(403).json({ error: 'Forbidden — admin role required' });
+  }
+  next();
+}

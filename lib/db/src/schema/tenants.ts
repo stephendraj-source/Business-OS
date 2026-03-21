@@ -5,6 +5,7 @@ export const tenants = pgTable('tenants', {
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
   status: text('status').notNull().default('active'),
+  industryBlueprint: text('industry_blueprint'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

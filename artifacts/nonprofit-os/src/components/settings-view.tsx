@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
-import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Building2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Building2, Download, Upload, FileArchive, AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getOrgName, saveOrgName } from '@/hooks/use-org-name';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface Theme {
   id: string;
@@ -198,10 +199,43 @@ export function loadSavedTheme() {
   return saved;
 }
 
+const INDUSTRY_BLUEPRINTS = [
+  'Healthcare & Life Sciences',
+  'Nonprofit & Social Services',
+  'Technology & Software',
+  'Education & Research',
+  'Financial Services',
+  'Manufacturing & Supply Chain',
+  'Retail & E-Commerce',
+  'Professional Services',
+  'Government & Public Sector',
+  'Real Estate & Construction',
+  'Media & Entertainment',
+  'Energy & Utilities',
+  'Hospitality & Tourism',
+  'Legal Services',
+  'Agriculture & Food',
+];
+
 export function SettingsView() {
+  const { fetchHeaders, user } = useAuth();
   const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('nonprofit-os-theme') ?? 'dark');
   const [orgNameInput, setOrgNameInput] = useState(getOrgName);
   const [orgNameSaved, setOrgNameSaved] = useState(false);
+
+  // Blueprint state
+  const [exportName, setExportName] = useState('blueprint');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState('');
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [showImportConfirm, setShowImportConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const API = '/api';
+  const isAdmin = user?.role === 'admin' || user?.role === 'superuser';
 
   useEffect(() => {
     loadSavedTheme();
@@ -217,6 +251,77 @@ export function SettingsView() {
     setOrgNameSaved(true);
     setTimeout(() => setOrgNameSaved(false), 2000);
   };
+
+  async function handleExport() {
+    setExporting(true);
+    setExportError('');
+    try {
+      const r = await fetch(`${API}/blueprint/export`, { headers: fetchHeaders() });
+      if (!r.ok) {
+        const d = await r.json();
+        setExportError(d.error || 'Export failed');
+        return;
+      }
+      const data = await r.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeName = (exportName.trim() || 'blueprint').replace(/[^a-z0-9_-]/gi, '_');
+      a.download = `${safeName}.blueprint.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setExportError(e.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    setImportFile(file);
+    setImportError('');
+    setImportSuccess('');
+  }
+
+  async function handleImport() {
+    if (!importFile) return;
+    setImporting(true);
+    setImportError('');
+    setImportSuccess('');
+    setShowImportConfirm(false);
+    try {
+      const text = await importFile.text();
+      let data: any;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        setImportError('Invalid JSON file. Please upload a valid blueprint file.');
+        return;
+      }
+      const r = await fetch(`${API}/blueprint/import`, {
+        method: 'POST',
+        headers: fetchHeaders(),
+        body: JSON.stringify(data),
+      });
+      const result = await r.json();
+      if (!r.ok) {
+        setImportError(result.error || 'Import failed');
+        return;
+      }
+      const s = result.summary;
+      setImportSuccess(
+        `Blueprint imported successfully. Restored: ${s.processes} processes, ${s.aiAgents} AI agents, ${s.groups} groups, ${s.roles} roles, ${s.businessUnits} business units, ${s.regions} regions, ${s.checklists} checklists, ${s.initiatives} initiatives.`
+      );
+      setImportFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (e: any) {
+      setImportError(e.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-background overflow-hidden">
@@ -330,15 +435,157 @@ export function SettingsView() {
           <h3 className="text-base font-semibold text-foreground mb-4">Profile</h3>
           <div className="flex items-center gap-4 p-5 bg-secondary/30 rounded-xl border border-border">
             <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary border-2 border-primary/30">
-              JD
+              {user?.name?.charAt(0)?.toUpperCase() ?? 'U'}
             </div>
             <div>
-              <div className="font-semibold text-foreground">Jane Doe</div>
-              <div className="text-sm text-muted-foreground">System Admin</div>
+              <div className="font-semibold text-foreground">{user?.name ?? 'User'}</div>
+              <div className="text-sm text-muted-foreground capitalize">{user?.role ?? 'Member'}</div>
             </div>
           </div>
           <p className="text-xs text-muted-foreground mt-3">Profile editing coming soon.</p>
         </section>
+
+        {/* Blueprint section — admin only */}
+        {isAdmin && (
+          <>
+            <div className="border-t border-border" />
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <FileArchive className="w-5 h-5 text-primary" />
+                <h3 className="text-base font-semibold text-foreground">Blueprint</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">
+                Export your entire workspace configuration and data as a blueprint file, or restore from a previously saved blueprint.
+              </p>
+
+              {/* Export */}
+              <div className="bg-secondary/30 rounded-xl border border-border p-5 space-y-4 mb-4">
+                <div className="flex items-center gap-2">
+                  <Download className="w-4 h-4 text-primary" />
+                  <h4 className="font-medium text-sm">Export Blueprint</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Downloads all your workspace data — processes, workflows, AI agents, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
+                </p>
+                <div className="flex gap-3 items-center">
+                  <input
+                    type="text"
+                    value={exportName}
+                    onChange={e => setExportName(e.target.value)}
+                    placeholder="blueprint"
+                    className="flex-1 max-w-xs px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 font-mono"
+                  />
+                  <span className="text-xs text-muted-foreground">.blueprint.json</span>
+                  <button
+                    onClick={handleExport}
+                    disabled={exporting}
+                    className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 font-medium transition-all disabled:opacity-60"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    {exporting ? 'Exporting…' : 'Export'}
+                  </button>
+                </div>
+                {exportError && (
+                  <p className="text-xs text-destructive flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {exportError}
+                  </p>
+                )}
+              </div>
+
+              {/* Import */}
+              <div className="bg-secondary/30 rounded-xl border border-border p-5 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-amber-500" />
+                  <h4 className="font-medium text-sm">Import Blueprint</h4>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/20 font-medium">Destructive</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Replaces <strong>all existing workspace data</strong> with the contents of a blueprint file. Users and audit logs are preserved. This action cannot be undone.
+                </p>
+
+                <div className="flex gap-3 items-center flex-wrap">
+                  <label className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer">
+                    <Upload className="w-3.5 h-3.5" />
+                    {importFile ? importFile.name : 'Choose file…'}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {importFile && !showImportConfirm && (
+                    <button
+                      onClick={() => setShowImportConfirm(true)}
+                      className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 border border-amber-500/30 font-medium transition-all"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      Import
+                    </button>
+                  )}
+
+                  {importFile && (
+                    <button
+                      onClick={() => {
+                        setImportFile(null);
+                        setShowImportConfirm(false);
+                        setImportError('');
+                        if (fileInputRef.current) fileInputRef.current.value = '';
+                      }}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {showImportConfirm && (
+                  <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-amber-600">
+                      <AlertTriangle className="w-4 h-4" />
+                      <p className="text-sm font-semibold">Confirm overwrite</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      This will permanently delete all current processes, workflows, agents, groups, roles, checklists, and initiatives, then replace them with the data from <strong>{importFile?.name}</strong>. Are you sure?
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowImportConfirm(false)}
+                        className="px-3 py-1.5 text-xs rounded-lg text-muted-foreground hover:bg-secondary border border-border transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleImport}
+                        disabled={importing}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-amber-500 text-white hover:bg-amber-600 font-medium disabled:opacity-60 transition-all"
+                      >
+                        <Upload className="w-3 h-3" />
+                        {importing ? 'Importing…' : 'Yes, replace all data'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {importError && (
+                  <p className="text-xs text-destructive flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5" /> {importError}
+                  </p>
+                )}
+                {importSuccess && (
+                  <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3">
+                    <p className="text-xs text-green-600 flex items-start gap-1.5">
+                      <Check className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      {importSuccess}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
+        )}
 
       </div>
     </div>
