@@ -73,6 +73,7 @@ interface UserRow {
   name: string;
   email: string;
   role: string;
+  designation: string;
   isActive: boolean;
   dataScope: string;
   createdAt: string;
@@ -245,6 +246,7 @@ export function UsersView() {
                         <div>
                           <div className="text-sm font-medium">{u.name}</div>
                           <div className="text-xs text-muted-foreground">{u.email}</div>
+                          {u.designation && <div className="text-[10px] text-muted-foreground/60 italic">{u.designation}</div>}
                         </div>
                       </div>
                     </td>
@@ -389,7 +391,7 @@ function UserDetailPanel({
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
-  const initForm = () => ({ name: user.name, email: user.email, role: user.role, isActive: user.isActive });
+  const initForm = () => ({ name: user.name, email: user.email, role: user.role, designation: user.designation ?? '', isActive: user.isActive });
   const [form, setForm] = useState(initForm);
   const [saving, setSaving] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
@@ -406,7 +408,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     try {
       await fetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, email: form.email, role: form.role, isActive: form.isActive }),
+        body: JSON.stringify({ name: form.name, email: form.email, role: form.role, designation: form.designation, isActive: form.isActive }),
       });
       await onSaved();
     } finally {
@@ -447,6 +449,13 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
       <div className="space-y-1.5">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email</label>
         <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Designation</label>
+        <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
+          placeholder="e.g. Program Manager, Finance Director…"
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
       </div>
 
@@ -918,7 +927,7 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ name: '', email: '', role: 'user' });
+  const [form, setForm] = useState({ name: '', email: '', designation: '', role: 'user' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [resetLink, setResetLink] = useState('');
@@ -1017,6 +1026,13 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Email</label>
             <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               placeholder="jane@org.org"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Designation <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+            <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
+              placeholder="e.g. Program Manager, Finance Director…"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
 

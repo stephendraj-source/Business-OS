@@ -25,11 +25,11 @@ usersRouter.get('/', async (_req, res) => {
 
 usersRouter.post('/', async (req, res) => {
   try {
-    const { name, email, role = 'user', isActive = true, dataScope = 'all' } = req.body;
+    const { name, email, role = 'user', designation = '', isActive = true, dataScope = 'all' } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'name and email are required' });
     const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
-      name, email, passwordHash: hashPassword(tempPassword), role, isActive, dataScope,
+      name, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
     }).returning();
     const token = crypto.randomUUID().replace(/-/g, '');
     const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
@@ -79,12 +79,13 @@ usersRouter.get('/:id', async (req, res) => {
 usersRouter.patch('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, email, password, role, isActive, dataScope } = req.body;
+    const { name, email, password, role, designation, isActive, dataScope } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (email !== undefined) updates.email = email;
     if (password) updates.passwordHash = hashPassword(password);
     if (role !== undefined) updates.role = role;
+    if (designation !== undefined) updates.designation = designation;
     if (isActive !== undefined) updates.isActive = isActive;
     if (dataScope !== undefined) updates.dataScope = dataScope;
     const [row] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
