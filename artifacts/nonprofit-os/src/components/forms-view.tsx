@@ -4,6 +4,7 @@ import {
   GripVertical, Type, Hash, Mail, AlignLeft, ChevronDown, Calendar,
   CheckSquare, List, Eye, Code2, Copy, Globe, Link2, Bot,
   GitBranch, ExternalLink, Radio, AlertCircle,
+  Folder, FolderOpen, FolderPlus, ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,8 +34,22 @@ interface FormSummary {
   isPublished: boolean;
   linkedWorkflowId: number | null;
   linkedAgentId: number | null;
+  folderId: number | null;
   createdAt: string;
   updatedAt: string;
+}
+
+interface FormFolder {
+  id: number;
+  name: string;
+  parentId: number | null;
+  tenantId: number | null;
+  createdAt: string;
+}
+
+interface FolderTreeNode extends FormFolder {
+  children: FolderTreeNode[];
+  forms: FormSummary[];
 }
 
 interface WorkflowItem { id: number; name: string; workflowNumber: number; }
@@ -71,6 +86,197 @@ function buildSampleJson(fields: FormField[]): string {
     }
   }
   return JSON.stringify(obj, null, 2);
+}
+
+// ── Folder Helpers ────────────────────────────────────────────────────────────
+
+function buildFolderTree(folders: FormFolder[], forms: FormSummary[]): { roots: FolderTreeNode[]; uncategorized: FormSummary[] } {
+  const nodeMap = new Map<number, FolderTreeNode>();
+  for (const f of folders) nodeMap.set(f.id, { ...f, children: [], forms: [] });
+  for (const form of forms) {
+    if (form.folderId && nodeMap.has(form.folderId)) nodeMap.get(form.folderId)!.forms.push(form);
+  }
+  const roots: FolderTreeNode[] = [];
+  for (const node of nodeMap.values()) {
+    if (node.parentId && nodeMap.has(node.parentId)) nodeMap.get(node.parentId)!.children.push(node);
+    else roots.push(node);
+  }
+  const uncategorized = forms.filter(f => !f.folderId || !nodeMap.has(f.folderId));
+  return { roots, uncategorized };
+}
+
+function flattenFoldersForSelect(nodes: FolderTreeNode[], depth = 0): { id: number; name: string; depth: number }[] {
+  const result: { id: number; name: string; depth: number }[] = [];
+  for (const node of nodes) {
+    result.push({ id: node.id, name: node.name, depth });
+    result.push(...flattenFoldersForSelect(node.children, depth + 1));
+  }
+  return result;
+}
+
+// ── Folder Tree Node ──────────────────────────────────────────────────────────
+
+function FolderNode({
+  node, depth, selectedId, expanded, onToggle, onSelectForm, onDeleteForm,
+  onCreateSubfolder, onRenameFolder, onDeleteFolder,
+}: {
+  node: FolderTreeNode;
+  depth: number;
+  selectedId: number | null;
+  expanded: Set<number>;
+  onToggle: (id: number) => void;
+  onSelectForm: (id: number) => void;
+  onDeleteForm: (id: number, e: React.MouseEvent) => void;
+  onCreateSubfolder: (parentId: number) => void;
+  onRenameFolder: (id: number, name: string) => void;
+  onDeleteFolder: (id: number) => void;
+}) {
+  const isExpanded = expanded.has(node.id);
+  const [renaming, setRenaming] = useState(false);
+  const [renameName, setRenameName] = useState(node.name);
+  const indent = depth * 12;
+
+  const commitRename = () => {
+    const trimmed = renameName.trim();
+    if (trimmed && trimmed !== node.name) onRenameFolder(node.id, trimmed);
+    else setRenameName(node.name);
+    setRenaming(false);
+  };
+
+  return (
+    <div>
+      {/* Folder header row */}
+      <div
+        className="flex items-center gap-1 px-2 py-1 group hover:bg-secondary/50 cursor-pointer select-none"
+        style={{ paddingLeft: `${8 + indent}px` }}
+      >
+        <button
+          onClick={() => onToggle(node.id)}
+          className="p-0.5 rounded hover:bg-secondary transition-colors flex-shrink-0"
+        >
+          <ChevronRight className={cn("w-3 h-3 text-muted-foreground transition-transform", isExpanded && "rotate-90")} />
+        </button>
+        <button onClick={() => onToggle(node.id)} className="flex-shrink-0">
+          {isExpanded
+            ? <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+            : <Folder className="w-3.5 h-3.5 text-amber-400" />}
+        </button>
+        {renaming ? (
+          <input
+            value={renameName}
+            onChange={e => setRenameName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setRenameName(node.name); setRenaming(false); } }}
+            autoFocus
+            onClick={e => e.stopPropagation()}
+            className="flex-1 min-w-0 text-xs bg-background border border-primary rounded px-1.5 py-0.5 focus:outline-none"
+          />
+        ) : (
+          <span
+            className="flex-1 min-w-0 text-xs font-medium truncate"
+            onClick={() => onToggle(node.id)}
+            onDoubleClick={() => { setRenameName(node.name); setRenaming(true); }}
+          >
+            {node.name}
+            {(node.forms.length > 0 || node.children.length > 0) && (
+              <span className="ml-1 text-[10px] text-muted-foreground font-normal">
+                ({node.forms.length + node.children.reduce((acc, c) => acc + c.forms.length, 0)})
+              </span>
+            )}
+          </span>
+        )}
+        {/* Hover actions */}
+        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
+          <button
+            onClick={e => { e.stopPropagation(); onCreateSubfolder(node.id); }}
+            title="New subfolder"
+            className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <FolderPlus className="w-3 h-3" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); setRenameName(node.name); setRenaming(true); }}
+            title="Rename folder"
+            className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Edit2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onDeleteFolder(node.id); }}
+            title="Delete folder"
+            className="p-0.5 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+
+      {/* Expanded contents */}
+      {isExpanded && (
+        <div>
+          {/* Subfolders */}
+          {node.children.map(child => (
+            <FolderNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              selectedId={selectedId}
+              expanded={expanded}
+              onToggle={onToggle}
+              onSelectForm={onSelectForm}
+              onDeleteForm={onDeleteForm}
+              onCreateSubfolder={onCreateSubfolder}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
+            />
+          ))}
+          {/* Forms inside folder */}
+          {node.forms.map(form => {
+            let fieldCount = 0;
+            try { fieldCount = JSON.parse(form.fields).length; } catch {}
+            return (
+              <div
+                key={form.id}
+                onClick={() => onSelectForm(form.id)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={e => e.key === 'Enter' && onSelectForm(form.id)}
+                style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }}
+                className={cn(
+                  "w-full flex items-start gap-2 pr-3 py-2 text-left transition-colors border-b border-border/30 group cursor-pointer",
+                  selectedId === form.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                )}
+              >
+                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <ClipboardList className="w-3 h-3 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground font-mono">#{form.formNumber}</span>
+                    <span className="text-xs font-medium truncate">{form.name}</span>
+                    {form.isPublished && <Globe className="w-2.5 h-2.5 text-green-500 flex-shrink-0" />}
+                  </div>
+                  {fieldCount > 0 && <div className="text-[10px] text-muted-foreground"><List className="inline w-2.5 h-2.5 mr-0.5" />{fieldCount} field{fieldCount !== 1 ? 's' : ''}</div>}
+                </div>
+                <button
+                  onClick={e => onDeleteForm(form.id, e)}
+                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+          {/* Empty folder hint */}
+          {node.forms.length === 0 && node.children.length === 0 && (
+            <div style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }} className="py-1.5 pr-3 text-[10px] text-muted-foreground italic">
+              Empty folder
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── Field Editor Row ──────────────────────────────────────────────────────────
@@ -421,6 +627,11 @@ export function FormsView() {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [dragOverPosition, setDragOverPosition] = useState<'top' | 'bottom'>('bottom');
 
+  // Folder state
+  const [folders, setFolders] = useState<FormFolder[]>([]);
+  const [expandedFolders, setExpandedFolders] = useState<Set<number>>(new Set());
+  const [editFolderId, setEditFolderId] = useState<number | null>(null);
+
   // Publish / linking state
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
@@ -433,6 +644,14 @@ export function FormsView() {
 
   const selectedForm = forms.find(f => f.id === selectedId) ?? null;
 
+  const fetchFolders = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/form-folders`, { headers: fetchHeaders() });
+      const data = await r.json();
+      if (Array.isArray(data)) setFolders(data);
+    } catch {}
+  }, [fetchHeaders]);
+
   const fetchForms = useCallback(async () => {
     setLoading(true);
     try {
@@ -443,7 +662,57 @@ export function FormsView() {
     finally { setLoading(false); }
   }, [fetchHeaders]);
 
-  useEffect(() => { fetchForms(); }, [fetchForms]);
+  useEffect(() => { fetchForms(); fetchFolders(); }, [fetchForms, fetchFolders]);
+
+  const createFolder = async (parentId: number | null = null) => {
+    const name = prompt("Folder name:", parentId ? "New Subfolder" : "New Folder");
+    if (!name?.trim()) return;
+    const r = await fetch(`${API}/form-folders`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({ name: name.trim(), parentId }),
+    });
+    if (r.ok) {
+      const folder: FormFolder = await r.json();
+      setFolders(prev => [...prev, folder]);
+      setExpandedFolders(prev => new Set([...prev, folder.id]));
+      if (parentId) setExpandedFolders(prev => new Set([...prev, parentId]));
+    }
+  };
+
+  const renameFolder = async (id: number, name: string) => {
+    const r = await fetch(`${API}/form-folders/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({ name }),
+    });
+    if (r.ok) {
+      const updated: FormFolder = await r.json();
+      setFolders(prev => prev.map(f => f.id === id ? updated : f));
+    }
+  };
+
+  const deleteFolder = async (id: number) => {
+    if (!confirm("Delete this folder? Forms inside will become uncategorized.")) return;
+    const r = await fetch(`${API}/form-folders/${id}`, { method: "DELETE", headers: fetchHeaders() });
+    if (r.ok) {
+      setFolders(prev => prev.filter(f => f.id !== id && f.parentId !== id));
+      setForms(prev => prev.map(f => f.folderId === id ? { ...f, folderId: null } : f));
+    }
+  };
+
+  const saveFormFolder = async (formId: number, folderId: number | null) => {
+    const r = await fetch(`${API}/forms/${formId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({ folderId }),
+    });
+    if (r.ok) {
+      const updated: FormSummary = await r.json();
+      setForms(prev => prev.map(f => f.id === formId ? { ...f, ...updated } : f));
+      setEditFolderId(folderId);
+    }
+  };
 
   // Fetch workflows + agents whenever the Publish tab is opened (or on mount)
   const fetchWorkflowsAndAgents = useCallback(async () => {
@@ -476,6 +745,7 @@ export function FormsView() {
       setEditNumber(form.formNumber);
       setLinkedWorkflowId(form.linkedWorkflowId ?? null);
       setLinkedAgentId(form.linkedAgentId ?? null);
+      setEditFolderId(form.folderId ?? null);
       setLinkDirty(false);
       try { setFields(JSON.parse(form.fields)); } catch { setFields([]); }
       setDirty(false);
@@ -662,79 +932,155 @@ export function FormsView() {
   return (
     <div className="flex h-full bg-background">
 
-      {/* Left panel — form list */}
-      <div className="w-72 flex-shrink-0 border-r border-border flex flex-col bg-sidebar/40">
-        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ClipboardList className="w-4 h-4 text-primary" />
-            <span className="text-sm font-semibold">Forms</span>
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length}</span>
-          </div>
-          <button
-            onClick={createForm}
-            className="flex items-center gap-1 px-2.5 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" />New
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto py-2">
-          {loading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            </div>
-          ) : forms.length === 0 ? (
-            <div className="px-4 py-8 text-center">
-              <ClipboardList className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground">No forms yet.</p>
-              <button onClick={createForm} className="mt-2 text-xs text-primary hover:underline">Create your first form</button>
-            </div>
-          ) : forms.map(form => {
-            let fieldCount = 0;
-            try { fieldCount = JSON.parse(form.fields).length; } catch {}
-            return (
-              <div
-                key={form.id}
-                onClick={() => setSelectedId(form.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={e => e.key === 'Enter' && setSelectedId(form.id)}
-                className={cn(
-                  "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group cursor-pointer",
-                  selectedId === form.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
-                )}
-              >
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <ClipboardList className="w-4 h-4 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-muted-foreground font-mono">#{form.formNumber}</span>
-                    <span className="text-sm font-medium truncate">{form.name}</span>
-                    {form.isPublished && (
-                      <span title="Published" className="flex-shrink-0">
-                        <Globe className="w-3 h-3 text-green-500" />
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate mt-0.5">{form.description || "No description"}</div>
-                  {fieldCount > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      <List className="inline w-3 h-3 mr-0.5" />{fieldCount} field{fieldCount !== 1 ? 's' : ''}
-                    </div>
-                  )}
-                </div>
+      {/* Left panel — form list with folder tree */}
+      {(() => {
+        const { roots: folderTree, uncategorized } = buildFolderTree(folders, forms);
+        const flatFolders = flattenFoldersForSelect(folderTree);
+        const toggleFolder = (id: number) => setExpandedFolders(prev => {
+          const next = new Set(prev);
+          next.has(id) ? next.delete(id) : next.add(id);
+          return next;
+        });
+        return (
+          <div className="w-72 flex-shrink-0 border-r border-border flex flex-col bg-sidebar/40">
+            {/* Header */}
+            <div className="px-3 py-3 border-b border-border flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ClipboardList className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="text-sm font-semibold">Forms</span>
+                <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length}</span>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
-                  onClick={e => deleteForm(form.id, e)}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                  onClick={() => createFolder(null)}
+                  title="New folder"
+                  className="flex items-center gap-1 px-2 py-1 border border-border rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <FolderPlus className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={createForm}
+                  className="flex items-center gap-1 px-2.5 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />New
                 </button>
               </div>
-            );
-          })}
-        </div>
-      </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-1">
+              {loading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : forms.length === 0 && folders.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <ClipboardList className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No forms yet.</p>
+                  <button onClick={createForm} className="mt-2 text-xs text-primary hover:underline">Create your first form</button>
+                </div>
+              ) : (
+                <>
+                  {/* Folder tree */}
+                  {folderTree.map(node => (
+                    <FolderNode
+                      key={node.id}
+                      node={node}
+                      depth={0}
+                      selectedId={selectedId}
+                      expanded={expandedFolders}
+                      onToggle={toggleFolder}
+                      onSelectForm={setSelectedId}
+                      onDeleteForm={deleteForm}
+                      onCreateSubfolder={createFolder}
+                      onRenameFolder={renameFolder}
+                      onDeleteFolder={deleteFolder}
+                    />
+                  ))}
+
+                  {/* Uncategorized forms */}
+                  {uncategorized.length > 0 && (
+                    <>
+                      {folderTree.length > 0 && (
+                        <div className="px-3 pt-3 pb-1 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
+                          Uncategorized
+                        </div>
+                      )}
+                      {uncategorized.map(form => {
+                        let fieldCount = 0;
+                        try { fieldCount = JSON.parse(form.fields).length; } catch {}
+                        return (
+                          <div
+                            key={form.id}
+                            onClick={() => setSelectedId(form.id)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={e => e.key === 'Enter' && setSelectedId(form.id)}
+                            className={cn(
+                              "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group cursor-pointer",
+                              selectedId === form.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                            )}
+                          >
+                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <ClipboardList className="w-3.5 h-3.5 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground font-mono">#{form.formNumber}</span>
+                                <span className="text-sm font-medium truncate">{form.name}</span>
+                                {form.isPublished && <Globe className="w-3 h-3 text-green-500 flex-shrink-0" />}
+                              </div>
+                              <div className="text-xs text-muted-foreground truncate mt-0.5">{form.description || "No description"}</div>
+                              {fieldCount > 0 && (
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  <List className="inline w-3 h-3 mr-0.5" />{fieldCount} field{fieldCount !== 1 ? 's' : ''}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={e => deleteForm(form.id, e)}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+
+                  {/* Empty state when all forms are in folders */}
+                  {forms.length === 0 && folders.length > 0 && (
+                    <div className="px-4 py-4 text-center">
+                      <button onClick={createForm} className="text-xs text-primary hover:underline">+ New Form</button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Folder selector hint: assign form to folder inline */}
+            {selectedId && (
+              <div className="border-t border-border px-3 py-2 bg-card/40">
+                <div className="flex items-center gap-2">
+                  <Folder className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <select
+                    value={editFolderId ?? ''}
+                    onChange={e => saveFormFolder(selectedId, e.target.value ? Number(e.target.value) : null)}
+                    className="flex-1 text-xs bg-background border border-border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">No folder</option>
+                    {flatFolders.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {'\u00A0'.repeat(f.depth * 3)}{f.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Right panel */}
       {!selectedForm ? (
