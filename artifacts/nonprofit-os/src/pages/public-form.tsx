@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
-import { AlertCircle, Check, ClipboardList, Loader2 } from "lucide-react";
+import { AlertCircle, Check, ClipboardList, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PhoneInput } from "@/components/phone-input";
 
@@ -36,6 +36,8 @@ export function PublicFormPage() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -64,8 +66,9 @@ export function PublicFormPage() {
     if (errors[id]) setErrors(prev => { const e = { ...prev }; delete e[id]; return e; });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     const newErrors: Record<string, string> = {};
     for (const f of fields) {
       if (f.required) {
@@ -75,7 +78,32 @@ export function PublicFormPage() {
       }
     }
     if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
-    setSubmitted(true);
+
+    // Build keyed submission data matching internal format
+    const data: Record<string, any> = {};
+    for (const f of fields) {
+      const key = (f.label || f.id).toLowerCase().replace(/\s+/g, '_');
+      data[key] = values[f.id];
+    }
+
+    setSubmitting(true);
+    try {
+      const r = await fetch(`${API}/forms/${form!.id}/submissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submissionData: JSON.stringify(data), submittedByName: 'Public' }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        setSubmitError(err.error ?? 'Failed to submit. Please try again.');
+        return;
+      }
+      setSubmitted(true);
+    } catch {
+      setSubmitError('Network error. Please check your connection and try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const reset = () => {
@@ -216,12 +244,23 @@ export function PublicFormPage() {
                 </div>
               ))}
 
-              <div className="pt-2">
+              <div className="pt-2 space-y-3">
+                {submitError && (
+                  <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
+                    <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    {submitError}
+                  </div>
+                )}
                 <button
                   type="submit"
-                  className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm"
+                  disabled={submitting}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  Submit
+                  {submitting ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</>
+                  ) : (
+                    <><Send className="w-4 h-4" /> Submit</>
+                  )}
                 </button>
               </div>
             </form>

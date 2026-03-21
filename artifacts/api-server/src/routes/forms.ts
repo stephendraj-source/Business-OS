@@ -418,9 +418,17 @@ router.post("/forms/:id/submissions", async (req, res) => {
   try {
     const auth = (req as any).auth;
     const formId = Number(req.params.id);
-    const tenantId = auth?.tenantId ?? null;
     const { submissionData = "{}", submittedByName = "" } = req.body as Record<string, any>;
     const dataStr = typeof submissionData === "string" ? submissionData : JSON.stringify(submissionData);
+
+    // Look up the form to get its tenantId — needed for public submissions that arrive without auth
+    const [form] = await db.select({ tenantId: formsTable.tenantId, linkedAgentId: formsTable.linkedAgentId, name: formsTable.name })
+      .from(formsTable).where(eq(formsTable.id, formId));
+    if (!form) return res.status(404).json({ error: "Form not found" });
+
+    // Prefer the authenticated tenant (internal submission); fall back to the form's own tenant (public submission)
+    const tenantId = auth?.tenantId ?? form.tenantId ?? null;
+
     const [submission] = await db.insert(formSubmissionsTable).values({
       formId,
       tenantId,
@@ -430,9 +438,7 @@ router.post("/forms/:id/submissions", async (req, res) => {
     }).returning();
 
     // Fire-and-forget: trigger linked agent if configured
-    const [form] = await db.select({ linkedAgentId: formsTable.linkedAgentId, name: formsTable.name })
-      .from(formsTable).where(eq(formsTable.id, formId));
-    if (form?.linkedAgentId) {
+    if (form.linkedAgentId) {
       triggerAgentWithSubmission(
         form.linkedAgentId,
         form.name,
