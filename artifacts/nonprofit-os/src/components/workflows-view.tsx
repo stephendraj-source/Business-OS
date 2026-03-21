@@ -493,7 +493,7 @@ function ActionStepCard({ step, onUpdate, onDelete, processFields, forms, agents
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
             <button
               onClick={startEdit}
               className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
@@ -506,7 +506,7 @@ function ActionStepCard({ step, onUpdate, onDelete, processFields, forms, agents
               className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Delete step"
             >
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -652,7 +652,7 @@ function ConditionStepCard({ step, onUpdate, onDelete, processFields }: {
             )}
             {step.label && <div className="text-sm font-medium mt-1 truncate">{step.label}</div>}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => setEditing(true)}
               className="p-1 rounded-md text-muted-foreground hover:text-orange-400 hover:bg-orange-500/10 transition-colors"
@@ -665,7 +665,7 @@ function ConditionStepCard({ step, onUpdate, onDelete, processFields }: {
               className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Delete step"
             >
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -776,7 +776,7 @@ function FormStepCard({ step, onUpdate, onDelete, forms }: {
               <div className="text-xs text-muted-foreground mt-0.5">Sends JSON data to next step</div>
             )}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
             <button
               onClick={() => setEditing(true)}
               className="p-1 rounded-md text-muted-foreground hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
@@ -789,7 +789,7 @@ function FormStepCard({ step, onUpdate, onDelete, forms }: {
               className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
               title="Delete step"
             >
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -894,14 +894,14 @@ function WorkflowCallStepCard({ step, onUpdate, onDelete, workflows }: {
             {step.label && <div className="text-xs text-muted-foreground mt-0.5 truncate">{step.label}</div>}
             {linked && <div className="text-xs text-muted-foreground mt-0.5">Passes output to next step</div>}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
             <button onClick={() => setEditing(true)}
               className="p-1 rounded-md text-muted-foreground hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors" title="Edit step">
               <Edit2 className="w-3.5 h-3.5" />
             </button>
             <button onClick={onDelete}
               className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors" title="Delete step">
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -1021,14 +1021,14 @@ function AgentCallStepCard({ step, onUpdate, onDelete, agents }: {
             {step.description && <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2 italic">"{step.description}"</div>}
             {linked && <div className="text-xs text-muted-foreground mt-0.5">Returns response to next step</div>}
           </div>
-          <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 flex-shrink-0 opacity-40 group-hover:opacity-100 transition-opacity">
             <button onClick={() => setEditing(true)}
               className="p-1 rounded-md text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10 transition-colors" title="Edit step">
               <Edit2 className="w-3.5 h-3.5" />
             </button>
             <button onClick={onDelete}
               className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors" title="Delete step">
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -1162,10 +1162,11 @@ function StepBranch({
 // ── Workflow Designer ─────────────────────────────────────────────────────────
 
 function WorkflowDesigner({
-  steps, onChange, processFields, forms, agents, workflows,
+  steps, onChange, onAutoSave, processFields, forms, agents, workflows,
 }: {
   steps: WStep[];
   onChange: (steps: WStep[]) => void;
+  onAutoSave?: (newSteps: WStep[]) => void;
   processFields: ProcessField[];
   forms: FormOption[];
   agents: AgentOption[];
@@ -1187,7 +1188,9 @@ function WorkflowDesigner({
   };
 
   const handleDelete = (id: string) => {
-    onChange(deleteStepFromTree(steps, id));
+    const newSteps = deleteStepFromTree(steps, id);
+    onChange(newSteps);
+    onAutoSave?.(newSteps);
   };
 
   const handleUpdate = (id: string, updates: Partial<WStep>) => {
@@ -1326,7 +1329,7 @@ export function WorkflowsView() {
     fetchWorkflows();
   };
 
-  const save = async () => {
+  const saveWithSteps = useCallback(async (stepsToSave: WStep[]) => {
     if (!selectedId) return;
     setSaving(true);
     try {
@@ -1337,13 +1340,15 @@ export function WorkflowsView() {
           workflowNumber: editNumber,
           name: editName,
           description: editDesc,
-          steps: JSON.stringify(steps),
+          steps: JSON.stringify(stepsToSave),
         }),
       });
       await fetchWorkflows();
       setDirty(false);
     } finally { setSaving(false); }
-  };
+  }, [selectedId, editNumber, editName, editDesc, fetchHeaders, fetchWorkflows]);
+
+  const save = useCallback(() => saveWithSteps(steps), [saveWithSteps, steps]);
 
   const markDirty = () => setDirty(true);
 
@@ -1489,6 +1494,7 @@ export function WorkflowsView() {
             <WorkflowDesigner
               steps={steps}
               onChange={newSteps => { setSteps(newSteps); markDirty(); }}
+              onAutoSave={newSteps => { setSteps(newSteps); saveWithSteps(newSteps); }}
               processFields={processFields}
               forms={availableForms}
               agents={availableAgents}
