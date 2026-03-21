@@ -14,6 +14,12 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
 
+const ALL_MODULES = [
+  'table', 'tree', 'portfolio', 'process-map', 'governance',
+  'workflows', 'ai-agents', 'connectors', 'dashboards',
+  'reports', 'audit-logs', 'settings', 'users',
+];
+
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "ai-agents");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
@@ -216,6 +222,9 @@ router.post("/ai-agents", async (req, res) => {
     const nextNum = (maxNum?.val ?? 0) + 1;
     const { name = "New Agent", description = "", instructions = "", tools = "[]" } = req.body as Record<string, string>;
     const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools }).returning();
+    await db.insert(agentModuleAccess).values(
+      ALL_MODULES.map(module => ({ agentId: agent.id, module, hasAccess: false }))
+    );
     res.status(201).json(agent);
   } catch (err) {
     req.log.error(err);

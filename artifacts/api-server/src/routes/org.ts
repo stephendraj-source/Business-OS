@@ -10,6 +10,12 @@ import { eq } from 'drizzle-orm';
 
 export const orgRouter = Router();
 
+const ALL_MODULES = [
+  'table', 'tree', 'portfolio', 'process-map', 'governance',
+  'workflows', 'ai-agents', 'connectors', 'dashboards',
+  'reports', 'audit-logs', 'settings', 'users',
+];
+
 function safeUser(u: typeof users.$inferSelect) {
   const { passwordHash: _, ...rest } = u;
   return rest;
@@ -118,6 +124,9 @@ orgRouter.post('/org/roles', async (req, res) => {
     const { name, description = '', color = '' } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     const [row] = await db.insert(roles).values({ name, description, color }).returning();
+    await db.insert(roleModuleAccess).values(
+      ALL_MODULES.map(module => ({ roleId: row.id, module, hasAccess: false }))
+    );
     res.status(201).json(row);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });

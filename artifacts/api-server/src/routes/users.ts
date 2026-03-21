@@ -5,6 +5,12 @@ import crypto from 'crypto';
 
 export const usersRouter = Router();
 
+const ALL_MODULES = [
+  'table', 'tree', 'portfolio', 'process-map', 'governance',
+  'workflows', 'ai-agents', 'connectors', 'dashboards',
+  'reports', 'audit-logs', 'settings', 'users',
+];
+
 function hashPassword(plain: string): string {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(plain, salt, 64).toString('hex');
@@ -42,13 +48,16 @@ usersRouter.get('/', async (_req, res) => {
 
 usersRouter.post('/', async (req, res) => {
   try {
-    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', isActive = true, dataScope = 'all' } = req.body;
+    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', isActive = true, dataScope = 'categories' } = req.body;
     const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
     if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
     const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
       name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
     }).returning();
+    await db.insert(userModuleAccess).values(
+      ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: false }))
+    );
     const token = crypto.randomUUID().replace(/-/g, '');
     const resetLink = `/reset-password?token=${token}&uid=${row.id}`;
     res.status(201).json({ ...safeUser(row), resetLink, resetToken: token });
