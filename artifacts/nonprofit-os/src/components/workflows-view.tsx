@@ -656,13 +656,19 @@ export function WorkflowsView() {
   const [steps, setSteps] = useState<WStep[]>([]);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [processFields, setProcessFields] = useState<ProcessField[]>([]);
 
   const selectedWorkflow = workflows.find(w => w.id === selectedId) ?? null;
 
   const fetchWorkflows = useCallback(async () => {
-    const r = await fetch(`${API}/workflows`);
-    if (r.ok) setWorkflows(await r.json());
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/workflows`);
+      const data = await r.json();
+      if (Array.isArray(data)) setWorkflows(data);
+    } catch {}
+    finally { setLoading(false); }
   }, []);
 
   const fetchFields = useCallback(async () => {
@@ -750,18 +756,25 @@ export function WorkflowsView() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          {workflows.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : workflows.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <GitBranch className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">No workflows yet.</p>
               <button onClick={createWorkflow} className="mt-2 text-xs text-primary hover:underline">Create your first workflow</button>
             </div>
           ) : workflows.map(wf => (
-            <button
+            <div
               key={wf.id}
               onClick={() => setSelectedId(wf.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && setSelectedId(wf.id)}
               className={cn(
-                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group",
+                "w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-b border-border/50 group cursor-pointer",
                 selectedId === wf.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
               )}
             >
@@ -786,7 +799,7 @@ export function WorkflowsView() {
               >
                 <Trash2 className="w-4 h-4" />
               </button>
-            </button>
+            </div>
           ))}
         </div>
       </div>
