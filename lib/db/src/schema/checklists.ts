@@ -2,6 +2,7 @@ import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/
 
 export const checklistsTable = pgTable("checklists", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   processId: integer("process_id").notNull(),
   name: text("name").notNull().default(""),
   description: text("description").notNull().default(""),

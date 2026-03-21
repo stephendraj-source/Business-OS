@@ -8,6 +8,7 @@ import { aiAgentsTable } from "./ai-agents";
 
 export const customReportsTable = pgTable("custom_reports", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   title: text("title").notNull(),
   description: text("description").default(""),
   type: text("type").notNull().default("table"),
@@ -30,6 +31,7 @@ export const reportShares = pgTable("report_shares", {
 
 export const dashboardsTable = pgTable("dashboards", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   name: text("name").notNull(),
   widgets: json("widgets").$type<object[]>().notNull().default([]),
   createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),

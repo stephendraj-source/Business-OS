@@ -21,20 +21,29 @@ function safeUser(u: typeof users.$inferSelect) {
   return rest;
 }
 
+function getTenantId(req: any): number | null {
+  return req.auth?.tenantId ?? null;
+}
+
 // ── Groups ────────────────────────────────────────────────────────────────────
 
-orgRouter.get('/org/groups', async (_req, res) => {
+orgRouter.get('/org/groups', async (req, res) => {
   try {
-    const rows = await db.select().from(groups).orderBy(groups.name);
+    const tenantId = getTenantId(req);
+    const query = db.select().from(groups);
+    const rows = tenantId
+      ? await query.where(eq(groups.tenantId, tenantId)).orderBy(groups.name)
+      : await query.orderBy(groups.name);
     res.json(rows);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 orgRouter.post('/org/groups', async (req, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { name, description = '', color = '' } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const [row] = await db.insert(groups).values({ name, description, color }).returning();
+    const [row] = await db.insert(groups).values({ name, description, color, tenantId }).returning();
     res.status(201).json(row);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -112,18 +121,23 @@ orgRouter.put('/org/groups/:id/roles', async (req, res) => {
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
 
-orgRouter.get('/org/roles', async (_req, res) => {
+orgRouter.get('/org/roles', async (req, res) => {
   try {
-    const rows = await db.select().from(roles).orderBy(roles.name);
+    const tenantId = getTenantId(req);
+    const query = db.select().from(roles);
+    const rows = tenantId
+      ? await query.where(eq(roles.tenantId, tenantId)).orderBy(roles.name)
+      : await query.orderBy(roles.name);
     res.json(rows);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 orgRouter.post('/org/roles', async (req, res) => {
   try {
+    const tenantId = getTenantId(req);
     const { name, description = '', color = '' } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const [row] = await db.insert(roles).values({ name, description, color }).returning();
+    const [row] = await db.insert(roles).values({ name, description, color, tenantId }).returning();
     await db.insert(roleModuleAccess).values(
       ALL_MODULES.map(module => ({ roleId: row.id, module, hasAccess: false }))
     );
@@ -305,11 +319,16 @@ orgRouter.delete('/org/projects/:id', async (req, res) => {
 
 // ── Full org tree ──────────────────────────────────────────────────────────────
 
-orgRouter.get('/org/tree', async (_req, res) => {
+orgRouter.get('/org/tree', async (req, res) => {
   try {
+    const tenantId = getTenantId(req);
     const [allGroups, allRoles, allGroupRoles, allProjects] = await Promise.all([
-      db.select().from(groups).orderBy(groups.name),
-      db.select().from(roles).orderBy(roles.name),
+      tenantId
+        ? db.select().from(groups).where(eq(groups.tenantId, tenantId)).orderBy(groups.name)
+        : db.select().from(groups).orderBy(groups.name),
+      tenantId
+        ? db.select().from(roles).where(eq(roles.tenantId, tenantId)).orderBy(roles.name)
+        : db.select().from(roles).orderBy(roles.name),
       db.select().from(groupRoles),
       db.select().from(projects).orderBy(projects.name),
     ]);

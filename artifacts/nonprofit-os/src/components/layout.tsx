@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, ChevronDown,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 import { useUser } from '@/contexts/UserContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'users' | 'initiatives';
 
@@ -39,8 +40,8 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
   const orgName = useOrgName();
   const meta = VIEW_META[activeView];
-  const { currentUser, users, setCurrentUserId } = useUser();
-  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const { currentUser } = useUser();
+  const { logout } = useAuth();
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
@@ -124,42 +125,23 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </nav>
 
         {/* User Profile Footer */}
-        <div className="p-4 border-t border-sidebar-border relative">
-          <button
-            onClick={() => setUserDropdownOpen(o => !o)}
-            className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-sidebar-accent transition-colors"
-          >
+        <div className="p-4 border-t border-sidebar-border">
+          <div className="flex items-center gap-3 p-2">
             <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-sm font-bold border border-border flex-shrink-0">
               {currentUser ? (currentUser.firstName?.[0] || currentUser.name?.[0] || '?').toUpperCase() : '?'}
             </div>
-            <div className="flex-1 min-w-0 text-left">
-              <div className="text-sm font-medium truncate">{currentUser?.name || 'Select User'}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{currentUser?.name || '—'}</div>
               <div className="text-xs text-sidebar-foreground/60 truncate capitalize">{currentUser?.role || '—'}</div>
             </div>
-            <ChevronDown className={cn("w-3.5 h-3.5 text-muted-foreground transition-transform", userDropdownOpen && "rotate-180")} />
-          </button>
-          {userDropdownOpen && (
-            <div className="absolute bottom-full left-4 right-4 mb-1 bg-popover border border-border rounded-xl shadow-xl overflow-hidden z-50 max-h-56 overflow-y-auto">
-              {users.map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => { setCurrentUserId(u.id); setUserDropdownOpen(false); }}
-                  className={cn(
-                    "w-full flex items-center gap-3 px-3 py-2.5 text-sm hover:bg-secondary/60 transition-colors",
-                    currentUser?.id === u.id && "bg-primary/10 text-primary font-medium"
-                  )}
-                >
-                  <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-xs font-bold border border-border flex-shrink-0">
-                    {(u.firstName?.[0] || u.name?.[0] || '?').toUpperCase()}
-                  </div>
-                  <div className="min-w-0 text-left">
-                    <div className="truncate">{u.name}</div>
-                    <div className="text-xs text-muted-foreground capitalize">{u.role}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+            <button
+              onClick={logout}
+              title="Sign out"
+              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors flex-shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
       </aside>

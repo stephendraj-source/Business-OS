@@ -90,7 +90,47 @@ artifacts-monorepo/
   - New: `included` (boolean), `target` (text), `achievement` (text)
 - Grant Writing (#22) replaced by Grant Assessment; Grant Approval added at #23
 
-### API Endpoints
+### Multi-Tenancy & Authentication
+
+The platform is fully multi-tenant with JWT-based authentication.
+
+### Auth Architecture
+- **JWT tokens**: 30-day expiry, stored in `localStorage` key `nonprofit-os-auth-token`
+- **Payload**: `{ userId, tenantId, role }`
+- **Middleware**: `artifacts/api-server/src/middleware/auth.ts` — `authMiddleware` applied globally in `app.ts`; sets `req.auth = { userId, tenantId, role }`
+- **AuthContext**: `artifacts/nonprofit-os/src/contexts/AuthContext.tsx` — replaces old UserContext; exports `useAuth()`, `useUser()` (backward compat), `AuthProvider`
+- **UserContext**: now a re-export shim for `AuthContext` — all existing components using `useUser()` work unchanged
+
+### Users & Roles
+- **superuser** (`stephen.raj@insead.edu` / `stryker`): `tenantId=null`, routes to `TenantManagementPage`
+- **admin** (`stephen.raj@coryphaeus.ai` / `admin123`): `tenantId=1`, routes to main app dashboard
+- All existing data migrated to **default tenant** (id=1, slug='default')
+
+### DB Schema
+- `tenants` table: `id`, `name`, `slug`, `status`
+- `tenant_id` column added to: `users`, `processes`, `workflows`, `ai_agents`, `groups`, `roles`, `initiatives`, `conversations`, `governance_standards`, `checklists`, `custom_reports`, `dashboards`
+
+### Tenant Isolation
+All route handlers filter by `auth.tenantId` when present:
+- `processes.ts`, `users.ts`, `workflows.ts`, `ai-agents.ts`, `reports.ts`, `dashboards.ts`, `org.ts`
+
+### Auth API Endpoints
+- `POST /api/auth/login` → `{ token, user }`
+- `GET /api/auth/me` → current user (requires Bearer token)
+- `POST /api/auth/logout` → clears session
+- `GET /api/auth/tenants` (superuser only) → list all tenants
+- `POST /api/auth/tenants` (superuser only) → create tenant
+- `PATCH /api/auth/tenants/:id` (superuser only) → update tenant
+- `DELETE /api/auth/tenants/:id` (superuser only) → delete tenant
+- `POST /api/auth/tenants/:id/admin` (superuser only) → create tenant admin user
+
+### Frontend Routing
+`App.tsx` renders based on auth state:
+- No `currentUser` → `<LoginPage />`
+- `isSuperUser` → `<TenantManagementPage />`
+- Authenticated tenant user → main app with `<Layout>` + sidebar
+
+## API Endpoints
 
 - `GET /api/processes` — list all 101 processes
 - `GET /api/processes/:id` — get one process

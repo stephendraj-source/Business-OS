@@ -3,6 +3,7 @@ import { processesTable } from "./processes";
 
 export const governanceStandardsTable = pgTable("governance_standards", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   complianceName: text("compliance_name").notNull(),
   complianceAuthority: text("compliance_authority").notNull().default(""),
   referenceUrl: text("reference_url").notNull().default(""),

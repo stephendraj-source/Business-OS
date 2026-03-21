@@ -12,9 +12,11 @@ import { orgRouter } from "./org";
 import { initiativesRouter } from "./initiatives";
 import { reportsRouter } from "./reports";
 import { dashboardsRouter } from "./dashboards";
+import { authRouter } from "./auth";
 
 const router: IRouter = Router();
 
+router.use('/auth', authRouter);
 router.use(healthRouter);
 router.use(governanceRouter);
 router.use(processesRouter);

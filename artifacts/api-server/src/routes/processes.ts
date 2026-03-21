@@ -1,9 +1,15 @@
 import { Router, type IRouter } from "express";
 import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, processAssignees, aiAgentsTable, workflowsTable, users } from "@workspace/db";
-import { eq, desc, max } from "drizzle-orm";
+import { eq, desc, max, and } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import multer from "multer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+
+function tenantFilter(req: any) {
+  const tenantId = req.auth?.tenantId;
+  if (tenantId) return eq(processesTable.tenantId, tenantId);
+  return undefined;
+}
 
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -218,7 +224,10 @@ Return ONLY a valid JSON object with these exact keys (include ALL keys, keep ex
 // --- List ---
 router.get("/processes", async (req, res) => {
   try {
-    const processes = await db.select().from(processesTable).orderBy(processesTable.number);
+    const tf = tenantFilter(req);
+    const processes = tf
+      ? await db.select().from(processesTable).where(tf).orderBy(processesTable.number)
+      : await db.select().from(processesTable).orderBy(processesTable.number);
     res.json(processes);
   } catch (err) {
     req.log.error(err, "Failed to list processes");

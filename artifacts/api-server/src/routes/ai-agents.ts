@@ -193,7 +193,11 @@ Execute your instructions carefully and thoroughly. Provide a detailed, structur
 
 router.get("/ai-agents", async (req, res) => {
   try {
-    const agents = await db.select().from(aiAgentsTable).orderBy(aiAgentsTable.agentNumber);
+    const auth = (req as any).auth;
+    const agentQuery = db.select().from(aiAgentsTable);
+    const agents = auth?.tenantId
+      ? await agentQuery.where(eq(aiAgentsTable.tenantId, auth.tenantId)).orderBy(aiAgentsTable.agentNumber)
+      : await agentQuery.orderBy(aiAgentsTable.agentNumber);
     const withCounts = await Promise.all(agents.map(async a => {
       const urls = await db.select().from(agentKnowledgeUrlsTable).where(eq(agentKnowledgeUrlsTable.agentId, a.id));
       const files = await db.select().from(agentKnowledgeFilesTable).where(eq(agentKnowledgeFilesTable.agentId, a.id));
@@ -218,18 +222,22 @@ router.get("/ai-agents/:id", async (req, res) => {
   }
 });
 
-function getRequestUserId(req: any): number | null {
+function getRequestAuth(req: any): { userId: number | null; tenantId: number | null } {
+  const auth = req.auth;
+  if (auth) return { userId: auth.userId, tenantId: auth.tenantId ?? null };
   const h = req.headers['x-user-id'];
-  return h ? parseInt(h as string) : null;
+  return { userId: h ? parseInt(h as string) : null, tenantId: null };
 }
 
 router.post("/ai-agents", async (req, res) => {
   try {
-    const userId = getRequestUserId(req);
-    const [maxNum] = await db.select({ val: max(aiAgentsTable.agentNumber) }).from(aiAgentsTable);
+    const { userId, tenantId } = getRequestAuth(req);
+    const tenantCond = tenantId ? eq(aiAgentsTable.tenantId, tenantId) : undefined;
+    const query = db.select({ val: max(aiAgentsTable.agentNumber) }).from(aiAgentsTable);
+    const [maxNum] = tenantCond ? await query.where(tenantCond) : await query;
     const nextNum = (maxNum?.val ?? 0) + 1;
     const { name = "New Agent", description = "", instructions = "", tools = "[]" } = req.body as Record<string, string>;
-    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools, createdBy: userId ?? undefined }).returning();
+    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, tools, createdBy: userId ?? undefined, tenantId }).returning();
     await db.insert(agentModuleAccess).values(
       ALL_MODULES.map(module => ({ agentId: agent.id, module, hasAccess: false }))
     );

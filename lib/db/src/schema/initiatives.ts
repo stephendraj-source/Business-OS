@@ -1,9 +1,11 @@
 import { pgTable, serial, integer, text, date, timestamp } from 'drizzle-orm/pg-core';
+
 import { users } from './users';
 import { processesTable } from './processes';
 
 export const initiatives = pgTable('initiatives', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id'),
   initiativeId: text('initiative_id').notNull().unique(),
   name: text('name').notNull(),
   goals: text('goals').notNull().default(''),

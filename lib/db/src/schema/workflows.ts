@@ -2,6 +2,7 @@ import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 
 export const workflowsTable = pgTable("workflows", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   workflowNumber: integer("workflow_number").notNull(),
   name: text("name").notNull().default("New Workflow"),
   description: text("description").notNull().default(""),

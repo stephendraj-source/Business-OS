@@ -6,6 +6,7 @@ import { users } from './users';
 
 export const groups = pgTable('groups', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id'),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   color: text('color').notNull().default(''),
@@ -22,6 +23,7 @@ export const userGroups = pgTable('user_groups', {
 
 export const roles = pgTable('roles', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id'),
   name: text('name').notNull(),
   description: text('description').notNull().default(''),
   color: text('color').notNull().default(''),

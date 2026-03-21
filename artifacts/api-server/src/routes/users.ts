@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
 
 export const usersRouter = Router();
@@ -37,9 +37,17 @@ function safeUser(u: typeof users.$inferSelect) {
   return rest;
 }
 
-usersRouter.get('/', async (_req, res) => {
+usersRouter.get('/', async (req, res) => {
   try {
-    const rows = await db.select().from(users).orderBy(users.createdAt);
+    const auth = (req as any).auth;
+    let rows;
+    if (auth?.role === 'superuser') {
+      rows = await db.select().from(users).orderBy(users.createdAt);
+    } else if (auth?.tenantId) {
+      rows = await db.select().from(users).where(eq(users.tenantId, auth.tenantId)).orderBy(users.createdAt);
+    } else {
+      rows = await db.select().from(users).orderBy(users.createdAt);
+    }
     res.json(rows.map(safeUser));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -48,12 +56,14 @@ usersRouter.get('/', async (_req, res) => {
 
 usersRouter.post('/', async (req, res) => {
   try {
+    const auth = (req as any).auth;
+    const tenantId = auth?.tenantId ?? null;
     const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', isActive = true, dataScope = 'categories' } = req.body;
     const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
     if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
     const tempPassword = crypto.randomUUID();
     const [row] = await db.insert(users).values({
-      name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
+      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, isActive, dataScope,
     }).returning();
     await db.insert(userModuleAccess).values(
       ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: false }))

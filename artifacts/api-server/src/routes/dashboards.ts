@@ -2,20 +2,24 @@ import { Router } from 'express';
 import { db, users } from '@workspace/db';
 import { dashboardsTable, dashboardShares } from '@workspace/db';
 import { userGroups, groupRoles } from '@workspace/db';
-import { eq, or, inArray } from 'drizzle-orm';
+import { eq, or, inArray, and } from 'drizzle-orm';
 
 export const dashboardsRouter = Router();
 
-function getUserId(req: any): number | null {
+function getAuth(req: any): { userId: number | null; tenantId: number | null; role: string | null } {
+  const auth = req.auth;
+  if (auth) return { userId: auth.userId, tenantId: auth.tenantId, role: auth.role };
   const h = req.headers['x-user-id'];
-  return h ? parseInt(h as string) : null;
+  return { userId: h ? parseInt(h as string) : null, tenantId: null, role: null };
 }
 
-async function getAccessibleDashboardIds(userId: number | null) {
+async function getAccessibleDashboardIds(userId: number | null, tenantId: number | null, role: string | null) {
   if (!userId) return [];
-  const user = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-  if (user[0]?.role === 'admin') {
-    const all = await db.select({ id: dashboardsTable.id }).from(dashboardsTable);
+  if (role === 'admin' || role === 'superuser') {
+    const query = db.select({ id: dashboardsTable.id }).from(dashboardsTable);
+    const all = tenantId
+      ? await query.where(eq(dashboardsTable.tenantId, tenantId))
+      : await query;
     return all.map(d => d.id);
   }
   const userGroupRows = await db.select({ groupId: userGroups.groupId }).from(userGroups).where(eq(userGroups.userId, userId));
@@ -29,8 +33,13 @@ async function getAccessibleDashboardIds(userId: number | null) {
   if (roleIds.length) shareConditions.push(inArray(dashboardShares.sharedWithRoleId, roleIds));
   if (groupIds.length) shareConditions.push(inArray(dashboardShares.sharedWithGroupId, groupIds));
 
+  const ownedQuery = db.select({ id: dashboardsTable.id }).from(dashboardsTable)
+    .where(tenantId
+      ? and(eq(dashboardsTable.createdBy, userId), eq(dashboardsTable.tenantId, tenantId))
+      : eq(dashboardsTable.createdBy, userId));
+
   const [owned, shared] = await Promise.all([
-    db.select({ id: dashboardsTable.id }).from(dashboardsTable).where(eq(dashboardsTable.createdBy, userId)),
+    ownedQuery,
     db.select({ dashboardId: dashboardShares.dashboardId }).from(dashboardShares).where(or(...shareConditions)),
   ]);
   return [...new Set([...owned.map(d => d.id), ...shared.map(d => d.dashboardId)])];
@@ -38,9 +47,9 @@ async function getAccessibleDashboardIds(userId: number | null) {
 
 dashboardsRouter.get('/dashboards', async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const { userId, tenantId, role } = getAuth(req);
     if (!userId) return res.json([]);
-    const ids = await getAccessibleDashboardIds(userId);
+    const ids = await getAccessibleDashboardIds(userId, tenantId, role);
     if (!ids.length) return res.json([]);
     const dashboards = await db.select().from(dashboardsTable).where(inArray(dashboardsTable.id, ids));
     const sharesRows = await db.select().from(dashboardShares).where(inArray(dashboardShares.dashboardId, ids));
@@ -56,22 +65,23 @@ dashboardsRouter.get('/dashboards', async (req, res) => {
 
 dashboardsRouter.post('/dashboards', async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const { userId, tenantId } = getAuth(req);
     const { name = 'My Dashboard', widgets = [] } = req.body;
-    const [row] = await db.insert(dashboardsTable).values({ name, widgets, createdBy: userId }).returning();
+    const [row] = await db.insert(dashboardsTable).values({ name, widgets, createdBy: userId, tenantId }).returning();
     res.status(201).json({ ...row, isOwner: true, canEdit: true, shares: [] });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 dashboardsRouter.patch('/dashboards/:id', async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const { userId, tenantId, role } = getAuth(req);
     const id = parseInt(req.params.id);
     const dashboard = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dashboard.length) return res.status(404).json({ error: 'Not found' });
+    if (tenantId && dashboard[0].tenantId !== tenantId) return res.status(403).json({ error: 'Access denied' });
     const isOwner = dashboard[0].createdBy === userId;
     const shares = await db.select().from(dashboardShares).where(eq(dashboardShares.dashboardId, id));
-    const canEdit = isOwner || shares.some(s => s.canEdit && s.sharedWithUserId === userId);
+    const canEdit = isOwner || role === 'admin' || shares.some(s => s.canEdit && s.sharedWithUserId === userId);
     if (!canEdit) return res.status(403).json({ error: 'No edit access' });
     const { name, widgets } = req.body;
     const updates: any = { updatedAt: new Date() };
@@ -84,13 +94,13 @@ dashboardsRouter.patch('/dashboards/:id', async (req, res) => {
 
 dashboardsRouter.delete('/dashboards/:id', async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const { userId, tenantId, role } = getAuth(req);
     const id = parseInt(req.params.id);
     const dashboard = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dashboard.length) return res.status(404).json({ error: 'Not found' });
+    if (tenantId && dashboard[0].tenantId !== tenantId) return res.status(403).json({ error: 'Access denied' });
     const isOwner = dashboard[0].createdBy === userId;
-    const userRole = userId ? (await db.select({ role: users.role }).from(users).where(eq(users.id, userId)))[0]?.role : null;
-    if (!isOwner && userRole !== 'admin') return res.status(403).json({ error: 'No delete access' });
+    if (!isOwner && role !== 'admin') return res.status(403).json({ error: 'No delete access' });
     await db.delete(dashboardsTable).where(eq(dashboardsTable.id, id));
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -106,13 +116,13 @@ dashboardsRouter.get('/dashboards/:id/shares', async (req, res) => {
 
 dashboardsRouter.put('/dashboards/:id/shares', async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const { userId, tenantId, role } = getAuth(req);
     const id = parseInt(req.params.id);
     const dashboard = await db.select().from(dashboardsTable).where(eq(dashboardsTable.id, id));
     if (!dashboard.length) return res.status(404).json({ error: 'Not found' });
+    if (tenantId && dashboard[0].tenantId !== tenantId) return res.status(403).json({ error: 'Access denied' });
     const isOwner = dashboard[0].createdBy === userId;
-    const userRole = userId ? (await db.select({ role: users.role }).from(users).where(eq(users.id, userId)))[0]?.role : null;
-    if (!isOwner && userRole !== 'admin') return res.status(403).json({ error: 'No share access' });
+    if (!isOwner && role !== 'admin') return res.status(403).json({ error: 'No share access' });
     const { shares } = req.body as { shares: { sharedWithUserId?: number; sharedWithRoleId?: number; sharedWithGroupId?: number; canEdit: boolean }[] };
     await db.delete(dashboardShares).where(eq(dashboardShares.dashboardId, id));
     if (shares?.length) {

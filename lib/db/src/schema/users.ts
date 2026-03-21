@@ -1,7 +1,9 @@
 import { pgTable, serial, text, boolean, timestamp, integer } from 'drizzle-orm/pg-core';
+import { tenants } from './tenants';
 
 export const users = pgTable('users', {
   id: serial('id').primaryKey(),
+  tenantId: integer('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   firstName: text('first_name').notNull().default(''),
   lastName: text('last_name').notNull().default(''),

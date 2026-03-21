@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 
 export const processesTable = pgTable("processes", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
   number: integer("number").notNull(),
   category: text("category").notNull(),
   processDescription: text("process_name").notNull(),
