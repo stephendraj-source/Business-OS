@@ -116,18 +116,41 @@ authRouter.get('/tenants', requireAuth, requireSuperUser, async (_req, res) => {
 
 authRouter.post('/tenants', requireAuth, requireSuperUser, async (req, res) => {
   try {
-    const { name, slug, firstName, lastName, preferredName } = req.body;
+    const { name, slug, firstName, lastName, preferredName, adminEmail, adminPhone } = req.body;
     if (!name || !slug) return res.status(400).json({ error: 'name and slug required' });
     const clean = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    const [row] = await db.insert(tenants).values({
+    const [tenant] = await db.insert(tenants).values({
       name, slug: clean,
       firstName: firstName || null,
       lastName: lastName || null,
       preferredName: preferredName || null,
     }).returning();
-    res.status(201).json(row);
+
+    // Optionally create the first admin user for this tenant
+    let adminResult: { user: ReturnType<typeof safeUser>; tempPassword: string } | undefined;
+    if (adminEmail) {
+      const fullName = [firstName, lastName].filter(Boolean).join(' ') || adminEmail;
+      const tempPassword = crypto.randomBytes(8).toString('hex');
+      const [adminUser] = await db.insert(users).values({
+        tenantId: tenant.id,
+        name: fullName,
+        firstName: firstName || '',
+        lastName: lastName || '',
+        preferredName: preferredName || '',
+        email: adminEmail.trim().toLowerCase(),
+        phone: adminPhone || '',
+        passwordHash: hashPassword(tempPassword),
+        role: 'admin',
+        designation: '',
+        dataScope: 'all',
+        isActive: true,
+      }).returning();
+      adminResult = { user: safeUser(adminUser), tempPassword };
+    }
+
+    res.status(201).json({ ...tenant, admin: adminResult });
   } catch (e: any) {
-    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Slug already exists' });
+    if (e.message?.includes('unique')) return res.status(409).json({ error: 'Slug already exists or email already in use' });
     res.status(500).json({ error: e.message });
   }
 });

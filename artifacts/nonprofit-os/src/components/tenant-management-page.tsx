@@ -44,7 +44,7 @@ interface CreatedAccount {
   tempPassword: string;
 }
 
-const emptyTenantForm = { name: '', slug: '', firstName: '', lastName: '', preferredName: '' };
+const emptyTenantForm = { name: '', slug: '', firstName: '', lastName: '', preferredName: '', adminEmail: '', adminPhone: '' };
 
 export function TenantManagementPage() {
   const { logout, fetchHeaders, currentUser } = useAuth();
@@ -131,7 +131,15 @@ export function TenantManagementPage() {
     setSaving(true); setError('');
     const r = await fetch(`${API}/auth/tenants`, {
       method: 'POST', headers: fetchHeaders(),
-      body: JSON.stringify({ name: tenantForm.name, slug: tenantForm.slug, firstName: tenantForm.firstName || undefined, lastName: tenantForm.lastName || undefined, preferredName: tenantForm.preferredName || undefined }),
+      body: JSON.stringify({
+        name: tenantForm.name,
+        slug: tenantForm.slug,
+        firstName: tenantForm.firstName || undefined,
+        lastName: tenantForm.lastName || undefined,
+        preferredName: tenantForm.preferredName || undefined,
+        adminEmail: tenantForm.adminEmail || undefined,
+        adminPhone: tenantForm.adminPhone || undefined,
+      }),
     });
     const data = await r.json();
     setSaving(false);
@@ -139,6 +147,7 @@ export function TenantManagementPage() {
     fetchTenants();
     setTenantForm(emptyTenantForm);
     setShowCreateTenant(false);
+    if (data.admin) setCreatedAdmin(data.admin);
   }
 
   async function createAdmin(e: React.FormEvent) {
@@ -292,8 +301,8 @@ export function TenantManagementPage() {
                   </button>
                 </div>
                 <form onSubmit={createTenant} className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Contact Person</p>
+                  <div className="space-y-3">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin User</p>
                     <div className="grid grid-cols-3 gap-3">
                       {[
                         { label: 'First Name', key: 'firstName', ph: 'Jane' },
@@ -307,6 +316,31 @@ export function TenantManagementPage() {
                         </div>
                       ))}
                     </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Email</label>
+                        <input
+                          type="email"
+                          value={tenantForm.adminEmail}
+                          onChange={e => setTenantForm(f => ({ ...f, adminEmail: e.target.value }))}
+                          placeholder="jane@example.com"
+                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Phone</label>
+                        <input
+                          type="tel"
+                          value={tenantForm.adminPhone}
+                          onChange={e => setTenantForm(f => ({ ...f, adminPhone: e.target.value }))}
+                          placeholder="+65 9123 4567"
+                          className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        />
+                      </div>
+                    </div>
+                    {tenantForm.adminEmail && (
+                      <p className="text-xs text-muted-foreground">A temporary password will be generated and shown after creation.</p>
+                    )}
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Organisation</p>
