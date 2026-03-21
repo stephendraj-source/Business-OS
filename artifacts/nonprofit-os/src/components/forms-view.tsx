@@ -884,7 +884,7 @@ function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName, ag
             <div className="rounded-2xl border border-dashed border-border p-10 text-center">
               <ClipboardList className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">This template has no fields yet.</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Switch to Report Templates mode to add fields.</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Switch to Forms Templates mode to add fields.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -1382,7 +1382,7 @@ export function FormsView() {
       <div className="flex-none px-5 py-2 border-b border-border bg-card/60 flex items-center gap-2">
         <span className="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
         {([
-          { key: 'templates', label: 'Report Templates', icon: <ClipboardList className="w-3.5 h-3.5" /> },
+          { key: 'templates', label: 'Forms Templates', icon: <ClipboardList className="w-3.5 h-3.5" /> },
           { key: 'entry',     label: 'Data Entry',        icon: <PenLine className="w-3.5 h-3.5" /> },
         ] as const).map(m => (
           <button
@@ -1419,7 +1419,7 @@ export function FormsView() {
               <div className="flex items-center gap-2">
                 <ClipboardList className="w-4 h-4 text-primary flex-shrink-0" />
                 <span className="text-sm font-semibold">
-                  {mode === 'templates' ? 'Report Templates' : 'Templates'}
+                  {mode === 'templates' ? 'Forms Templates' : 'Templates'}
                 </span>
                 <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{forms.length}</span>
               </div>
@@ -1566,7 +1566,7 @@ export function FormsView() {
           </div>
           <div>
             <h2 className="text-lg font-semibold mb-1">
-              {mode === 'entry' ? 'Select a Template' : 'Report Template Builder'}
+              {mode === 'entry' ? 'Select a Template' : 'Forms Template Builder'}
             </h2>
             <p className="text-sm text-muted-foreground max-w-sm">
               {mode === 'entry'
