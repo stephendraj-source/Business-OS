@@ -399,6 +399,7 @@ router.put("/processes/:id", async (req, res) => {
     if (body.target !== undefined) updateData.target = body.target as string;
     if (body.achievement !== undefined) updateData.achievement = body.achievement as string;
     if (body.trafficLight !== undefined) updateData.trafficLight = body.trafficLight as string;
+    if (body.priority !== undefined) updateData.priority = body.priority === null ? null : Number(body.priority);
 
     const [updated] = await db.update(processesTable).set(updateData).where(eq(processesTable.id, id)).returning();
 
