@@ -11,6 +11,7 @@ import {
   formsTable,
   checklistsTable,
   checklistItemsTable,
+  users,
 } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -208,6 +209,7 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
     forms,
     checklists,
     checklistItems,
+    userList,
   ] = await Promise.all([
     db.select().from(processesTable)
       .where(tenantId ? eq(processesTable.tenantId, tenantId) : sql`1=1`)
@@ -231,6 +233,14 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
       .where(tenantId ? eq(checklistsTable.tenantId, tenantId) : sql`1=1`)
       .orderBy(checklistsTable.id),
     db.select().from(checklistItemsTable).orderBy(checklistItemsTable.id),
+    db.select({
+      name: users.name,
+      designation: users.designation,
+      jobDescription: users.jobDescription,
+      isActive: users.isActive,
+    }).from(users)
+      .where(tenantId ? eq(users.tenantId, tenantId) : sql`1=1`)
+      .orderBy(users.name),
   ]);
 
   // Processes — split into "in process map" (included=true) vs library (included=false)
@@ -288,6 +298,16 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
       return `[#${c.id}] ${c.name} | ${c.description || "No description"} | Items (${items.length}):\n${itemLines || "    (no items)"}`;
     }).join("\n\n");
 
+  // Users — active members with designation and job description for smart task assignment
+  const activeUsers = userList.filter(u => u.isActive);
+  const userSummary = activeUsers.length === 0 ? "No active users." :
+    activeUsers.map(u => {
+      const parts = [`Name: ${u.name}`];
+      if (u.designation) parts.push(`Designation: ${u.designation}`);
+      if (u.jobDescription) parts.push(`Job Description: ${u.jobDescription}`);
+      return parts.join(" | ");
+    }).join("\n");
+
   return `You are an expert business operations advisor embedded in BusinessOS — a comprehensive multi-tenant operating system. You have READ-ONLY access to the organisation's database.
 
 ## Your capabilities
@@ -307,7 +327,9 @@ You are the **AI Assistant Agent**. Always use "AI Assistant Agent" as your agen
 
 You have two task tools — use the right one:
 
-**\`suggest_task\`** — Use when the user explicitly asks to CREATE a task (and optionally assign it to a person or queue). This opens a pre-filled form for the user to review and confirm. The task is NOT saved until they click "Create Task". If you are missing important information (like who to assign to), set \`clarification_needed\` and the user will be prompted. Do not use \`create_task\` for this case.
+**\`suggest_task\`** — Use when the user explicitly asks to CREATE a task (and optionally assign it to a person or queue). This opens a pre-filled form for the user to review and confirm. The task is NOT saved until they click "Create Task".
+
+**Smart assignment:** When the user does not specify who to assign a task to, look at the **Team Members** section in this context. Read each person's Job Description and Designation, then pick the person whose responsibilities best match the task subject. Set their exact name as \`assigned_to_name\`. Only leave it unset (and add \`clarification_needed\`) if no one's job description is relevant at all.
 
 **\`create_task\`** — Use ONLY when the user asks you to make a database change that needs human approval (update a record, create an activity, set a KPI, etc.). Include detailed \`ai_instructions\` so a human reviewer knows exactly what to do.
 
@@ -374,6 +396,14 @@ ${formSummary}
 
 ${checklistSummary}
 
+---
+
+### Team Members (${activeUsers.length} active users — use for smart task assignment)
+
+When suggesting a task assignee, match the task's subject matter to the user whose **Job Description** is most relevant. Always prefer someone with a matching job description over a generic suggestion. Use the exact **Name** value as \`assigned_to_name\` in the suggest_task call.
+
+${userSummary}
+
 ---`;
 }
 
@@ -393,17 +423,17 @@ const DB_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "suggest_task",
-    description: "Use this when the user explicitly asks to CREATE a task and optionally assign it to a person or queue. This opens a pre-filled task creation form for the user to review and confirm — the task is NOT written to the database until the user clicks 'Create Task'. Do NOT use this for other database changes (updating records, creating activities, setting KPIs, etc.) — use create_task for those approval workflows.",
+    description: "Use this when the user explicitly asks to CREATE a task and optionally assign it to a person or queue. This opens a pre-filled task creation form for the user to review and confirm — the task is NOT written to the database until the user clicks 'Create Task'. Do NOT use this for other database changes (updating records, creating activities, setting KPIs, etc.) — use create_task for those approval workflows. IMPORTANT: Always try to suggest the most suitable assignee by matching the task subject to the Team Members list in the system context — compare the task topic against each user's Job Description and Designation to pick the best fit. If no one is clearly suitable, leave assigned_to_name empty and set clarification_needed.",
     input_schema: {
       type: "object" as const,
       properties: {
         name: { type: "string", description: "Short, clear task title" },
         description: { type: "string", description: "What this task is about and why it is needed" },
         priority: { type: "string", enum: ["high", "normal", "low"], description: "Task priority based on what the user indicated" },
-        assigned_to_name: { type: "string", description: "Full name of the user to assign to, if the user specified one (must match a real user name in the system)" },
+        assigned_to_name: { type: "string", description: "Full name of the best-fit user from the Team Members list. If the user specified a name, use that. If not, pick the person whose Job Description best matches the task topic. Must exactly match a Name from the Team Members list. Omit only if no suitable match can be found." },
         queue_name: { type: "string", description: "Name of the queue to route to, if the user specified one" },
         due_date: { type: "string", description: "ISO date string YYYY-MM-DD if the user mentioned a due date, otherwise omit" },
-        clarification_needed: { type: "string", description: "If something important is missing or unclear (e.g. no assignee mentioned and you need one), describe what you need to know. Leave empty if the form can be shown as-is." },
+        clarification_needed: { type: "string", description: "Only set this if you genuinely cannot determine a suitable assignee AND the task requires one. Otherwise leave empty." },
       },
       required: ["name"],
     },
