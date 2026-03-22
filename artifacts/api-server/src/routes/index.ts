@@ -18,6 +18,7 @@ import { creditsRouter } from "./credits";
 import { formsRouter } from "./forms";
 import knowledgeRouter from "./knowledge";
 import activitiesRouter from "./activities";
+import processAttachmentsRouter from "./process-attachments";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(creditsRouter);
 router.use(formsRouter);
 router.use(knowledgeRouter);
 router.use(activitiesRouter);
+router.use(processAttachmentsRouter);
 
 export default router;
