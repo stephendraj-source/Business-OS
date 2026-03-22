@@ -43,6 +43,7 @@ export const agentSchedulesTable = pgTable("agent_schedules", {
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   nextRunAt: timestamp("next_run_at", { withTimezone: true }),
   lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+  weekDays: text("week_days"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });

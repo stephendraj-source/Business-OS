@@ -437,16 +437,47 @@ router.get("/ai-agents/:id/schedules", async (req, res) => {
   }
 });
 
+const ALL_WEEK_DAYS = "mon,tue,wed,thu,fri,sat,sun";
+const DAY_NAMES_LC = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+function firstAllowedDay(from: Date, allowedDays: string[]): Date {
+  const d = new Date(from);
+  for (let i = 0; i < 7; i++) {
+    if (allowedDays.includes(DAY_NAMES_LC[d.getDay()])) return d;
+    d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
+function nextAllowedDay(after: Date, allowedDays: string[]): Date {
+  const d = new Date(after);
+  d.setDate(d.getDate() + 1);
+  for (let i = 0; i < 7; i++) {
+    if (allowedDays.includes(DAY_NAMES_LC[d.getDay()])) return d;
+    d.setDate(d.getDate() + 1);
+  }
+  return d;
+}
+
 router.post("/ai-agents/:id/schedules", async (req, res) => {
   try {
-    const { scheduleType = "once", scheduledAt } = req.body as { scheduleType: string; scheduledAt: string };
+    const { scheduleType = "once", scheduledAt, weekDays } = req.body as {
+      scheduleType: string; scheduledAt: string; weekDays?: string;
+    };
     if (!scheduledAt) return res.status(400).json({ error: "scheduledAt is required" });
     const schedAt = new Date(scheduledAt);
+    const resolvedWeekDays = scheduleType === "weekly"
+      ? (weekDays && weekDays.trim() ? weekDays.trim() : ALL_WEEK_DAYS)
+      : null;
+    const nextRunAt = scheduleType === "weekly" && resolvedWeekDays
+      ? firstAllowedDay(schedAt, resolvedWeekDays.split(","))
+      : schedAt;
     const [sched] = await db.insert(agentSchedulesTable).values({
       agentId: Number(req.params.id),
       scheduleType,
       scheduledAt: schedAt,
-      nextRunAt: schedAt,
+      nextRunAt,
+      weekDays: resolvedWeekDays,
       isActive: true,
     }).returning();
     res.status(201).json(sched);
@@ -710,8 +741,8 @@ async function runScheduler() {
           nextRun = new Date(sched.nextRunAt!);
           nextRun.setDate(nextRun.getDate() + 1);
         } else if (sched.scheduleType === "weekly") {
-          nextRun = new Date(sched.nextRunAt!);
-          nextRun.setDate(nextRun.getDate() + 7);
+          const allowedDays = sched.weekDays ? sched.weekDays.split(",") : DAY_NAMES_LC.slice();
+          nextRun = nextAllowedDay(new Date(sched.nextRunAt!), allowedDays);
         } else if (sched.scheduleType === "monthly") {
           nextRun = new Date(sched.nextRunAt!);
           nextRun.setMonth(nextRun.getMonth() + 1);

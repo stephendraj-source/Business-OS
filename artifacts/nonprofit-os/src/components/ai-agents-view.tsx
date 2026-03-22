@@ -62,6 +62,7 @@ interface Schedule {
   scheduledAt: string;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  weekDays: string | null;
   isActive: boolean;
   createdAt: string;
 }
@@ -912,6 +913,25 @@ function TestPanel({ agentId }: { agentId: number }) {
 
 // ── Schedule Panel ────────────────────────────────────────────────────────────
 
+const WEEK_DAY_OPTIONS = [
+  { key: "mon", label: "Mon" },
+  { key: "tue", label: "Tue" },
+  { key: "wed", label: "Wed" },
+  { key: "thu", label: "Thu" },
+  { key: "fri", label: "Fri" },
+  { key: "sat", label: "Sat" },
+  { key: "sun", label: "Sun" },
+];
+
+function formatWeekDays(weekDays: string | null): string {
+  if (!weekDays) return "";
+  const days = weekDays.split(",");
+  if (days.length === 7) return "Every day";
+  if (days.length === 5 && !days.includes("sat") && !days.includes("sun")) return "Weekdays";
+  if (days.length === 2 && days.includes("sat") && days.includes("sun")) return "Weekends";
+  return days.map(d => WEEK_DAY_OPTIONS.find(o => o.key === d)?.label ?? d).join(", ");
+}
+
 function SchedulePanel({ agentId }: { agentId: number }) {
   const { fetchHeaders } = useUser();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -922,6 +942,9 @@ function SchedulePanel({ agentId }: { agentId: number }) {
     d.setHours(d.getHours() + 1);
     return d.toISOString().slice(0, 16);
   });
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    WEEK_DAY_OPTIONS.map(d => d.key)
+  );
   const [adding, setAdding] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
@@ -931,13 +954,27 @@ function SchedulePanel({ agentId }: { agentId: number }) {
 
   useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
 
+  const toggleDay = (key: string) => {
+    setSelectedDays(prev =>
+      prev.includes(key)
+        ? prev.length > 1 ? prev.filter(d => d !== key) : prev // keep at least one
+        : [...prev, key]
+    );
+  };
+
   const addSchedule = async () => {
+    if (schedType === "weekly" && selectedDays.length === 0) return;
     setAdding(true);
     try {
+      const body: Record<string, string> = { scheduleType: schedType, scheduledAt: schedAt };
+      if (schedType === "weekly") {
+        // Preserve Mon-Sun order
+        body.weekDays = WEEK_DAY_OPTIONS.filter(d => selectedDays.includes(d.key)).map(d => d.key).join(",");
+      }
       const r = await fetch(`${API}/ai-agents/${agentId}/schedules`, {
         method: "POST",
         headers: { ...fetchHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduleType: schedType, scheduledAt: schedAt }),
+        body: JSON.stringify(body),
       });
       if (r.ok) fetchSchedules();
     } finally { setAdding(false); }
@@ -984,9 +1021,39 @@ function SchedulePanel({ agentId }: { agentId: number }) {
             />
           </div>
         </div>
+
+        {/* Day picker — only for Weekly */}
+        {schedType === "weekly" && (
+          <div>
+            <label className="block text-xs text-muted-foreground mb-2">Run on days</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {WEEK_DAY_OPTIONS.map(day => {
+                const active = selectedDays.includes(day.key);
+                return (
+                  <button
+                    key={day.key}
+                    onClick={() => toggleDay(day.key)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors select-none",
+                      active
+                        ? "bg-primary/20 border-primary/50 text-primary"
+                        : "bg-background border-border text-muted-foreground hover:text-foreground hover:border-border/80"
+                    )}
+                  >
+                    {day.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              {selectedDays.length === 7 ? "Every day" : selectedDays.length === 0 ? "Select at least one day" : formatWeekDays(WEEK_DAY_OPTIONS.filter(d => selectedDays.includes(d.key)).map(d => d.key).join(","))}
+            </p>
+          </div>
+        )}
+
         <button
           onClick={addSchedule}
-          disabled={adding}
+          disabled={adding || (schedType === "weekly" && selectedDays.length === 0)}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
         >
           {adding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -1008,6 +1075,26 @@ function SchedulePanel({ agentId }: { agentId: number }) {
                 {SCHEDULE_TYPES.find(t => t.value === s.scheduleType)?.label ?? s.scheduleType}
                 {!s.isActive && <span className="text-xs px-1.5 py-0.5 rounded bg-secondary text-muted-foreground">Paused</span>}
               </div>
+              {s.scheduleType === "weekly" && s.weekDays && (
+                <div className="flex gap-1 mt-1.5 flex-wrap">
+                  {WEEK_DAY_OPTIONS.map(day => {
+                    const on = s.weekDays!.split(",").includes(day.key);
+                    return (
+                      <span
+                        key={day.key}
+                        className={cn(
+                          "text-[10px] px-1.5 py-0.5 rounded border font-medium",
+                          on
+                            ? "bg-primary/15 border-primary/40 text-primary"
+                            : "bg-secondary/50 border-border text-muted-foreground/40"
+                        )}
+                      >
+                        {day.label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
                 <div>First run: {formatDate(s.scheduledAt)}</div>
                 {s.nextRunAt && s.isActive && <div>Next run: {formatDate(s.nextRunAt)}</div>}
