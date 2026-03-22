@@ -730,8 +730,8 @@ orgRouter.get('/org/profile', async (req, res) => {
     if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
     const [row] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
     if (!row) return res.status(404).json({ error: 'Tenant not found' });
-    const { id, name, displayName, address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email } = row;
-    res.json({ id, name, displayName: displayName ?? '', address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email });
+    const { id, name, displayName, officialName, officialNationalId, address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email } = row;
+    res.json({ id, name, displayName: displayName ?? '', officialName: officialName ?? '', officialNationalId: officialNationalId ?? '', address, websiteUrl, contact1Name, contact1Phone, contact1Email, contact2Name, contact2Phone, contact2Email });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -740,13 +740,15 @@ orgRouter.put('/org/profile', async (req, res) => {
     const tenantId = getTenantId(req);
     if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
     const {
-      name, displayName, address, websiteUrl,
+      name, displayName, officialName, officialNationalId, address, websiteUrl,
       contact1Name, contact1Phone, contact1Email,
       contact2Name, contact2Phone, contact2Email,
     } = req.body;
     const updates: Partial<typeof tenants.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (displayName !== undefined) updates.displayName = displayName;
+    if (officialName !== undefined) updates.officialName = officialName;
+    if (officialNationalId !== undefined) updates.officialNationalId = officialNationalId;
     if (address !== undefined) updates.address = address;
     if (websiteUrl !== undefined) updates.websiteUrl = websiteUrl;
     if (contact1Name !== undefined) updates.contact1Name = contact1Name;
@@ -757,8 +759,8 @@ orgRouter.put('/org/profile', async (req, res) => {
     if (contact2Email !== undefined) updates.contact2Email = contact2Email;
     const [row] = await db.update(tenants).set(updates).where(eq(tenants.id, tenantId)).returning();
     if (!row) return res.status(404).json({ error: 'Tenant not found' });
-    const { id, name: n, displayName: dn, address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e } = row;
-    res.json({ id, name: n, displayName: dn ?? '', address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e });
+    const { id, name: n, displayName: dn, officialName: on_, officialNationalId: onid, address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e } = row;
+    res.json({ id, name: n, displayName: dn ?? '', officialName: on_ ?? '', officialNationalId: onid ?? '', address: a, websiteUrl: w, contact1Name: c1n, contact1Phone: c1p, contact1Email: c1e, contact2Name: c2n, contact2Phone: c2p, contact2Email: c2e });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

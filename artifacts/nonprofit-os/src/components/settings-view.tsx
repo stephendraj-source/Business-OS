@@ -217,21 +217,39 @@ const INDUSTRY_BLUEPRINTS = [
   'Agriculture & Food',
 ];
 
+const TOKEN_KEY = 'nonprofit-os-auth-token';
+const API = '/api';
+
+function authedFetch(url: string, opts: RequestInit = {}) {
+  const token = localStorage.getItem(TOKEN_KEY) ?? '';
+  return fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers ?? {}) } });
+}
+
 export function SettingsView() {
   const { currentUser } = useAuth();
   const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('nonprofit-os-theme') ?? 'dark');
   const [displayName, setDisplayName] = useState('');
+  const [officialName, setOfficialName] = useState('');
+  const [officialNationalId, setOfficialNationalId] = useState('');
   const [displayNameSaving, setDisplayNameSaving] = useState(false);
   const [displayNameSaved, setDisplayNameSaved] = useState(false);
+  const [officialNameSaving, setOfficialNameSaving] = useState(false);
+  const [officialNameSaved, setOfficialNameSaved] = useState(false);
+  const [officialNationalIdSaving, setOfficialNationalIdSaving] = useState(false);
+  const [officialNationalIdSaved, setOfficialNationalIdSaved] = useState(false);
 
   useEffect(() => {
     loadSavedTheme();
   }, []);
 
   useEffect(() => {
-    fetchOrgDisplayName().then(name => {
-      if (name) setDisplayName(name === 'BusinessOS' ? '' : name);
-    });
+    authedFetch(`${API}/org/profile`).then(r => r.ok ? r.json() : null).then(data => {
+      if (!data) return;
+      const dn = (data.displayName as string)?.trim();
+      if (dn && dn !== 'BusinessOS') setDisplayName(dn);
+      setOfficialName(data.officialName ?? '');
+      setOfficialNationalId(data.officialNationalId ?? '');
+    }).catch(() => {});
   }, []);
 
   const handleThemeSelect = (themeId: string) => {
@@ -247,6 +265,28 @@ export function SettingsView() {
       setTimeout(() => setDisplayNameSaved(false), 2500);
     } finally {
       setDisplayNameSaving(false);
+    }
+  };
+
+  const handleSaveOfficialName = async () => {
+    setOfficialNameSaving(true);
+    try {
+      await authedFetch(`${API}/org/profile`, { method: 'PUT', body: JSON.stringify({ officialName }) });
+      setOfficialNameSaved(true);
+      setTimeout(() => setOfficialNameSaved(false), 2500);
+    } finally {
+      setOfficialNameSaving(false);
+    }
+  };
+
+  const handleSaveOfficialNationalId = async () => {
+    setOfficialNationalIdSaving(true);
+    try {
+      await authedFetch(`${API}/org/profile`, { method: 'PUT', body: JSON.stringify({ officialNationalId }) });
+      setOfficialNationalIdSaved(true);
+      setTimeout(() => setOfficialNationalIdSaved(false), 2500);
+    } finally {
+      setOfficialNationalIdSaving(false);
     }
   };
 
@@ -355,6 +395,88 @@ export function SettingsView() {
                 ? <Check className="w-3.5 h-3.5" />
                 : <Save className="w-3.5 h-3.5" />}
               {displayNameSaved ? 'Saved' : 'Save'}
+            </button>
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* Organisation Official Name */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Building2 className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-semibold text-foreground">Organisation Official Name</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            The full legal name of your organisation as registered with authorities.
+          </p>
+          <div className="flex gap-3 items-center">
+            <input
+              type="text"
+              value={officialName}
+              onChange={e => { setOfficialName(e.target.value); setOfficialNameSaved(false); }}
+              placeholder="e.g. Acme Corporation Pty Ltd"
+              className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 transition-colors"
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveOfficialName(); }}
+            />
+            <button
+              onClick={handleSaveOfficialName}
+              disabled={officialNameSaving}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors border flex-none',
+                officialNameSaved
+                  ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                  : 'bg-primary/10 hover:bg-primary/20 text-primary border-primary/20'
+              )}
+            >
+              {officialNameSaving
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : officialNameSaved
+                ? <Check className="w-3.5 h-3.5" />
+                : <Save className="w-3.5 h-3.5" />}
+              {officialNameSaved ? 'Saved' : 'Save'}
+            </button>
+          </div>
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* Organisation Official National ID */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Tag className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-semibold text-foreground">Organisation Official National ID</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Your organisation's official government-issued registration or identification number.
+          </p>
+          <div className="flex gap-3 items-center">
+            <input
+              type="text"
+              value={officialNationalId}
+              onChange={e => { setOfficialNationalId(e.target.value); setOfficialNationalIdSaved(false); }}
+              placeholder="e.g. ABN 12 345 678 901 or Company No. 123456"
+              className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 transition-colors"
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveOfficialNationalId(); }}
+            />
+            <button
+              onClick={handleSaveOfficialNationalId}
+              disabled={officialNationalIdSaving}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors border flex-none',
+                officialNationalIdSaved
+                  ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                  : 'bg-primary/10 hover:bg-primary/20 text-primary border-primary/20'
+              )}
+            >
+              {officialNationalIdSaving
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : officialNationalIdSaved
+                ? <Check className="w-3.5 h-3.5" />
+                : <Save className="w-3.5 h-3.5" />}
+              {officialNationalIdSaved ? 'Saved' : 'Save'}
             </button>
           </div>
         </section>

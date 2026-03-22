@@ -20,6 +20,8 @@ export const tenants = pgTable('tenants', {
   contact2Phone: text('contact2_phone'),
   contact2Email: text('contact2_email'),
   displayName: text('display_name').notNull().default(''),
+  officialName: text('official_name').notNull().default(''),
+  officialNationalId: text('official_national_id').notNull().default(''),
   systemPrompt: text('system_prompt'),
   colorScheme: text('color_scheme'),
   createdAt: timestamp('created_at').defaultNow(),
