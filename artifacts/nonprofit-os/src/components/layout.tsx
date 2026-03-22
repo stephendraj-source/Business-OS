@@ -578,12 +578,12 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   <div className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5">
                     <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
                   </div>
-                  <button
+                  <div
                     onClick={() => toggleSection(sectionId)}
-                    className="flex items-center gap-1 flex-1 min-w-0 text-left"
+                    className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer select-none"
                     title={collapsedSections.has(sectionId) ? 'Expand section' : 'Collapse section'}
                   >
-                    <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider select-none truncate">
+                    <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider truncate">
                       {section.label}
                     </span>
                     <ChevronDown
@@ -592,7 +592,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                         collapsedSections.has(sectionId) && '-rotate-90'
                       )}
                     />
-                  </button>
+                  </div>
                 </div>
 
                 {/* Drop indicator when item dragged onto section header */}
