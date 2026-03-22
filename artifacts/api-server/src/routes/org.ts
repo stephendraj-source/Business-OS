@@ -949,6 +949,14 @@ orgRouter.patch('/org/task-queues/:id', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+orgRouter.get('/org/task-queues/:id/task-count', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await db.execute(sql`SELECT COUNT(*)::int AS count FROM tasks WHERE queue_id = ${id}`);
+    res.json({ count: (result.rows as any[])[0]?.count ?? 0 });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 orgRouter.delete('/org/task-queues/:id', async (req, res) => {
   try {
     await db.execute(sql`DELETE FROM task_queues WHERE id = ${parseInt(req.params.id)}`);

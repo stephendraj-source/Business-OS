@@ -4,7 +4,7 @@ import {
   Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, ChevronDown, Home, Bot,
   GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
-  Star, Calendar,
+  Star, Calendar, Inbox,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,7 @@ export type ActiveView =
   | 'dashboards' | 'reports' | 'audit-logs' | 'settings'
   | 'ai-agents' | 'workflows' | 'forms'
   | 'users' | 'initiatives' | 'configuration'
-  | 'activities' | 'tasks' | 'strategy' | 'strategic-planning'
+  | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning'
   | 'meetings';
 
 interface LayoutProps {
@@ -59,6 +59,7 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'meetings',          label: 'Meetings',           sectionId: 'workflows'    },
   { id: 'activities',        label: 'Activities',         sectionId: 'workflows'    },
   { id: 'tasks',             label: 'Tasks',              sectionId: 'workflows'    },
+  { id: 'queues',            label: 'Task Queues',        sectionId: 'workflows'    },
   { id: 'ai-agents',         label: 'AI Agents',          sectionId: 'ai'           },
   { id: 'connectors',        label: 'Connectors',         sectionId: 'integrations' },
   { id: 'dashboards',        label: 'Dashboards',         sectionId: 'system'       },
@@ -90,6 +91,7 @@ const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
   'strategic-planning':{ label: 'Strategic Planning',   section: 'Strategy'     },
   activities:          { label: 'Activities',           section: 'Workflows'    },
   tasks:               { label: 'Tasks',                section: 'Workflows'    },
+  queues:              { label: 'Task Queues',          section: 'Workflows'    },
   meetings:            { label: 'Meetings',             section: 'Workflows'    },
 };
 
@@ -108,6 +110,7 @@ function getIcon(id: ActiveView) {
     case 'meetings':           return <Calendar className={cls} />;
     case 'activities':         return <Activity className={cls} />;
     case 'tasks':              return <ListTodo className={cls} />;
+    case 'queues':             return <Inbox className={cls} />;
     case 'ai-agents':          return <Bot className={cls} />;
     case 'connectors':         return <Plug className={cls} />;
     case 'dashboards':         return <LayoutDashboard className={cls} />;
