@@ -5,7 +5,7 @@ import {
   User, Flag, RotateCcw, ClipboardCheck, ThumbsUp, ThumbsDown,
   Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2, Star,
   LayoutGrid, List, PlayCircle, ChevronDown, Inbox, Network,
-  Kanban, GripVertical,
+  Kanban, GripVertical, Workflow,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { Button } from '@/components/ui/button';
@@ -160,6 +160,7 @@ export function TasksView() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [approvalResult, setApprovalResult] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<{ type: 'agent' | 'workflow'; name: string } | null>(null);
 
   // Queue board state
   const [viewMode, setViewMode] = useState<'list' | 'queue' | 'kanban'>('list');
@@ -388,6 +389,27 @@ export function TasksView() {
     } finally { setSaving(false); }
   }
 
+  function handleSaveWithConfirm() {
+    if (editAgentId !== '') {
+      const agent = agents.find(a => a.id === editAgentId);
+      setPendingConfirm({ type: 'agent', name: agent?.name ?? 'AI Agent' });
+      return;
+    }
+    if (editWorkflowId !== '') {
+      const wf = workflows.find(w => w.id === editWorkflowId);
+      setPendingConfirm({ type: 'workflow', name: wf?.name ?? 'Workflow' });
+      return;
+    }
+    handleSave();
+  }
+
+  async function confirmAndSave() {
+    setPendingConfirm(null);
+    await handleSave();
+    setSelected(null);
+    setCreating(false);
+  }
+
   async function handleDelete(id: number) {
     await fetch(`${API}/tasks/${id}`, { method: 'DELETE', headers: fetchHeaders() });
     setTasks(prev => prev.filter(t => t.id !== id));
@@ -492,7 +514,7 @@ export function TasksView() {
     const matchStatus = filterStatus === 'all' || t.status === filterStatus;
     const matchApproval = filterApproval === 'all' || t.approval_status === filterApproval;
     const matchQueue = filterQueue === 'all' || String(t.queue_id) === filterQueue;
-    const matchOwnership = !t.assigned_to || t.assigned_to === user?.id;
+    const matchOwnership = (!t.assigned_to || t.assigned_to === user?.id) && !t.ai_agent_id && !t.workflow_id;
     return matchSearch && matchPriority && matchStatus && matchApproval && matchQueue && matchOwnership;
   });
 
@@ -1248,12 +1270,47 @@ export function TasksView() {
             )}
           </div>
 
+          {/* Confirmation dialog for agent/workflow assignment */}
+          {pendingConfirm && (
+            <div className="mx-5 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                  {pendingConfirm.type === 'agent' ? <Sparkles className="w-4 h-4 text-amber-500" /> : <Workflow className="w-4 h-4 text-amber-500" />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Assign to {pendingConfirm.type === 'agent' ? 'AI Agent' : 'Workflow'}?
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    This task will be sent to <span className="font-medium text-foreground">{pendingConfirm.name}</span> and removed from your task list. Are you sure?
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 justify-end">
+                <button
+                  onClick={() => setPendingConfirm(null)}
+                  className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmAndSave}
+                  disabled={saving}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                  Yes, assign it
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Save bar */}
           <div className="px-5 py-3 border-t border-border/50 shrink-0 flex items-center justify-end gap-2">
             {dirty && !saving && <span className="text-xs text-muted-foreground">Unsaved changes</span>}
-            <button onClick={() => { setSelected(null); setCreating(false); }}
+            <button onClick={() => { setSelected(null); setCreating(false); setPendingConfirm(null); }}
               className="px-3 py-1.5 rounded-lg text-xs text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
-            <Button size="sm" onClick={handleSave} disabled={saving || !editName.trim()} className="gap-1.5 text-xs h-7">
+            <Button size="sm" onClick={handleSaveWithConfirm} disabled={saving || !editName.trim()} className="gap-1.5 text-xs h-7">
               {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
               {creating ? 'Create Task' : 'Save Changes'}
             </Button>
