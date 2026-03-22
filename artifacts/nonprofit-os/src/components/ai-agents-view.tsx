@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
-  Shield, Search, Share2,
+  Shield, Search, Share2, Globe, Server, Webhook,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { dispatchCreditsRefresh } from "@/hooks/use-credits";
@@ -307,10 +307,28 @@ function InstructionsEditor({
   );
 }
 
+// ── Connector type → icon/label ────────────────────────────────────────────────
+const CONNECTOR_META: Record<string, { icon: React.ReactNode; color: string }> = {
+  n8n:      { icon: <span className="font-black text-[10px] leading-none">n8n</span>, color: "bg-[#EA4B71]" },
+  zapier:   { icon: <span className="font-black text-[10px] leading-none">Z</span>,   color: "bg-[#FF4A00]" },
+  api:      { icon: <Globe className="w-3 h-3" />,   color: "bg-indigo-500" },
+  mcp:      { icon: <Server className="w-3 h-3" />,  color: "bg-violet-600" },
+  salesforce: { icon: <span className="font-black text-[10px]">SF</span>, color: "bg-[#00A1E0]" },
+};
+
 // ── Tools Picker ──────────────────────────────────────────────────────────────
 
 function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: string[]) => void }) {
+  const { fetchHeaders } = useUser();
   const [custom, setCustom] = useState("");
+  const [connectors, setConnectors] = useState<Array<{ id: number; type: string; name: string; status: string }>>([]);
+
+  useEffect(() => {
+    fetch(`${API}/connector-configs`, { headers: fetchHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any[]) => setConnectors(data.filter((c: any) => c.status === 'connected')))
+      .catch(() => setConnectors([]));
+  }, []);
 
   const toggle = (t: string) => {
     onChange(tools.includes(t) ? tools.filter(x => x !== t) : [...tools, t]);
@@ -318,32 +336,81 @@ function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: strin
 
   const addCustom = () => {
     const trimmed = custom.trim();
-    if (trimmed && !tools.includes(trimmed)) {
-      onChange([...tools, trimmed]);
-    }
+    if (trimmed && !tools.includes(trimmed)) onChange([...tools, trimmed]);
     setCustom("");
   };
 
-  const customTools = tools.filter(t => !TOOL_OPTIONS.includes(t));
+  // All known tool keys (built-in + connector-based)
+  const connectorToolKeys = connectors.map(c => `connector:${c.id}:${c.name}`);
+  const allKnownKeys = [...TOOL_OPTIONS, ...connectorToolKeys];
+  const customTools = tools.filter(t => !allKnownKeys.includes(t));
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        {TOOL_OPTIONS.map(t => (
-          <button
-            key={t}
-            onClick={() => toggle(t)}
-            className={cn(
-              "px-2.5 py-1 text-xs rounded-full border transition-all",
-              tools.includes(t)
-                ? "bg-primary/15 border-primary/40 text-primary"
-                : "bg-secondary border-border text-muted-foreground hover:border-primary/40"
-            )}
-          >
-            {tools.includes(t) && <Check className="inline w-3 h-3 mr-1" />}{t}
-          </button>
-        ))}
+    <div className="space-y-4">
+      {/* ── Built-in Tools ── */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Built-in Tools</p>
+        <div className="flex flex-wrap gap-2">
+          {TOOL_OPTIONS.map(t => (
+            <button
+              key={t}
+              onClick={() => toggle(t)}
+              className={cn(
+                "px-2.5 py-1 text-xs rounded-full border transition-all",
+                tools.includes(t)
+                  ? "bg-primary/15 border-primary/40 text-primary"
+                  : "bg-secondary border-border text-muted-foreground hover:border-primary/40"
+              )}
+            >
+              {tools.includes(t) && <Check className="inline w-3 h-3 mr-1" />}{t}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* ── Connected Services ── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Connected Services</p>
+          {connectors.length === 0 && (
+            <span className="text-[11px] text-muted-foreground/60 italic">No connectors connected yet</span>
+          )}
+        </div>
+        {connectors.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {connectors.map(c => {
+              const key = `connector:${c.id}:${c.name}`;
+              const meta = CONNECTOR_META[c.type] ?? { icon: <Webhook className="w-3 h-3" />, color: "bg-slate-500" };
+              const selected = tools.includes(key);
+              return (
+                <button
+                  key={key}
+                  onClick={() => toggle(key)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all",
+                    selected
+                      ? "bg-primary/15 border-primary/40 text-primary"
+                      : "bg-secondary border-border text-muted-foreground hover:border-primary/40"
+                  )}
+                >
+                  <span className={cn("w-4 h-4 rounded flex items-center justify-center text-white shrink-0", meta.color)}>
+                    {meta.icon}
+                  </span>
+                  {selected && <Check className="w-3 h-3" />}
+                  {c.name}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {connectors.length === 0 && (
+          <p className="text-xs text-muted-foreground/60 bg-secondary/40 rounded-lg px-3 py-2">
+            Configure connectors (n8n, Zapier, APIs, MCP Servers) in the Connectors section to make them available as agent tools.
+          </p>
+        )}
+      </div>
+
+      {/* ── Custom tools ── */}
       {customTools.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {customTools.map(t => (
@@ -356,12 +423,14 @@ function ToolsPicker({ tools, onChange }: { tools: string[]; onChange: (t: strin
           ))}
         </div>
       )}
+
+      {/* ── Add custom ── */}
       <div className="flex gap-2">
         <input
           value={custom}
           onChange={e => setCustom(e.target.value)}
           onKeyDown={e => e.key === "Enter" && addCustom()}
-          placeholder="Add custom tool…"
+          placeholder="Add custom tool name…"
           className="flex-1 bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
         />
         <button onClick={addCustom} className="px-3 py-1.5 bg-secondary border border-border rounded-lg text-sm hover:bg-accent transition-colors">

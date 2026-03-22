@@ -20,6 +20,7 @@ import knowledgeRouter from "./knowledge";
 import activitiesRouter from "./activities";
 import processAttachmentsRouter from "./process-attachments";
 import tasksRouter from "./tasks";
+import connectorConfigsRouter from "./connector-configs";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(knowledgeRouter);
 router.use(activitiesRouter);
 router.use(processAttachmentsRouter);
 router.use(tasksRouter);
+router.use(connectorConfigsRouter);
 
 export default router;
