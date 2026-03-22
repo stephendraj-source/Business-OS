@@ -825,3 +825,133 @@ orgRouter.delete('/org/user-categories/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Task Sources (configurable) ───────────────────────────────────────────────
+
+const DEFAULT_TASK_SOURCES = [
+  { name: 'Employees',  color: '#3b82f6', description: 'Tasks created by employees' },
+  { name: 'AI Agents',  color: '#8b5cf6', description: 'Tasks created by AI agents requiring human approval' },
+];
+
+orgRouter.get('/org/task-sources', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const rows = await db.execute(
+      sql`SELECT * FROM task_sources WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+    );
+    let items = rows.rows as any[];
+    if (items.length === 0) {
+      for (const s of DEFAULT_TASK_SOURCES) {
+        await db.execute(
+          sql`INSERT INTO task_sources (tenant_id, name, color, description) VALUES (${tenantId}, ${s.name}, ${s.color}, ${s.description})`
+        );
+      }
+      const seeded = await db.execute(
+        sql`SELECT * FROM task_sources WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+      );
+      items = seeded.rows as any[];
+    }
+    res.json(items);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/task-sources', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '#94a3b8' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const rows = await db.execute(
+      sql`INSERT INTO task_sources (tenant_id, name, color, description) VALUES (${tenantId}, ${name.trim()}, ${color}, ${description.trim()}) RETURNING *`
+    );
+    res.status(201).json((rows.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/task-sources/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color } = req.body;
+    const existing = await db.execute(sql`SELECT * FROM task_sources WHERE id = ${id} LIMIT 1`);
+    const row = (existing.rows as any[])[0];
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const newName  = name        !== undefined ? name.trim()        : row.name;
+    const newDesc  = description !== undefined ? description.trim() : row.description;
+    const newColor = color       !== undefined ? color              : row.color;
+    const updated  = await db.execute(
+      sql`UPDATE task_sources SET name = ${newName}, description = ${newDesc}, color = ${newColor} WHERE id = ${id} RETURNING *`
+    );
+    res.json((updated.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/task-sources/:id', async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM task_sources WHERE id = ${parseInt(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Task Queues (configurable) ────────────────────────────────────────────────
+
+const DEFAULT_TASK_QUEUES = [
+  { name: 'General',        color: '#6b7280', description: 'General purpose task queue' },
+  { name: 'Board Meetings', color: '#0ea5e9', description: 'Tasks related to board meeting preparation and follow-up' },
+];
+
+orgRouter.get('/org/task-queues', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const rows = await db.execute(
+      sql`SELECT * FROM task_queues WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+    );
+    let items = rows.rows as any[];
+    if (items.length === 0) {
+      for (const q of DEFAULT_TASK_QUEUES) {
+        await db.execute(
+          sql`INSERT INTO task_queues (tenant_id, name, color, description) VALUES (${tenantId}, ${q.name}, ${q.color}, ${q.description})`
+        );
+      }
+      const seeded = await db.execute(
+        sql`SELECT * FROM task_queues WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+      );
+      items = seeded.rows as any[];
+    }
+    res.json(items);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/task-queues', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '#94a3b8' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const rows = await db.execute(
+      sql`INSERT INTO task_queues (tenant_id, name, color, description) VALUES (${tenantId}, ${name.trim()}, ${color}, ${description.trim()}) RETURNING *`
+    );
+    res.status(201).json((rows.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/task-queues/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color } = req.body;
+    const existing = await db.execute(sql`SELECT * FROM task_queues WHERE id = ${id} LIMIT 1`);
+    const row = (existing.rows as any[])[0];
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const newName  = name        !== undefined ? name.trim()        : row.name;
+    const newDesc  = description !== undefined ? description.trim() : row.description;
+    const newColor = color       !== undefined ? color              : row.color;
+    const updated  = await db.execute(
+      sql`UPDATE task_queues SET name = ${newName}, description = ${newDesc}, color = ${newColor} WHERE id = ${id} RETURNING *`
+    );
+    res.json((updated.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/task-queues/:id', async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM task_queues WHERE id = ${parseInt(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});

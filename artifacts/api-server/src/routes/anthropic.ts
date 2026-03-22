@@ -70,7 +70,7 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
       sql`SELECT pa.id, pa.title,
                COALESCE(pa.extracted_text, pa.url, '') AS content,
                pa.type, pa.url, pa.file_name,
-               p.name AS folder_name,
+               p.process_name AS folder_name,
                1 - (pa.embedding_vec <=> ${embStr}::vector) AS similarity,
                'process_attachment' AS source
             FROM process_attachments pa
@@ -118,7 +118,7 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
         sql`SELECT pa.id, pa.title,
                    COALESCE(pa.extracted_text, pa.url, '') AS content,
                    pa.type, pa.url, pa.file_name,
-                   p.name AS folder_name, 0.0 AS similarity, 'process_attachment' AS source
+                   p.process_name AS folder_name, 0.0 AS similarity, 'process_attachment' AS source
               FROM process_attachments pa
               LEFT JOIN processes p ON p.id = pa.process_id
               WHERE ${procTenantCond}
@@ -289,9 +289,9 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
 5. Explain relationships between processes, workflows, activities, and initiatives
 6. Answer questions about document content for wikis and uploaded files
 
-## Read-only mode
+## Read-only mode with task creation
 
-You can query the database to retrieve data and answer questions, but you cannot create, update, or delete any records. If the user asks you to make a change, explain that you can only read data and suggest they make the change directly in the application.
+You can query the database to retrieve data and answer questions. You cannot directly update or delete records. However, you CAN create tasks that are sent for human approval. If you identify something that should be changed or created in the system, use the create_task tool to propose it — a human will review and approve or reject the task before any action is taken. Always explain to the user what task you are creating and why.
 
 ## Document navigation links
 
@@ -363,11 +363,25 @@ const DB_TOOLS: Anthropic.Tool[] = [
       required: ["sql_query"],
     },
   },
+  {
+    name: "create_task",
+    description: "Create a task that requires human approval before any action is taken. Use this when you identify something that should be done in the system — describe exactly what you want to do in ai_instructions. A human will review and approve or reject the task. Only after approval will the instructions be executed.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Short, clear task title" },
+        description: { type: "string", description: "What this task is about and why it is needed" },
+        ai_instructions: { type: "string", description: "Detailed instructions of exactly what actions should be carried out when a human approves this task (e.g. 'Update process #12 KPI to Revenue Growth Rate. Create an activity called Q3 Review Meeting.')" },
+        priority: { type: "string", enum: ["high", "normal", "low"], description: "Task priority" },
+      },
+      required: ["name", "description", "ai_instructions"],
+    },
+  },
 ];
 
 // ─── Tool executor ─────────────────────────────────────────────────────────────
 
-async function executeTool(name: string, input: Record<string, any>, _tenantId: number | null): Promise<{ success: boolean; message: string; data?: any }> {
+async function executeTool(name: string, input: Record<string, any>, tenantId: number | null, createdBy: number | null): Promise<{ success: boolean; message: string; data?: any }> {
   try {
     switch (name) {
 
@@ -378,6 +392,21 @@ async function executeTool(name: string, input: Record<string, any>, _tenantId: 
         const result = await db.execute(sql.raw(sql_query));
         const rows = result.rows as any[];
         return { success: true, message: `Query returned ${rows.length} row(s)`, data: rows.slice(0, 50) };
+      }
+
+      case "create_task": {
+        const { name, description = "", ai_instructions, priority = "normal" } = input;
+        const result = await db.execute(sql`
+          INSERT INTO tasks (tenant_id, name, description, priority, source, approval_status, ai_instructions, created_by)
+          VALUES (${tenantId}, ${name}, ${description}, ${priority}, 'AI Agents', 'pending', ${ai_instructions}, ${createdBy})
+          RETURNING id, task_number, name
+        `);
+        const task = (result.rows as any[])[0];
+        return {
+          success: true,
+          message: `Task #${task.task_number} "${name}" created and is pending human approval. A human must review and approve this task before any actions are executed.`,
+          data: task,
+        };
       }
 
       default:
@@ -470,6 +499,7 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
       .orderBy(messagesTable.createdAt);
 
     const tenantId = (req as any).auth?.tenantId ?? null;
+    const createdBy = (req as any).auth?.userId ?? null;
 
     // Build system prompt and knowledge context in parallel
     const listing = isListingQuery(content.trim());
@@ -565,7 +595,7 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
         // Notify client a tool is being called
         send({ tool_call: { id: tb.id, name: tb.name, input: tb.input } });
 
-        const result = await executeTool(tb.name, tb.input as Record<string, any>, tenantId);
+        const result = await executeTool(tb.name, tb.input as Record<string, any>, tenantId, createdBy);
 
         // Notify client of result
         send({ tool_result: { id: tb.id, name: tb.name, success: result.success, message: result.message } });
