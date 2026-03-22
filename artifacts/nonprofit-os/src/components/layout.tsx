@@ -489,7 +489,18 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         <nav
           className="flex-1 overflow-y-auto py-4 px-3 space-y-6"
           onDragOver={e => e.preventDefault()}
-          onDrop={endDrag}
+          onDrop={e => {
+            // Execute any pending reorder when dropped on the nav background/gap
+            const src = dragRef.current;
+            const dt = dropTarget;
+            if (src?.kind === 'section' && dt?.kind === 'section') {
+              onSectionDrop(e, dt.id);
+            } else if (src?.kind === 'item' && dt?.kind === 'item' && dt.sectionId) {
+              onItemDrop(e, dt.id as ActiveView, dt.sectionId);
+            } else {
+              endDrag();
+            }
+          }}
         >
           {/* ── Favourites (pinned, not draggable) ────────────────────────── */}
           <div>
@@ -574,6 +585,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                     if (dragRef.current?.kind === 'section') onSectionDrop(e, sectionId);
                     else onSectionHeaderItemDrop(e, sectionId);
                   }}
+                  onDragEnd={endDrag}
                 >
                   <div className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5">
                     <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
