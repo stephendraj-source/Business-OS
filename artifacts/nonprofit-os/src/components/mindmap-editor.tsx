@@ -83,6 +83,11 @@ interface EdgeData {
   arrowTip: { x: number; y: number; angle: number };
 }
 
+// How far the arrowhead polygon body extends behind its tip point.
+// The path stops this many px before the node border so neither the line
+// nor the arrowhead ever enters the destination node rectangle.
+const ARROW_DEPTH = 9;
+
 function edgeData(src: MapNode, dst: MapNode): EdgeData {
   const sh = nodeHeight(src);
   const dh = nodeHeight(dst);
@@ -93,16 +98,23 @@ function edgeData(src: MapNode, dst: MapNode): EdgeData {
   const diffX = dstCx - srcCx;
   const diffY = dstCy - srcCy;
 
-  let sx: number, sy: number, ex: number, ey: number;
+  // arrowTip: the tip of the arrowhead sits exactly at the node border.
+  // path endpoint (ex/ey): the path stops ARROW_DEPTH px before the border
+  // so the arrowhead body sits between the path end and the node border.
+  let sx: number, sy: number;
+  let tipX: number, tipY: number;
+  let ex: number, ey: number;
   let cp1x: number, cp1y: number, cp2x: number, cp2y: number;
 
   if (Math.abs(diffX) >= Math.abs(diffY)) {
     if (diffX >= 0) {
-      sx = src.x + NODE_W; sy = srcCy;
-      ex = dst.x;          ey = dstCy;
+      sx = src.x + NODE_W;    sy = srcCy;
+      tipX = dst.x;            tipY = dstCy;
+      ex = dst.x - ARROW_DEPTH; ey = dstCy;
     } else {
-      sx = src.x;          sy = srcCy;
-      ex = dst.x + NODE_W; ey = dstCy;
+      sx = src.x;              sy = srcCy;
+      tipX = dst.x + NODE_W;  tipY = dstCy;
+      ex = dst.x + NODE_W + ARROW_DEPTH; ey = dstCy;
     }
     const bend = Math.abs(ex - sx) * 0.45;
     cp1x = sx + (diffX >= 0 ? bend : -bend); cp1y = sy;
@@ -110,22 +122,24 @@ function edgeData(src: MapNode, dst: MapNode): EdgeData {
   } else {
     if (diffY >= 0) {
       sx = srcCx; sy = src.y + sh;
-      ex = dstCx; ey = dst.y;
+      tipX = dstCx; tipY = dst.y;
+      ex = dstCx; ey = dst.y - ARROW_DEPTH;
     } else {
       sx = srcCx; sy = src.y;
-      ex = dstCx; ey = dst.y + dh;
+      tipX = dstCx; tipY = dst.y + dh;
+      ex = dstCx; ey = dst.y + dh + ARROW_DEPTH;
     }
     const bend = Math.abs(ey - sy) * 0.45;
     cp1x = sx; cp1y = sy + (diffY >= 0 ? bend : -bend);
     cp2x = ex; cp2y = ey + (diffY >= 0 ? -bend : bend);
   }
 
-  // Arrowhead tip angle: tangent at end of cubic bezier = direction from cp2 → end
-  const angle = Math.atan2(ey - cp2y, ex - cp2x) * (180 / Math.PI);
+  // Arrowhead angle: direction from path end toward the tip (node border)
+  const angle = Math.atan2(tipY - ey, tipX - ex) * (180 / Math.PI);
 
   return {
     path: `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`,
-    arrowTip: { x: ex, y: ey, angle },
+    arrowTip: { x: tipX, y: tipY, angle },
   };
 }
 
