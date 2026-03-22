@@ -475,25 +475,28 @@ router.post("/tasks/:id/processes/auto-detect", async (req, res) => {
     const id = Number(req.params.id);
     const tenantId = req.auth?.tenantId ?? null;
 
-    // Get task details
-    const taskResult = await db.execute(sql`SELECT name, description FROM tasks WHERE id = ${id}`);
+    // Get task details (including its own tenant_id for credit deduction)
+    const taskResult = await db.execute(sql`SELECT name, description, tenant_id FROM tasks WHERE id = ${id}`);
     const task = taskResult.rows[0] as any;
     if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
-    // Get all processes for this tenant (fall back to all processes if none found for the tenant)
-    let processResult = tenantId
-      ? await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes WHERE tenant_id = ${tenantId} ORDER BY number`)
+    // Use task's tenant_id for billing (fallback to auth tenantId)
+    const billingTenantId: number | null = task.tenant_id ?? tenantId;
+
+    // Get all processes — try tenant-scoped first, fall back to all
+    let processResult = billingTenantId
+      ? await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes WHERE tenant_id = ${billingTenantId} ORDER BY number`)
       : await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes ORDER BY number`);
 
-    if (!processResult.rows.length && tenantId !== null) {
+    if (!processResult.rows.length) {
       processResult = await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes ORDER BY number`);
     }
 
     const processes = processResult.rows as any[];
     if (!processes.length) { res.json({ process_ids: [] }); return; }
 
-    if (tenantId !== null) {
-      const credit = await useCredit(tenantId);
+    if (billingTenantId !== null) {
+      const credit = await useCredit(billingTenantId);
       if (!credit.ok) { res.status(402).json({ error: "Insufficient credits. Please contact your administrator." }); return; }
     }
 

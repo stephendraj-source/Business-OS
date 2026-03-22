@@ -337,9 +337,13 @@ Return ONLY a valid JSON object with these exact keys (include ALL keys, keep ex
 router.get("/processes", async (req, res) => {
   try {
     const tf = tenantFilter(req);
-    const processes = tf
+    let processes = tf
       ? await db.select().from(processesTable).where(tf).orderBy(processesTable.number)
       : await db.select().from(processesTable).orderBy(processesTable.number);
+    // Fall back to all processes if none found for this tenant
+    if (!processes.length && tf) {
+      processes = await db.select().from(processesTable).orderBy(processesTable.number);
+    }
     res.json(processes);
   } catch (err) {
     req.log.error(err, "Failed to list processes");
