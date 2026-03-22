@@ -78,12 +78,45 @@ function nodeHeight(node: MapNode) {
 // ── Edge path helper ──────────────────────────────────────────────────────────
 
 function edgePath(src: MapNode, dst: MapNode): string {
-  const sx = src.x + NODE_W / 2;
-  const sy = src.y + nodeHeight(src) / 2;
-  const dx = dst.x + NODE_W / 2;
-  const dy = dst.y + nodeHeight(dst) / 2;
-  const cx = (sx + dx) / 2;
-  return `M ${sx} ${sy} C ${cx} ${sy}, ${cx} ${dy}, ${dx} ${dy}`;
+  const sh = nodeHeight(src);
+  const dh = nodeHeight(dst);
+  const srcCx = src.x + NODE_W / 2;
+  const srcCy = src.y + sh / 2;
+  const dstCx = dst.x + NODE_W / 2;
+  const dstCy = dst.y + dh / 2;
+  const diffX = dstCx - srcCx;
+  const diffY = dstCy - srcCy;
+
+  let sx: number, sy: number, ex: number, ey: number;
+  let cp1x: number, cp1y: number, cp2x: number, cp2y: number;
+
+  if (Math.abs(diffX) >= Math.abs(diffY)) {
+    // Primarily horizontal — connect right→left or left→right edge
+    if (diffX >= 0) {
+      sx = src.x + NODE_W; sy = srcCy;
+      ex = dst.x;          ey = dstCy;
+    } else {
+      sx = src.x;          sy = srcCy;
+      ex = dst.x + NODE_W; ey = dstCy;
+    }
+    const bend = Math.abs(ex - sx) * 0.45;
+    cp1x = sx + (diffX >= 0 ? bend : -bend); cp1y = sy;
+    cp2x = ex + (diffX >= 0 ? -bend : bend); cp2y = ey;
+  } else {
+    // Primarily vertical — connect bottom→top or top→bottom edge
+    if (diffY >= 0) {
+      sx = srcCx; sy = src.y + sh;
+      ex = dstCx; ey = dst.y;
+    } else {
+      sx = srcCx; sy = src.y;
+      ex = dstCx; ey = dst.y + dh;
+    }
+    const bend = Math.abs(ey - sy) * 0.45;
+    cp1x = sx; cp1y = sy + (diffY >= 0 ? bend : -bend);
+    cp2x = ex; cp2y = ey + (diffY >= 0 ? -bend : bend);
+  }
+
+  return `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`;
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
