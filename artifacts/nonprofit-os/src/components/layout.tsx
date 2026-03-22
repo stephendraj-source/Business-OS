@@ -180,7 +180,7 @@ function loadItemOrder(): Record<string, ActiveView[]> {
 // ── Drag & drop types ──────────────────────────────────────────────────────────
 
 type DragKind = 'section' | 'item';
-interface DragState { kind: DragKind; id: string; sectionId?: string; }
+interface DragState { kind: DragKind; id: string; sectionId?: string; label: string; }
 interface DropTarget { kind: DragKind; id: string; pos: 'before' | 'after'; sectionId?: string; }
 
 // ── Main Layout ────────────────────────────────────────────────────────────────
@@ -251,7 +251,10 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   // ── Nav reorder state ────────────────────────────────────────────────────────
   const [sectionOrder, setSectionOrder] = useState<string[]>(loadSectionOrder);
   const [itemOrder, setItemOrder]       = useState<Record<string, ActiveView[]>>(loadItemOrder);
-  const dragRef = useRef<DragState | null>(null);
+  const dragRef   = useRef<DragState | null>(null);
+  const [draggingId, setDraggingId]     = useState<string | null>(null);
+  const [draggingKind, setDraggingKind] = useState<DragKind | null>(null);
+  const [ghostPos, setGhostPos]         = useState<{ x: number; y: number; label: string } | null>(null);
   const [dropTarget, setDropTarget]     = useState<DropTarget | null>(null);
 
   // Refs for server sync (avoids stale closures + prevents re-saving during hydration)
@@ -330,117 +333,97 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
     localStorage.removeItem(STORAGE_ITEMS);
   }
 
-  // ── Drag handlers — sections ─────────────────────────────────────────────────
+  // ── Pointer-based drag handlers ──────────────────────────────────────────────
 
-  function onSectionDragStart(e: React.DragEvent, sectionId: string) {
-    dragRef.current = { kind: 'section', id: sectionId };
-    e.dataTransfer.effectAllowed = 'move';
-    // Transparent drag image
-    const ghost = document.createElement('div');
-    ghost.style.cssText = 'position:fixed;top:-100px;opacity:0';
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }
-
-  function onSectionDragOver(e: React.DragEvent, sectionId: string) {
-    if (!dragRef.current || dragRef.current.id === sectionId) return;
+  function startDrag(e: React.PointerEvent, kind: DragKind, id: string, label: string, sectionId?: string) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-    setDropTarget({ kind: 'section', id: sectionId, pos });
+    e.stopPropagation();
+    dragRef.current = { kind, id, sectionId, label };
+    setDraggingId(id);
+    setDraggingKind(kind);
+    setGhostPos({ x: e.clientX, y: e.clientY, label });
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
-  function onSectionDrop(e: React.DragEvent, targetSectionId: string) {
-    e.preventDefault();
-    const src = dragRef.current;
-    if (!src || src.kind !== 'section' || src.id === targetSectionId) { endDrag(); return; }
-    setSectionOrder(prev => {
-      const next = prev.filter(s => s !== src.id);
-      const targetIdx = next.indexOf(targetSectionId);
-      const pos = dropTarget?.pos ?? 'after';
-      next.splice(pos === 'before' ? targetIdx : targetIdx + 1, 0, src.id);
-      return next;
-    });
-    endDrag();
-  }
+  function onGripPointerMove(e: React.PointerEvent) {
+    const ds = dragRef.current;
+    if (!ds) return;
+    setGhostPos(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
-  // ── Drag handlers — items ────────────────────────────────────────────────────
+    const els = document.elementsFromPoint(e.clientX, e.clientY);
 
-  function onItemDragStart(e: React.DragEvent, itemId: ActiveView, sectionId: string) {
-    dragRef.current = { kind: 'item', id: itemId, sectionId };
-    e.dataTransfer.effectAllowed = 'move';
-    const ghost = document.createElement('div');
-    ghost.style.cssText = 'position:fixed;top:-100px;opacity:0';
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 0, 0);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }
-
-  function onItemDragOver(e: React.DragEvent, itemId: ActiveView, sectionId: string) {
-    const src = dragRef.current;
-    if (!src || src.kind !== 'item') return;
-    if (src.id === itemId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-    setDropTarget({ kind: 'item', id: itemId, pos, sectionId });
-  }
-
-  // Allow dropping item onto a section header → append to that section
-  function onSectionHeaderItemDragOver(e: React.DragEvent, sectionId: string) {
-    const src = dragRef.current;
-    if (!src || src.kind !== 'item') return;
-    if (src.sectionId === sectionId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropTarget({ kind: 'section', id: sectionId, pos: 'after' });
-  }
-
-  function onItemDrop(e: React.DragEvent, targetItemId: ActiveView, targetSectionId: string) {
-    e.preventDefault();
-    const src = dragRef.current;
-    if (!src || src.kind !== 'item') { endDrag(); return; }
-    const srcId = src.id as ActiveView;
-    const srcSection = src.sectionId!;
-    const pos = dropTarget?.pos ?? 'after';
-
-    setItemOrder(prev => {
-      const next = { ...prev };
-      // Remove from source section
-      next[srcSection] = next[srcSection].filter(id => id !== srcId);
-      // Insert into target section
-      const targetList = [...(next[targetSectionId] || [])];
-      const targetIdx = targetList.indexOf(targetItemId);
-      if (targetIdx === -1) {
-        targetList.push(srcId);
-      } else {
-        targetList.splice(pos === 'before' ? targetIdx : targetIdx + 1, 0, srcId);
+    if (ds.kind === 'item') {
+      for (const el of els) {
+        const itemId  = (el as HTMLElement).dataset?.navItemId;
+        const secId   = (el as HTMLElement).dataset?.navSectionId;
+        if (itemId && secId && itemId !== ds.id) {
+          const rect = el.getBoundingClientRect();
+          const pos: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+          setDropTarget({ kind: 'item', id: itemId, pos, sectionId: secId });
+          return;
+        }
       }
-      next[targetSectionId] = targetList;
-      return next;
-    });
-    endDrag();
+      // Dragging over a section header → append to that section
+      for (const el of els) {
+        const secId = (el as HTMLElement).dataset?.navSectionHeader;
+        if (secId && secId !== ds.sectionId) {
+          setDropTarget({ kind: 'section', id: secId, pos: 'after' });
+          return;
+        }
+      }
+      setDropTarget(null);
+    } else {
+      for (const el of els) {
+        const secId = (el as HTMLElement).dataset?.navSectionHeader;
+        if (secId && secId !== ds.id) {
+          const rect = el.getBoundingClientRect();
+          const pos: 'before' | 'after' = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+          setDropTarget({ kind: 'section', id: secId, pos });
+          return;
+        }
+      }
+      setDropTarget(null);
+    }
   }
 
-  function onSectionHeaderItemDrop(e: React.DragEvent, targetSectionId: string) {
-    e.preventDefault();
-    const src = dragRef.current;
-    if (!src || src.kind !== 'item' || src.sectionId === targetSectionId) { endDrag(); return; }
-    const srcId = src.id as ActiveView;
-    setItemOrder(prev => {
-      const next = { ...prev };
-      next[src.sectionId!] = next[src.sectionId!].filter(id => id !== srcId);
-      next[targetSectionId] = [...(next[targetSectionId] || []), srcId];
-      return next;
-    });
-    endDrag();
-  }
-
-  function endDrag() {
+  function onGripPointerUp(_e: React.PointerEvent) {
+    const ds = dragRef.current;
+    const dt = dropTarget;
+    if (ds && dt) {
+      if (ds.kind === 'section' && dt.kind === 'section') {
+        setSectionOrder(prev => {
+          const next = prev.filter(s => s !== ds.id);
+          const targetIdx = next.indexOf(dt.id);
+          next.splice(dt.pos === 'before' ? targetIdx : targetIdx + 1, 0, ds.id);
+          return next;
+        });
+      } else if (ds.kind === 'item') {
+        const srcId = ds.id as ActiveView;
+        const srcSection = ds.sectionId!;
+        if (dt.kind === 'item' && dt.sectionId) {
+          setItemOrder(prev => {
+            const next = { ...prev };
+            next[srcSection] = next[srcSection].filter(id => id !== srcId);
+            const targetList = [...(next[dt.sectionId!] || [])];
+            const targetIdx = targetList.indexOf(dt.id as ActiveView);
+            targetList.splice(dt.pos === 'before' ? targetIdx : targetIdx + 1, 0, srcId);
+            next[dt.sectionId!] = targetList;
+            return next;
+          });
+        } else if (dt.kind === 'section' && dt.id !== srcSection) {
+          setItemOrder(prev => {
+            const next = { ...prev };
+            next[srcSection] = next[srcSection].filter(id => id !== srcId);
+            next[dt.id] = [...(next[dt.id] || []), srcId];
+            return next;
+          });
+        }
+      }
+    }
     dragRef.current = null;
+    setDraggingId(null);
+    setDraggingKind(null);
+    setGhostPos(null);
     setDropTarget(null);
   }
 
@@ -472,10 +455,20 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const sectionMap = Object.fromEntries(SECTIONS_DEF.map(s => [s.id, s]));
   const itemMap    = Object.fromEntries(ITEMS_DEF.map(i => [i.id, i]));
 
-  const draggingItemId = dragRef.current?.kind === 'item' ? dragRef.current.id : null;
+  const draggingItemId = draggingId;
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
+
+      {/* Drag ghost — follows pointer during nav reorder */}
+      {ghostPos && (
+        <div
+          className="fixed z-[9999] pointer-events-none px-3 py-1.5 rounded-lg bg-sidebar-foreground/90 text-sidebar text-xs font-medium shadow-lg opacity-90 -translate-y-1/2"
+          style={{ left: ghostPos.x + 14, top: ghostPos.y }}
+        >
+          {ghostPos.label}
+        </div>
+      )}
 
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
@@ -489,22 +482,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </div>
 
         {/* Navigation */}
-        <nav
-          className="flex-1 overflow-y-auto py-4 px-3 space-y-6"
-          onDragOver={e => e.preventDefault()}
-          onDrop={e => {
-            // Execute any pending reorder when dropped on the nav background/gap
-            const src = dragRef.current;
-            const dt = dropTarget;
-            if (src?.kind === 'section' && dt?.kind === 'section') {
-              onSectionDrop(e, dt.id);
-            } else if (src?.kind === 'item' && dt?.kind === 'item' && dt.sectionId) {
-              onItemDrop(e, dt.id as ActiveView, dt.sectionId);
-            } else {
-              endDrag();
-            }
-          }}
-        >
+        <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-6">
           {/* ── Favourites (pinned, not draggable) ────────────────────────── */}
           <div>
             <div className="flex items-center gap-1.5 px-1 mb-1.5">
@@ -557,7 +535,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             if (section.id === 'admin' && !isAdmin) return null;
 
             const isSectionDropTarget = dropTarget?.kind === 'section' && dropTarget.id === sectionId;
-            const isDraggingSection = dragRef.current?.kind === 'section' && dragRef.current.id === sectionId;
+            const isDraggingSection = draggingId === sectionId && draggingKind === 'section';
 
             return (
               <div
@@ -575,22 +553,17 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   </div>
                 )}
 
-                {/* Section header — draggable + collapse toggle */}
+                {/* Section header — pointer-drag + collapse toggle */}
                 <div
                   className="group flex items-center gap-1 mb-1.5 px-2"
-                  draggable
-                  onDragStart={e => onSectionDragStart(e, sectionId)}
-                  onDragOver={e => {
-                    onSectionDragOver(e, sectionId);
-                    onSectionHeaderItemDragOver(e, sectionId);
-                  }}
-                  onDrop={e => {
-                    if (dragRef.current?.kind === 'section') onSectionDrop(e, sectionId);
-                    else onSectionHeaderItemDrop(e, sectionId);
-                  }}
-                  onDragEnd={endDrag}
+                  data-nav-section-header={sectionId}
                 >
-                  <div className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5">
+                  <div
+                    className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5 touch-none select-none"
+                    onPointerDown={e => startDrag(e, 'section', sectionId, section.label)}
+                    onPointerMove={onGripPointerMove}
+                    onPointerUp={onGripPointerUp}
+                  >
                     <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
                   </div>
                   <div
@@ -611,7 +584,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                 </div>
 
                 {/* Drop indicator when item dragged onto section header */}
-                {dropTarget?.kind === 'section' && dropTarget.id === sectionId && dragRef.current?.kind === 'item' && (
+                {dropTarget?.kind === 'section' && dropTarget.id === sectionId && draggingKind === 'item' && (
                   <div className="mx-2 mb-1 h-0.5 bg-primary/60 rounded-full" />
                 )}
 
@@ -626,7 +599,12 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                     const isDropAfter  = dropTarget?.kind === 'item' && dropTarget.id === item.id && dropTarget.pos === 'after';
 
                     return (
-                      <div key={item.id} className={cn('relative', isDragging && 'opacity-40')}>
+                      <div
+                        key={item.id}
+                        className={cn('relative', isDragging && 'opacity-40')}
+                        data-nav-item-id={item.id}
+                        data-nav-section-id={sectionId}
+                      >
                         {/* Drop line before */}
                         {isDropBefore && (
                           <div className="absolute -top-px left-3 right-3 flex items-center gap-1 z-10">
@@ -635,16 +613,14 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                           </div>
                         )}
 
-                        <div
-                          className="group flex items-center"
-                          draggable
-                          onDragStart={e => onItemDragStart(e, item.id, sectionId)}
-                          onDragOver={e => onItemDragOver(e, item.id, sectionId)}
-                          onDrop={e => onItemDrop(e, item.id, sectionId)}
-                          onDragEnd={endDrag}
-                        >
+                        <div className="group flex items-center">
                           {/* Drag handle */}
-                          <div className="opacity-0 group-hover:opacity-40 cursor-grab active:cursor-grabbing transition-opacity pl-1 pr-0.5 py-2 flex-shrink-0">
+                          <div
+                            className="opacity-0 group-hover:opacity-40 cursor-grab active:cursor-grabbing transition-opacity pl-1 pr-0.5 py-2 flex-shrink-0 touch-none select-none"
+                            onPointerDown={e => startDrag(e, 'item', item.id, item.label, sectionId)}
+                            onPointerMove={onGripPointerMove}
+                            onPointerUp={onGripPointerUp}
+                          >
                             <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
                           </div>
 
@@ -678,7 +654,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                 </div>
 
                 {/* Drop indicator after section */}
-                {isSectionDropTarget && dropTarget?.pos === 'after' && dragRef.current?.kind === 'section' && (
+                {isSectionDropTarget && dropTarget?.pos === 'after' && isDraggingSection && (
                   <div className="absolute -bottom-3 left-0 right-0 flex items-center gap-1 z-10 px-1">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
                     <div className="flex-1 h-0.5 bg-primary rounded-full" />
