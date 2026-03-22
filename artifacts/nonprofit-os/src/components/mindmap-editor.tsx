@@ -458,19 +458,36 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         cursor += childSelfHs[i] + SIBLING_GAP;
       }
 
-      // Step 2 – layout children and resolve subtree overlaps on the fly
+      // Step 2 – layout children and resolve subtree overlaps on the fly.
+      // Key insight: a LEAF sibling has no children, so it only occupies its own
+      // X column and can never overlap with a previous sibling's deeper subtree.
+      // Only non-leaf siblings need to clear the full running subtree bottom.
       const extents: Array<{ top: number; bottom: number }> = [];
+      let runningSubtreeBottom = -Infinity; // max bottom of all subtrees placed so far
       for (let i = 0; i < children.length; i++) {
         if (i > 0) {
-          // ensure this child doesn't collide with previous sibling's subtree
-          const prevBottom = extents[i - 1].bottom;
-          const desiredTop = childYMids[i] - childSelfHs[i] / 2;
-          if (desiredTop < prevBottom + SUBTREE_GAP) {
-            const shift = prevBottom + SUBTREE_GAP - desiredTop;
-            for (let j = i; j < children.length; j++) childYMids[j] += shift;
+          const currHasChildren = (childMap.get(children[i]) ?? []).length > 0;
+          if (currHasChildren) {
+            // Non-leaf: must clear all previously placed subtrees (they share deeper X columns)
+            const desiredTop = childYMids[i] - childSelfHs[i] / 2;
+            if (desiredTop < runningSubtreeBottom + SUBTREE_GAP) {
+              const shift = runningSubtreeBottom + SUBTREE_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) childYMids[j] += shift;
+            }
+          } else {
+            // Leaf: only needs SIBLING_GAP from the previous sibling's node box
+            // (leaves have no children, so no deeper X-column collision possible)
+            const prevNodeBottom = childYMids[i - 1] + childSelfHs[i - 1] / 2;
+            const desiredTop = childYMids[i] - childSelfHs[i] / 2;
+            if (desiredTop < prevNodeBottom + SIBLING_GAP) {
+              const shift = prevNodeBottom + SIBLING_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) childYMids[j] += shift;
+            }
           }
         }
-        extents.push(layoutSubtree(children[i], nextX, childYMids[i], xDir));
+        const ext = layoutSubtree(children[i], nextX, childYMids[i], xDir);
+        extents.push(ext);
+        runningSubtreeBottom = Math.max(runningSubtreeBottom, ext.bottom);
       }
 
       const subtreeTop    = Math.min(nodeTop, ...extents.map(e => e.top));
@@ -508,16 +525,28 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         cursor += childSelfHs[i] + SIBLING_GAP;
       }
       const extents: Array<{ top: number; bottom: number }> = [];
+      let runningSubtreeBottomRoot = -Infinity;
       for (let i = 0; i < children.length; i++) {
         if (i > 0) {
-          const prevBottom = extents[i - 1].bottom;
-          const desiredTop = yMids[i] - childSelfHs[i] / 2;
-          if (desiredTop < prevBottom + SUBTREE_GAP) {
-            const shift = prevBottom + SUBTREE_GAP - desiredTop;
-            for (let j = i; j < children.length; j++) yMids[j] += shift;
+          const currHasChildren = (childMap.get(children[i]) ?? []).length > 0;
+          if (currHasChildren) {
+            const desiredTop = yMids[i] - childSelfHs[i] / 2;
+            if (desiredTop < runningSubtreeBottomRoot + SUBTREE_GAP) {
+              const shift = runningSubtreeBottomRoot + SUBTREE_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) yMids[j] += shift;
+            }
+          } else {
+            const prevNodeBottom = yMids[i - 1] + childSelfHs[i - 1] / 2;
+            const desiredTop = yMids[i] - childSelfHs[i] / 2;
+            if (desiredTop < prevNodeBottom + SIBLING_GAP) {
+              const shift = prevNodeBottom + SIBLING_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) yMids[j] += shift;
+            }
           }
         }
-        extents.push(layoutSubtree(children[i], xStart, yMids[i], xDir));
+        const ext = layoutSubtree(children[i], xStart, yMids[i], xDir);
+        extents.push(ext);
+        runningSubtreeBottomRoot = Math.max(runningSubtreeBottomRoot, ext.bottom);
       }
     }
 
@@ -1074,8 +1103,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         ) : (
           <span
             className="flex-1 text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
-            onDoubleClick={() => setEditingName(true)}
-            title="Double-click to rename"
+            onClick={() => setEditingName(true)}
+            title="Click to rename"
           >
             {mindmapName}
           </span>
@@ -1174,6 +1203,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
             onPointerMove={handleSvgPointerMove}
             onPointerUp={handleSvgPointerUp}
             onWheel={handleWheel}
+            onContextMenu={e => e.preventDefault()}
             style={{ cursor: connectMode ? 'crosshair' : 'default' }}
           >
             <defs>
