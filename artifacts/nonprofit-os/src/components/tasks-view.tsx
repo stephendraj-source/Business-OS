@@ -4,6 +4,7 @@ import {
   Clock, AlertTriangle, ChevronRight, Bot, Sparkles,
   User, Flag, RotateCcw, ClipboardCheck, ThumbsUp, ThumbsDown,
   Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2, Star,
+  LayoutGrid, List, PlayCircle, ChevronDown, Inbox,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { Button } from '@/components/ui/button';
@@ -152,6 +153,12 @@ export function TasksView() {
   const [agentError, setAgentError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
   const [approvalResult, setApprovalResult] = useState<string | null>(null);
+
+  // Queue board state
+  const [viewMode, setViewMode] = useState<'list' | 'queue'>('list');
+  const [collapsedQueues, setCollapsedQueues] = useState<Set<string>>(new Set());
+  const [pickingUpTask, setPickingUpTask] = useState<number | null>(null);
+  const [quickApprovingTask, setQuickApprovingTask] = useState<number | null>(null);
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [agents, setAgents] = useState<AiAgent[]>([]);
@@ -303,6 +310,44 @@ export function TasksView() {
     } finally { setApproving(false); }
   }
 
+  // ── Queue board helpers ────────────────────────────────────────────────────
+
+  function toggleQueueCollapse(key: string) {
+    setCollapsedQueues(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  async function pickUpTask(id: number) {
+    setPickingUpTask(id);
+    try {
+      const r = await fetch(`${API}/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ status: 'in_progress', assignedTo: user?.id }),
+      });
+      if (r.ok) await loadTasks();
+    } finally { setPickingUpTask(null); }
+  }
+
+  async function quickApprove(id: number) {
+    setQuickApprovingTask(id);
+    try {
+      const r = await fetch(`${API}/tasks/${id}/approve`, { method: 'POST', headers: fetchHeaders() });
+      if (r.ok) await loadTasks();
+    } finally { setQuickApprovingTask(null); }
+  }
+
+  async function quickReject(id: number) {
+    setQuickApprovingTask(id);
+    try {
+      const r = await fetch(`${API}/tasks/${id}/reject`, { method: 'POST', headers: fetchHeaders() });
+      if (r.ok) await loadTasks();
+    } finally { setQuickApprovingTask(null); }
+  }
+
   const canEditTask = (t: TaskRow) => isManagerOrAbove || t.created_by === user?.id;
   const canApprove = (t: TaskRow) => isManagerOrAbove && t.approval_status === 'pending';
 
@@ -318,6 +363,25 @@ export function TasksView() {
 
   const pendingCount = tasks.filter(t => t.approval_status === 'pending').length;
   const panelOpen = creating || selected !== null;
+
+  // Group filtered tasks by queue for board view
+  const queueGroups = (() => {
+    const groups: { key: string; queue: { id: string; name: string; color: string }; tasks: TaskRow[] }[] = [];
+    const seen = new Map<string, number>();
+    for (const q of queues) {
+      const key = String(q.id);
+      seen.set(key, groups.length);
+      groups.push({ key, queue: { id: key, name: q.name, color: q.color }, tasks: [] });
+    }
+    const noQueueIdx = groups.length;
+    groups.push({ key: 'none', queue: { id: 'none', name: 'No Queue', color: '#6b7280' }, tasks: [] });
+    for (const t of filtered) {
+      const key = t.queue_id != null ? String(t.queue_id) : 'none';
+      const idx = seen.get(key) ?? noQueueIdx;
+      groups[idx].tasks.push(t);
+    }
+    return groups.filter(g => g.tasks.length > 0 || g.key !== 'none');
+  })();
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -369,15 +433,149 @@ export function TasksView() {
             <option value="all">All statuses</option>
             {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
+          {/* View mode toggle */}
+          <div className="flex items-center rounded-lg border border-border/60 overflow-hidden">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors', viewMode === 'list' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary/60')}
+              title="List view"
+            >
+              <List className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('queue')}
+              className={cn('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors border-l border-border/60', viewMode === 'queue' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary/60')}
+              title="Queue board view"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <Button size="sm" onClick={startCreate} className="gap-1.5 text-xs h-8">
             <Plus className="w-3.5 h-3.5" />New Task
           </Button>
         </div>
 
-        {/* Table */}
+        {/* Content: Table or Queue Board */}
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex items-center justify-center h-48"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          ) : viewMode === 'queue' ? (
+
+            /* ── Queue Board ── */
+            queueGroups.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
+                <Inbox className="w-10 h-10 opacity-30" />
+                <p className="text-sm">No tasks match your filters</p>
+              </div>
+            ) : (
+              <div className="p-4 space-y-3">
+                {queueGroups.map(({ key, queue, tasks: qTasks }) => (
+                  <div key={key} className="border border-border/50 rounded-xl overflow-hidden">
+                    {/* Queue header */}
+                    <button
+                      onClick={() => toggleQueueCollapse(key)}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-card/40 hover:bg-secondary/50 transition-colors text-left"
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: queue.color }} />
+                      <span className="font-semibold text-sm">{queue.name}</span>
+                      <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full ml-1">{qTasks.length}</span>
+                      {qTasks.filter(t => t.approval_status === 'pending').length > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-medium flex items-center gap-1">
+                          <Timer className="w-2.5 h-2.5" />
+                          {qTasks.filter(t => t.approval_status === 'pending').length} pending
+                        </span>
+                      )}
+                      <ChevronDown className={cn('w-4 h-4 text-muted-foreground ml-auto transition-transform', collapsedQueues.has(key) && '-rotate-90')} />
+                    </button>
+
+                    {/* Task cards */}
+                    {!collapsedQueues.has(key) && (
+                      <div className="divide-y divide-border/30">
+                        {qTasks.length === 0 ? (
+                          <div className="px-4 py-5 text-center text-xs text-muted-foreground">No tasks in this queue</div>
+                        ) : qTasks.map(t => {
+                          const canPickUp = t.status === 'open';
+                          const isPickingThisUp = pickingUpTask === t.id;
+                          const isApprovingThis = quickApprovingTask === t.id;
+                          return (
+                            <div
+                              key={t.id}
+                              className={cn(
+                                'flex items-start gap-3 px-4 py-3 hover:bg-secondary/30 transition-colors group',
+                                t.approval_status === 'pending' && 'border-l-2 border-l-amber-400 pl-3.5',
+                                selected?.id === t.id && 'bg-primary/5',
+                              )}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-mono text-muted-foreground">#{String(t.task_number).padStart(3, '0')}</span>
+                                  <span className="font-medium text-sm">{t.name || <span className="italic text-muted-foreground">Untitled</span>}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                  <PriorityBadge priority={t.priority} />
+                                  <StatusBadge status={t.status} />
+                                  {t.approval_status !== 'none' && <ApprovalBadge approvalStatus={t.approval_status} />}
+                                </div>
+                                {t.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{t.description}</p>}
+                                <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                  {t.source === 'AI Agents' && <span className="flex items-center gap-1 text-xs text-violet-400"><Bot className="w-3 h-3" />AI</span>}
+                                  {t.assigned_to_name
+                                    ? <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" />{t.assigned_to_name}</span>
+                                    : <span className="text-xs text-muted-foreground/50 italic">Unassigned</span>}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                                {canPickUp && (
+                                  <button
+                                    onClick={() => pickUpTask(t.id)}
+                                    disabled={isPickingThisUp}
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-medium border border-primary/20 disabled:opacity-50 transition-colors"
+                                    title="Pick up this task — assign to yourself and start working"
+                                  >
+                                    {isPickingThisUp ? <Loader2 className="w-3 h-3 animate-spin" /> : <PlayCircle className="w-3 h-3" />}
+                                    Pick Up
+                                  </button>
+                                )}
+                                {isManagerOrAbove && t.approval_status === 'pending' && (
+                                  <>
+                                    <button
+                                      onClick={() => quickApprove(t.id)}
+                                      disabled={isApprovingThis}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-green-500/10 hover:bg-green-500/20 text-green-600 dark:text-green-400 text-xs font-medium border border-green-500/20 disabled:opacity-50 transition-colors"
+                                      title="Approve this task"
+                                    >
+                                      {isApprovingThis ? <Loader2 className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3" />}
+                                      Approve
+                                    </button>
+                                    <button
+                                      onClick={() => quickReject(t.id)}
+                                      disabled={isApprovingThis}
+                                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-medium border border-red-500/20 disabled:opacity-50 transition-colors"
+                                      title="Reject this task"
+                                    >
+                                      <ThumbsDown className="w-3 h-3" />
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                <button
+                                  onClick={() => openTask(t)}
+                                  className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-all"
+                                  title="Open task details"
+                                >
+                                  <ChevronRight className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )
+
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
               <ClipboardCheck className="w-10 h-10 opacity-30" />
