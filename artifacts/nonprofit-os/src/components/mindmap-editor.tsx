@@ -146,6 +146,9 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const [taskLoading, setTaskLoading] = useState(false);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [queues, setQueues] = useState<{ id: number; name: string }[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [taskModal, setTaskModal] = useState<{ nodeId: string } | null>(null);
+  const [taskDraft, setTaskDraft] = useState<TaskData>(defaultTaskData());
 
   const svgRef = useRef<SVGSVGElement>(null);
   const panRef = useRef<{ startX: number; startY: number; origTx: number; origTy: number } | null>(null);
@@ -375,6 +378,62 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     }
   };
 
+  // ── Delete a specific node by id ─────────────────────────────────────────
+
+  const deleteNode = (nodeId: string) => {
+    updateMapData(prev => ({
+      nodes: prev.nodes.filter(n => n.id !== nodeId),
+      edges: prev.edges.filter(e => e.sourceId !== nodeId && e.targetId !== nodeId),
+    }));
+    if (selectedNodeId === nodeId) setSelectedNodeId(null);
+  };
+
+  // ── Open the "Create Task" modal pre-filled from node label ───────────────
+
+  const openTaskModal = (nodeId: string) => {
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    const draft = defaultTaskData();
+    draft.name = node?.label ?? '';
+    setTaskDraft(draft);
+    setTaskModal({ nodeId });
+  };
+
+  // ── Submit the task creation modal ────────────────────────────────────────
+
+  const submitTaskFromModal = async () => {
+    if (!taskModal) return;
+    setTaskLoading(true);
+    try {
+      const r = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({
+          name: taskDraft.name,
+          description: taskDraft.description,
+          priority: taskDraft.priority,
+          status: taskDraft.status,
+          assignedTo: taskDraft.assignedTo,
+          queueId: taskDraft.queueId,
+          endDate: taskDraft.endDate || null,
+          approvalStatus: taskDraft.approvalStatus,
+          source: taskDraft.source,
+          aiInstructions: taskDraft.aiInstructions,
+        }),
+      });
+      const task = await r.json();
+      updateMapData(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n =>
+          n.id === taskModal.nodeId
+            ? { ...n, type: 'task', taskId: task.id, taskData: taskToData(task), label: task.name || n.label }
+            : n
+        ),
+      }));
+      setTaskModal(null);
+    } catch {}
+    setTaskLoading(false);
+  };
+
   // ── Convert node to/from task ─────────────────────────────────────────────
 
   const convertToTask = async (nodeId: string) => {
@@ -592,6 +651,15 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     return () => window.removeEventListener('keydown', handler);
   }, [selectedNodeId, selectedEdgeId]);
 
+  // ── Close context menu on outside click ──────────────────────────────────
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener('pointerdown', handler);
+    return () => window.removeEventListener('pointerdown', handler);
+  }, [contextMenu]);
+
   // ── Orphan detection ──────────────────────────────────────────────────────
 
   function isOrphan(nodeId: string): boolean {
@@ -776,6 +844,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     onDoubleClick={e => handleNodeDoubleClick(e, node.id)}
                     onPointerEnter={() => setHoveredNodeId(node.id)}
                     onPointerLeave={() => setHoveredNodeId(id => id === node.id ? null : id)}
+                    onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setSelectedNodeId(node.id); setContextMenu({ nodeId: node.id, x: e.clientX, y: e.clientY }); }}
                   >
                     {/* Transparent hit-area covering node + both button zones to keep hover active */}
                     <rect
@@ -903,8 +972,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           )}
         </div>
 
-        {/* Right Panel */}
-        {selectedNode && (
+        {/* Right Panel — only for task nodes */}
+        {selectedNode && selectedNode.type === 'task' && (
           <div className="w-72 border-l border-border bg-card flex flex-col overflow-y-auto flex-shrink-0">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1116,6 +1185,160 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       {connectMode && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-violet-900/90 border border-violet-500/50 rounded-full px-4 py-1.5 text-xs text-violet-200 pointer-events-none shadow-lg">
           {connectSource ? 'Now click the target node to connect' : 'Click a source node to start an edge'}
+        </div>
+      )}
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-card border border-border rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={e => e.stopPropagation()}
+        >
+          <button
+            onClick={() => { deleteNode(contextMenu.nodeId); setContextMenu(null); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
+          >
+            <Trash2 className="w-3.5 h-3.5 flex-shrink-0" /> Delete
+          </button>
+          {mapData.nodes.find(n => n.id === contextMenu.nodeId)?.type !== 'task' && (
+            <button
+              onClick={() => { openTaskModal(contextMenu.nodeId); setContextMenu(null); }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 flex-shrink-0" /> Create Task
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Create Task modal */}
+      {taskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+              <h3 className="text-sm font-semibold">Create Task from Node</h3>
+              <button onClick={() => setTaskModal(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-5 space-y-3 flex-1">
+              <Field label="Task Name">
+                <input
+                  autoFocus
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={taskDraft.name}
+                  onChange={e => setTaskDraft(d => ({ ...d, name: e.target.value }))}
+                />
+              </Field>
+              <Field label="Description">
+                <textarea
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                  rows={3}
+                  value={taskDraft.description}
+                  onChange={e => setTaskDraft(d => ({ ...d, description: e.target.value }))}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Priority">
+                  <select
+                    className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                    value={taskDraft.priority}
+                    onChange={e => setTaskDraft(d => ({ ...d, priority: e.target.value as TaskData['priority'] }))}
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </Field>
+                <Field label="Status">
+                  <select
+                    className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                    value={taskDraft.status}
+                    onChange={e => setTaskDraft(d => ({ ...d, status: e.target.value as TaskData['status'] }))}
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </Field>
+              </div>
+              <Field label="Assigned To">
+                <select
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                  value={taskDraft.assignedTo ?? ''}
+                  onChange={e => setTaskDraft(d => ({ ...d, assignedTo: e.target.value ? Number(e.target.value) : null }))}
+                >
+                  <option value="">Unassigned</option>
+                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Queue">
+                <select
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                  value={taskDraft.queueId ?? ''}
+                  onChange={e => setTaskDraft(d => ({ ...d, queueId: e.target.value ? Number(e.target.value) : null }))}
+                >
+                  <option value="">No Queue</option>
+                  {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Due Date">
+                <input
+                  type="date"
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                  value={taskDraft.endDate ?? ''}
+                  onChange={e => setTaskDraft(d => ({ ...d, endDate: e.target.value || null }))}
+                />
+              </Field>
+              <Field label="Approval Status">
+                <select
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                  value={taskDraft.approvalStatus}
+                  onChange={e => setTaskDraft(d => ({ ...d, approvalStatus: e.target.value as TaskData['approvalStatus'] }))}
+                >
+                  <option value="none">None</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </Field>
+              <Field label="Source">
+                <input
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                  value={taskDraft.source}
+                  onChange={e => setTaskDraft(d => ({ ...d, source: e.target.value }))}
+                />
+              </Field>
+              <Field label="AI Instructions">
+                <textarea
+                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none resize-none"
+                  rows={2}
+                  placeholder="Optional instructions for AI agent…"
+                  value={taskDraft.aiInstructions}
+                  onChange={e => setTaskDraft(d => ({ ...d, aiInstructions: e.target.value }))}
+                />
+              </Field>
+            </div>
+            <div className="flex gap-2 px-5 py-4 border-t border-border flex-shrink-0">
+              <button
+                onClick={() => setTaskModal(null)}
+                className="flex-1 px-3 py-2 rounded-lg text-xs border border-border text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitTaskFromModal}
+                disabled={taskLoading || !taskDraft.name.trim()}
+                className="flex-1 px-3 py-2 rounded-lg text-xs bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30 transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {taskLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+                Create Task
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
