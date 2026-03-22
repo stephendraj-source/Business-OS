@@ -60,7 +60,7 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'calendar',          label: 'Calendar',           sectionId: 'workflows'    },
   { id: 'activities',        label: 'Activities',         sectionId: 'workflows'    },
   { id: 'tasks',             label: 'Tasks',              sectionId: 'workflows'    },
-  { id: 'queues',            label: 'Task Queues',        sectionId: 'workflows'    },
+  { id: 'queues',            label: 'Queues',             sectionId: 'workflows'    },
   { id: 'ai-agents',         label: 'AI Agents',          sectionId: 'ai'           },
   { id: 'connectors',        label: 'Connectors',         sectionId: 'integrations' },
   { id: 'dashboards',        label: 'Dashboards',         sectionId: 'system'       },
@@ -92,7 +92,7 @@ const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
   'strategic-planning':{ label: 'Strategic Planning',   section: 'Strategy'     },
   activities:          { label: 'Activities',           section: 'Productivity' },
   tasks:               { label: 'Tasks',                section: 'Productivity' },
-  queues:              { label: 'Task Queues',          section: 'Productivity' },
+  queues:              { label: 'Queues',                section: 'Productivity' },
   meetings:            { label: 'Meetings',             section: 'Productivity' },
   calendar:            { label: 'Calendar',             section: 'Productivity' },
 };
