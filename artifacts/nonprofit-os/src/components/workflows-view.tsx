@@ -299,8 +299,9 @@ function FieldPickerTextarea({
 // ── Add Step Button ───────────────────────────────────────────────────────────
 
 type StepType = 'action' | 'decision' | 'form' | 'workflow-call' | 'agent-call' | 'parallel';
+type AddableStepType = 'form' | 'workflow-call' | 'agent-call';
 
-function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
+function AddStepButton({ onAdd }: { onAdd: (type: AddableStepType) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -322,30 +323,18 @@ function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
           <Plus className="w-3 h-3" />
         </button>
         {open && (
-          <div className="absolute z-50 top-8 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-48">
-            <button onClick={() => { setOpen(false); onAdd('action'); }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left">
-              <Play className="w-3.5 h-3.5 text-blue-400" />Action Step
-            </button>
-            <button onClick={() => { setOpen(false); onAdd('decision'); }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
-              <Brain className="w-3.5 h-3.5 text-orange-400" />Decision (AI-Routed)
-            </button>
+          <div className="absolute z-50 top-8 left-1/2 -translate-x-1/2 bg-popover border border-border rounded-xl shadow-xl overflow-hidden w-52">
             <button onClick={() => { setOpen(false); onAdd('form'); }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left">
               <ClipboardList className="w-3.5 h-3.5 text-violet-400" />Collect Form Data
-            </button>
-            <button onClick={() => { setOpen(false); onAdd('workflow-call'); }}
-              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
-              <Layers className="w-3.5 h-3.5 text-cyan-400" />Call Another Workflow
             </button>
             <button onClick={() => { setOpen(false); onAdd('agent-call'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
               <Bot className="w-3.5 h-3.5 text-emerald-400" />Run an AI Agent
             </button>
-            <button onClick={() => { setOpen(false); onAdd('parallel'); }}
+            <button onClick={() => { setOpen(false); onAdd('workflow-call'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
-              <Split className="w-3.5 h-3.5 text-fuchsia-400" />Parallel Branches
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />Call Another Workflow
             </button>
           </div>
         )}
