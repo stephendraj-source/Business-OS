@@ -48,7 +48,7 @@ export interface WStep {
 }
 
 interface FormOption { id: number; name: string; formNumber: number; linkedWorkflowId?: number | null; }
-interface AgentOption { id: number; name: string; agentNumber: number; outputDestType?: string | null; outputDestId?: number | null; }
+interface AgentOption { id: number; name: string; agentNumber: number; agentType?: string; outputDestType?: string | null; outputDestId?: number | null; }
 
 interface WorkflowSummary {
   id: number;
@@ -1029,9 +1029,20 @@ function AgentCallStepCard({ step, onUpdate, onDelete, agents }: {
               className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
             >
               <option value="">— Choose an agent —</option>
-              {agents.map(a => (
-                <option key={a.id} value={a.id}>#{a.agentNumber} {a.name}</option>
-              ))}
+              {agents.filter(a => a.agentType !== 'external').length > 0 && (
+                <optgroup label="Internal Agents">
+                  {agents.filter(a => a.agentType !== 'external').map(a => (
+                    <option key={a.id} value={a.id}>#{a.agentNumber} {a.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {agents.filter(a => a.agentType === 'external').length > 0 && (
+                <optgroup label="External Agents">
+                  {agents.filter(a => a.agentType === 'external').map(a => (
+                    <option key={a.id} value={a.id}>#{a.agentNumber} {a.name} [EXTERNAL]</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
             {agents.length === 0 && (
               <p className="text-xs text-muted-foreground mt-1">No agents available. Create one in the AI Agents section.</p>
@@ -1064,7 +1075,14 @@ function AgentCallStepCard({ step, onUpdate, onDelete, agents }: {
           <div className="flex-1 min-w-0">
             <div className="text-xs font-semibold text-emerald-400 uppercase tracking-wider mb-0.5">Run AI Agent</div>
             {linked ? (
-              <div className="text-sm font-medium truncate">#{linked.agentNumber} {linked.name}</div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm font-medium truncate">#{linked.agentNumber} {linked.name}</span>
+                {linked.agentType === 'external' && (
+                  <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded text-[9px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                    EXT
+                  </span>
+                )}
+              </div>
             ) : (
               <div className="text-xs text-muted-foreground italic">No agent selected — click Edit</div>
             )}

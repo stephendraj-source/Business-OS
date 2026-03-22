@@ -135,7 +135,91 @@ async function resolveInstructions(instructions: string): Promise<string> {
   return resolved;
 }
 
-// ── Helper: run agent against Claude ────────────────────────────────────────
+// ── Helper: call external AI API ─────────────────────────────────────────────
+
+interface ExternalAgentConfig {
+  provider: 'openai' | 'anthropic' | 'azure-openai' | 'custom';
+  apiKey: string;
+  endpoint?: string;
+  model: string;
+  deploymentName?: string;
+}
+
+async function callExternalAgent(config: ExternalAgentConfig, systemPrompt: string): Promise<string> {
+  const { provider, apiKey, endpoint, model, deploymentName } = config;
+
+  if (provider === 'anthropic') {
+    const url = endpoint || 'https://api.anthropic.com/v1/messages';
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: model || 'claude-3-5-sonnet-20241022',
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: 'Execute your instructions and provide your output.' }],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Anthropic API error ${res.status}: ${err}`);
+    }
+    const data = await res.json() as any;
+    return (data.content ?? []).map((c: any) => c.type === 'text' ? c.text : '').join('');
+  }
+
+  if (provider === 'azure-openai') {
+    if (!endpoint) throw new Error('Azure OpenAI requires an endpoint URL');
+    const deployment = deploymentName || model;
+    const url = `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}/chat/completions?api-version=2024-02-01`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+      body: JSON.stringify({
+        model,
+        max_tokens: 4096,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: 'Execute your instructions and provide your output.' },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Azure OpenAI error ${res.status}: ${err}`);
+    }
+    const data = await res.json() as any;
+    return data.choices?.[0]?.message?.content ?? '';
+  }
+
+  // OpenAI-compatible (openai, custom)
+  const base = endpoint?.replace(/\/$/, '') || 'https://api.openai.com';
+  const url = `${base}/v1/chat/completions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: model || 'gpt-4o',
+      max_tokens: 4096,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: 'Execute your instructions and provide your output.' },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`External API error ${res.status}: ${err}`);
+  }
+  const data = await res.json() as any;
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ── Helper: run agent against Claude or external API ─────────────────────────
 
 async function runAgentExecution(agentId: number, scheduleId?: number): Promise<string> {
   const agent = await getAgentFull(agentId);
@@ -175,14 +259,24 @@ Execute your instructions carefully and thoroughly. Provide a detailed, structur
   }).returning();
 
   try {
-    const message = await anthropic.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: "Execute your instructions and provide your output." }],
-    });
+    let output: string;
 
-    const output = message.content.map((c: any) => c.type === "text" ? c.text : "").join("");
+    if ((agent as any).agentType === 'external') {
+      const cfg: ExternalAgentConfig = (() => {
+        try { return JSON.parse((agent as any).externalConfig || '{}'); } catch { return {}; }
+      })();
+      if (!cfg.apiKey) throw new Error("External agent is missing an API key. Please configure it in the agent's Connection tab.");
+      output = await callExternalAgent(cfg, systemPrompt);
+    } else {
+      const message = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: "Execute your instructions and provide your output." }],
+      });
+      output = message.content.map((c: any) => c.type === "text" ? c.text : "").join("");
+    }
+
     await db.update(agentRunLogsTable)
       .set({ status: "success", output, completedAt: new Date() })
       .where(eq(agentRunLogsTable.id, logEntry.id));
@@ -243,8 +337,8 @@ router.post("/ai-agents", async (req, res) => {
     const query = db.select({ val: max(aiAgentsTable.agentNumber) }).from(aiAgentsTable);
     const [maxNum] = tenantCond ? await query.where(tenantCond) : await query;
     const nextNum = (maxNum?.val ?? 0) + 1;
-    const { name = "New Agent", description = "", instructions = "", trigger = "", tools = "[]" } = req.body as Record<string, string>;
-    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, trigger, tools, createdBy: userId ?? undefined, tenantId }).returning();
+    const { name = "New Agent", description = "", instructions = "", trigger = "", tools = "[]", agentType = "internal", externalConfig = "{}" } = req.body as Record<string, string>;
+    const [agent] = await db.insert(aiAgentsTable).values({ agentNumber: nextNum, name, description, instructions, trigger, tools, agentType, externalConfig, createdBy: userId ?? undefined, tenantId }).returning();
     await db.insert(agentModuleAccess).values(
       ALL_MODULES.map(module => ({ agentId: agent.id, module, hasAccess: false }))
     );
@@ -258,7 +352,7 @@ router.post("/ai-agents", async (req, res) => {
 router.put("/ai-agents/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { agentNumber, name, description, instructions, runMode, trigger, tools, outputDestType, outputDestId } = req.body as Record<string, any>;
+    const { agentNumber, name, description, instructions, runMode, trigger, tools, outputDestType, outputDestId, agentType, externalConfig } = req.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (agentNumber !== undefined) updates.agentNumber = Number(agentNumber);
     if (name !== undefined) updates.name = name;
@@ -269,6 +363,8 @@ router.put("/ai-agents/:id", async (req, res) => {
     if (tools !== undefined) updates.tools = typeof tools === "string" ? tools : JSON.stringify(tools);
     if (outputDestType !== undefined) updates.outputDestType = outputDestType || null;
     if (outputDestId !== undefined) updates.outputDestId = outputDestId ? Number(outputDestId) : null;
+    if (agentType !== undefined) updates.agentType = agentType;
+    if (externalConfig !== undefined) updates.externalConfig = typeof externalConfig === "string" ? externalConfig : JSON.stringify(externalConfig);
     const [agent] = await db.update(aiAgentsTable).set(updates).where(eq(aiAgentsTable.id, id)).returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
     res.json(agent);

@@ -4,7 +4,7 @@ import {
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
   Shield, Search, Share2, Globe, Server, Webhook, ArrowRight, Star,
-  FlaskConical, Tag,
+  FlaskConical, Tag, Eye, EyeOff, Key, ExternalLink, Plug,
 } from "lucide-react";
 import { ProcessTagSelector } from "@/components/process-tag-selector";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
@@ -18,6 +18,16 @@ const API = '/api';
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type RunMode = 'adhoc' | 'scheduled' | 'trigger';
+type AgentType = 'internal' | 'external';
+type ExternalProvider = 'openai' | 'anthropic' | 'azure-openai' | 'custom';
+
+interface ExternalAgentConfig {
+  provider: ExternalProvider;
+  apiKey: string;
+  endpoint?: string;
+  model: string;
+  deploymentName?: string;
+}
 
 interface Agent {
   id: number;
@@ -30,6 +40,8 @@ interface Agent {
   tools: string;
   outputDestType?: string | null;
   outputDestId?: number | null;
+  agentType?: AgentType;
+  externalConfig?: string;
   createdAt: string;
   updatedAt: string;
   urlCount?: number;
@@ -37,6 +49,13 @@ interface Agent {
   scheduleCount?: number;
   createdBy?: number;
 }
+
+const EXTERNAL_PROVIDERS: { value: ExternalProvider; label: string; hint: string }[] = [
+  { value: 'openai',       label: 'OpenAI',            hint: 'GPT-4o, GPT-4 Turbo, o1, etc.' },
+  { value: 'anthropic',    label: 'Anthropic',          hint: 'Claude 3.5 Sonnet, Opus, Haiku' },
+  { value: 'azure-openai', label: 'Azure OpenAI',       hint: 'Azure-hosted OpenAI deployment' },
+  { value: 'custom',       label: 'Custom / Other',     hint: 'Any OpenAI-compatible endpoint' },
+];
 
 interface KnowledgeUrl {
   id: number;
@@ -1570,6 +1589,9 @@ export function AiAgentsView() {
   const [editingId, setEditingId] = useState(false);
   const [editOutputDestType, setEditOutputDestType] = useState<string>("");
   const [editOutputDestId, setEditOutputDestId] = useState<number | null>(null);
+  const [editAgentType, setEditAgentType] = useState<AgentType>("internal");
+  const [editExternalConfig, setEditExternalConfig] = useState<ExternalAgentConfig>({ provider: 'openai', apiKey: '', model: '', endpoint: '' });
+  const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -1616,6 +1638,12 @@ export function AiAgentsView() {
       setEditNumber(selectedAgent.agentNumber);
       setEditOutputDestType(selectedAgent.outputDestType ?? "");
       setEditOutputDestId(selectedAgent.outputDestId ?? null);
+      setEditAgentType((selectedAgent.agentType ?? 'internal') as AgentType);
+      try {
+        const cfg = JSON.parse(selectedAgent.externalConfig || '{}');
+        setEditExternalConfig({ provider: 'openai', apiKey: '', model: '', endpoint: '', ...cfg });
+      } catch { setEditExternalConfig({ provider: 'openai', apiKey: '', model: '', endpoint: '' }); }
+      setShowApiKey(false);
       try { setEditTools(JSON.parse(selectedAgent.tools)); } catch { setEditTools([]); }
       setDirty(false);
     }
@@ -1660,6 +1688,8 @@ export function AiAgentsView() {
           tools: JSON.stringify(editTools),
           outputDestType: editOutputDestType || null,
           outputDestId: editOutputDestId || null,
+          agentType: editAgentType,
+          externalConfig: JSON.stringify(editExternalConfig),
         }),
       });
       await fetchAgents();
@@ -1738,9 +1768,14 @@ export function AiAgentsView() {
                 <Bot className="w-4 h-4 text-primary" />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs text-muted-foreground font-mono">#{agent.agentNumber}</span>
                   <span className="text-sm font-medium truncate">{agent.name}</span>
+                  {agent.agentType === 'external' && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
+                      <ExternalLink className="w-2.5 h-2.5" />EXTERNAL
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-muted-foreground truncate mt-0.5">{agent.description || "No description"}</div>
                 <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground flex-wrap">
@@ -1977,6 +2012,146 @@ export function AiAgentsView() {
                   </div>
                 </div>
                 )}
+
+                {/* Agent Type — Internal vs External */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium flex items-center gap-2">
+                    <Plug className="w-4 h-4 text-primary" />Agent Type
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'internal' as AgentType, label: 'Internal', sublabel: 'Uses built-in AI (Claude)', icon: <Bot className="w-4 h-4" />, color: 'primary' },
+                      { value: 'external' as AgentType, label: 'External', sublabel: 'Connect to your own AI API', icon: <ExternalLink className="w-4 h-4" />, color: 'emerald' },
+                    ]).map(opt => {
+                      const active = editAgentType === opt.value;
+                      const cls = opt.color === 'emerald'
+                        ? { border: 'border-emerald-500', bg: 'bg-emerald-500/10', text: 'text-emerald-500', ring: 'ring-emerald-500/30' }
+                        : { border: 'border-primary', bg: 'bg-primary/10', text: 'text-primary', ring: 'ring-primary/30' };
+                      return (
+                        <button key={opt.value} type="button"
+                          onClick={() => { setEditAgentType(opt.value); setDirty(true); }}
+                          className={cn("flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-all",
+                            active ? `${cls.border} ${cls.bg} ring-2 ${cls.ring}` : "border-border bg-secondary/30 hover:border-border/70 hover:bg-secondary/50"
+                          )}
+                        >
+                          <div className={cn("flex items-center gap-1.5 font-medium text-sm", active ? cls.text : "text-foreground")}>
+                            {opt.icon}{opt.label}
+                          </div>
+                          <p className="text-xs text-muted-foreground leading-tight">{opt.sublabel}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* External configuration panel */}
+                  {editAgentType === 'external' && (
+                    <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-4">
+                      <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+                        <Key className="w-4 h-4" />External API Configuration
+                      </div>
+
+                      {/* Provider */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground font-medium">Provider</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {EXTERNAL_PROVIDERS.map(p => (
+                            <button key={p.value} type="button"
+                              onClick={() => { setEditExternalConfig(c => ({ ...c, provider: p.value })); setDirty(true); }}
+                              className={cn("flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-all text-xs",
+                                editExternalConfig.provider === p.value
+                                  ? "border-emerald-500 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                                  : "border-border bg-background hover:bg-secondary/60 text-muted-foreground"
+                              )}
+                            >
+                              <span className="font-medium">{p.label}</span>
+                              <span className="text-[10px] text-muted-foreground">{p.hint}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* API Key */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground font-medium">API Key</label>
+                        <div className="relative">
+                          <input
+                            type={showApiKey ? "text" : "password"}
+                            value={editExternalConfig.apiKey}
+                            onChange={e => { setEditExternalConfig(c => ({ ...c, apiKey: e.target.value })); setDirty(true); }}
+                            placeholder="sk-..."
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm pr-9 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 font-mono"
+                          />
+                          <button type="button" onClick={() => setShowApiKey(v => !v)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-muted-foreground">Stored encrypted. Never shared or logged.</p>
+                      </div>
+
+                      {/* Model */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-muted-foreground font-medium">Model</label>
+                        <input
+                          type="text"
+                          value={editExternalConfig.model}
+                          onChange={e => { setEditExternalConfig(c => ({ ...c, model: e.target.value })); setDirty(true); }}
+                          placeholder={
+                            editExternalConfig.provider === 'openai' ? 'gpt-4o' :
+                            editExternalConfig.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
+                            editExternalConfig.provider === 'azure-openai' ? 'gpt-4o' : 'model-name'
+                          }
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50 font-mono"
+                        />
+                      </div>
+
+                      {/* Endpoint URL — required for Azure and Custom */}
+                      {(editExternalConfig.provider === 'azure-openai' || editExternalConfig.provider === 'custom') && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs text-muted-foreground font-medium">
+                            {editExternalConfig.provider === 'azure-openai' ? 'Azure Endpoint URL' : 'API Base URL'}
+                            <span className="text-red-400 ml-1">*</span>
+                          </label>
+                          <input
+                            type="url"
+                            value={editExternalConfig.endpoint ?? ''}
+                            onChange={e => { setEditExternalConfig(c => ({ ...c, endpoint: e.target.value })); setDirty(true); }}
+                            placeholder={
+                              editExternalConfig.provider === 'azure-openai'
+                                ? 'https://my-resource.openai.azure.com'
+                                : 'https://api.example.com'
+                            }
+                            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50 font-mono"
+                          />
+                          {editExternalConfig.provider === 'azure-openai' && (
+                            <div className="space-y-1.5">
+                              <label className="text-xs text-muted-foreground font-medium">Deployment Name</label>
+                              <input
+                                type="text"
+                                value={editExternalConfig.deploymentName ?? ''}
+                                onChange={e => { setEditExternalConfig(c => ({ ...c, deploymentName: e.target.value })); setDirty(true); }}
+                                placeholder="my-gpt4o-deployment"
+                                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500/50 font-mono"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Status hint */}
+                      <div className={cn("rounded-lg px-3 py-2 text-xs flex items-center gap-2",
+                        editExternalConfig.apiKey
+                          ? "border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                          : "border border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                      )}>
+                        {editExternalConfig.apiKey
+                          ? <><Check className="w-3.5 h-3.5 flex-shrink-0" />API key configured — this agent will call your external endpoint when run.</>
+                          : <><AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />Enter an API key to enable running this external agent.</>
+                        }
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {/* Instructions */}
                 <div className="space-y-2">

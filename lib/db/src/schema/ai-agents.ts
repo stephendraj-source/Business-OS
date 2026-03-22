@@ -12,6 +12,8 @@ export const aiAgentsTable = pgTable("ai_agents", {
   tools: text("tools").notNull().default("[]"),
   outputDestType: text("output_dest_type"),
   outputDestId: integer("output_dest_id"),
+  agentType: text("agent_type").notNull().default("internal"),
+  externalConfig: text("external_config").notNull().default("{}"),
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
