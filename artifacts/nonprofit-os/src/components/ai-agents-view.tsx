@@ -3,8 +3,9 @@ import {
   Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
-  Shield, Search, Share2, Globe, Server, Webhook, ArrowRight,
+  Shield, Search, Share2, Globe, Server, Webhook, ArrowRight, Star,
 } from "lucide-react";
+import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { dispatchCreditsRefresh } from "@/hooks/use-credits";
 import { useUser } from "@/contexts/UserContext";
@@ -1263,6 +1264,7 @@ type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions" | "shar
 
 export function AiAgentsView() {
   const { fetchHeaders, currentUser } = useUser();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loadingAgents, setLoadingAgents] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -1307,6 +1309,15 @@ export function AiAgentsView() {
   }, [fetchHeaders]);
 
   useEffect(() => { fetchAgents(); fetchFields(); fetchWorkflows(); }, [fetchAgents, fetchFields, fetchWorkflows]);
+
+  useEffect(() => {
+    function handleOpen(e: Event) {
+      const d = (e as CustomEvent).detail;
+      if (d?.type === 'agent') { setSelectedId(d.id); setTab("overview"); }
+    }
+    window.addEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+  }, []);
 
   useEffect(() => {
     if (selectedAgent) {
@@ -1462,12 +1473,21 @@ export function AiAgentsView() {
                   {(agent.scheduleCount ?? 0) > 0 && <span><Clock className="inline w-3 h-3 mr-0.5" />{agent.scheduleCount}</span>}
                 </div>
               </div>
-              <button
-                onClick={e => deleteAgent(agent.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFavourite('agent', agent.id, agent.name); }}
+                  className={cn("text-muted-foreground hover:text-amber-400 transition-colors flex-shrink-0", isFavourite('agent', agent.id) && "opacity-100 text-amber-400")}
+                  title={isFavourite('agent', agent.id) ? "Remove from favourites" : "Add to favourites"}
+                >
+                  <Star className={cn("w-4 h-4", isFavourite('agent', agent.id) && "fill-amber-400")} />
+                </button>
+                <button
+                  onClick={e => deleteAgent(agent.id, e)}
+                  className="text-muted-foreground hover:text-red-400 transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

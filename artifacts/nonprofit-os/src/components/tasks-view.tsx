@@ -3,8 +3,9 @@ import {
   Plus, Search, X, Loader2, CheckCircle2, Check,
   Clock, AlertTriangle, ChevronRight, Bot, Sparkles,
   User, Flag, RotateCcw, ClipboardCheck, ThumbsUp, ThumbsDown,
-  Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2,
+  Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2, Star,
 } from 'lucide-react';
+import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -120,6 +121,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 // ── Main view ─────────────────────────────────────────────────────────────────
 export function TasksView() {
   const { fetchHeaders, currentUser: user } = useAuth();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -181,6 +183,18 @@ export function TasksView() {
   }, [fetchHeaders]);
 
   useEffect(() => { loadTasks(); loadOptions(); }, [loadTasks, loadOptions]);
+
+  useEffect(() => {
+    function handleOpen(e: Event) {
+      const d = (e as CustomEvent).detail;
+      if (d?.type === 'task') {
+        const found = tasks.find(t => t.id === d.id);
+        if (found) openTask(found);
+      }
+    }
+    window.addEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+  }, [tasks]);
 
   function populateEdit(t: TaskRow) {
     setEditName(t.name);
@@ -422,12 +436,21 @@ export function TasksView() {
                         : <span className="text-xs text-muted-foreground/40">Unassigned</span>}
                     </td>
                     <td className="px-2 py-2.5">
-                      {canEditTask(t) && (
-                        <button onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
-                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all">
-                          <Trash2 className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={e => { e.stopPropagation(); toggleFavourite('task', t.id, t.name); }}
+                          className={cn("p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-amber-500/10 text-muted-foreground hover:text-amber-400 transition-all", isFavourite('task', t.id) && "opacity-100 text-amber-400")}
+                          title={isFavourite('task', t.id) ? "Remove from favourites" : "Add to favourites"}
+                        >
+                          <Star className={cn("w-3.5 h-3.5", isFavourite('task', t.id) && "fill-amber-400")} />
                         </button>
-                      )}
+                        {canEditTask(t) && (
+                          <button onClick={e => { e.stopPropagation(); handleDelete(t.id); }}
+                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-all">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

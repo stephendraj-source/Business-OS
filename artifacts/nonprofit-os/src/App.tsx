@@ -6,6 +6,7 @@ import Dashboard from "@/pages/dashboard";
 import NotFound from "@/pages/not-found";
 import { PublicFormPage } from "@/pages/public-form";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { FavouritesProvider } from "@/contexts/FavouritesContext";
 import { LoginPage } from "@/components/login-page";
 import { TenantManagementPage } from "@/components/tenant-management-page";
 
@@ -63,7 +64,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <AuthProvider>
-          <AppRoutes />
+          <FavouritesProvider>
+            <AppRoutes />
+          </FavouritesProvider>
         </AuthProvider>
       </WouterRouter>
     </QueryClientProvider>

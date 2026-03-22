@@ -3,8 +3,9 @@ import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
   Code2, ClipboardList, Bot, ArrowDownToLine, Layers, Split, Pencil, Brain,
-  ArrowRight, FileText,
+  ArrowRight, FileText, Star,
 } from "lucide-react";
+import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -1840,6 +1841,7 @@ function WorkflowDesigner({
 
 export function WorkflowsView() {
   const { fetchHeaders } = useAuth();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [editName, setEditName] = useState("");
@@ -1888,6 +1890,15 @@ export function WorkflowsView() {
   }, [fetchHeaders]);
 
   useEffect(() => { fetchWorkflows(); fetchFields(); fetchForms(); fetchAgents(); }, [fetchWorkflows, fetchFields, fetchForms, fetchAgents]);
+
+  useEffect(() => {
+    function handleOpen(e: Event) {
+      const d = (e as CustomEvent).detail;
+      if (d?.type === 'workflow') setSelectedId(d.id);
+    }
+    window.addEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+  }, []);
 
   const loadWorkflow = useCallback(async (id: number) => {
     const r = await fetch(`${API}/workflows/${id}`, { headers: fetchHeaders() });
@@ -2006,12 +2017,21 @@ export function WorkflowsView() {
                   </div>
                 )}
               </div>
-              <button
-                onClick={e => deleteWorkflow(wf.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              <div className="flex flex-col gap-1 items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFavourite('workflow', wf.id, wf.name); }}
+                  className={cn("text-muted-foreground hover:text-amber-400 transition-colors flex-shrink-0", isFavourite('workflow', wf.id) && "opacity-100 text-amber-400")}
+                  title={isFavourite('workflow', wf.id) ? "Remove from favourites" : "Add to favourites"}
+                >
+                  <Star className={cn("w-4 h-4", isFavourite('workflow', wf.id) && "fill-amber-400")} />
+                </button>
+                <button
+                  onClick={e => deleteWorkflow(wf.id, e)}
+                  className="text-muted-foreground hover:text-red-400 transition-colors flex-shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>

@@ -4,7 +4,9 @@ import {
   Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
   GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
+  Star,
 } from 'lucide-react';
+import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
 import { useUser } from '@/contexts/UserContext';
@@ -192,6 +194,33 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const [pwError, setPwError]               = useState('');
   const [pwSuccess, setPwSuccess]           = useState(false);
 
+  // ── Favourites ───────────────────────────────────────────────────────────────
+  const { favourites, removeFavourite } = useFavourites();
+
+  const FAV_VIEW_MAP: Record<string, ActiveView> = {
+    process: 'table', form: 'forms', agent: 'ai-agents', workflow: 'workflows', task: 'tasks',
+  };
+  const FAV_TYPE_CONFIG: Record<string, { label: string; cls: string }> = {
+    process:  { label: 'PROC', cls: 'bg-blue-500/15 text-blue-400' },
+    form:     { label: 'FORM', cls: 'bg-violet-500/15 text-violet-400' },
+    agent:    { label: 'AI',   cls: 'bg-amber-500/15 text-amber-400' },
+    workflow: { label: 'WF',   cls: 'bg-green-500/15 text-green-400' },
+    task:     { label: 'TASK', cls: 'bg-rose-500/15 text-rose-400' },
+  };
+
+  function handleFavouriteClick(fav: typeof favourites[0]) {
+    const view = FAV_VIEW_MAP[fav.item_type];
+    if (view) {
+      onViewChange(view);
+      // Delay dispatch until the view has mounted/re-rendered
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent(OPEN_FAVOURITE_EVENT, {
+          detail: { type: fav.item_type, id: fav.item_id },
+        }));
+      }, 100);
+    }
+  }
+
   // ── Nav reorder state ────────────────────────────────────────────────────────
   const [sectionOrder, setSectionOrder] = useState<string[]>(loadSectionOrder);
   const [itemOrder, setItemOrder]       = useState<Record<string, ActiveView[]>>(loadItemOrder);
@@ -373,6 +402,47 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
           onDragOver={e => e.preventDefault()}
           onDrop={endDrag}
         >
+          {/* ── Favourites (pinned, not draggable) ────────────────────────── */}
+          <div>
+            <div className="flex items-center gap-1.5 px-1 mb-1.5">
+              <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                Favourites
+              </span>
+            </div>
+            {favourites.length === 0 ? (
+              <div className="px-2 py-2 text-[11px] text-muted-foreground/50 leading-snug">
+                Pin items with ★ to access them quickly
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                {favourites.map(fav => {
+                  const cfg = FAV_TYPE_CONFIG[fav.item_type] ?? { label: '?', cls: 'bg-muted text-muted-foreground' };
+                  return (
+                    <div
+                      key={fav.id}
+                      onClick={() => handleFavouriteClick(fav)}
+                      className="group flex items-center gap-2 w-full text-left rounded-lg px-2 py-1.5 cursor-pointer hover:bg-accent/60 transition-colors"
+                    >
+                      <span className={cn('shrink-0 text-[9px] font-bold px-1 py-0.5 rounded leading-none', cfg.cls)}>
+                        {cfg.label}
+                      </span>
+                      <span className="flex-1 text-xs truncate text-foreground/80">{fav.item_name || '(Unnamed)'}</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); removeFavourite(fav.item_type, fav.item_id); }}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-500/20 text-muted-foreground hover:text-red-400 transition-all"
+                        title="Remove from favourites"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* ── Draggable sections ─────────────────────────────────────────── */}
           {sectionOrder.map(sectionId => {
             const section = sectionMap[sectionId];
             if (!section) return null;

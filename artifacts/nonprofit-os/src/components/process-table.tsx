@@ -9,6 +9,7 @@ import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFavourites } from '@/contexts/FavouritesContext';
 import type { Process } from '@workspace/api-client-react';
 
 const API = '/api';
@@ -130,6 +131,7 @@ function PanelTextField({ label, value, onSave, multiline }: {
 
 function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Process; onClose: () => void }) {
   const { fetchHeaders } = useAuth();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const { data: processes } = useProcessesData();
   const process = (processes?.find(p => p.id === initialProcess.id) ?? initialProcess) as Process;
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
@@ -361,9 +363,18 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             <h3 className="font-semibold text-foreground text-base leading-tight truncate">{process.processName || 'Unnamed Process'}</h3>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">{process.category}</p>
           </div>
-          <button onClick={onClose} className="ml-3 p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors shrink-0">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="ml-3 flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => toggleFavourite('process', process.id, process.processName || 'Unnamed Process')}
+              className={cn("p-1.5 rounded-lg hover:bg-amber-500/10 text-muted-foreground hover:text-amber-400 transition-colors", isFavourite('process', process.id) && "text-amber-400")}
+              title={isFavourite('process', process.id) ? "Remove from favourites" : "Add to favourites"}
+            >
+              <Star className={cn("w-4 h-4", isFavourite('process', process.id) && "fill-amber-400")} />
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">

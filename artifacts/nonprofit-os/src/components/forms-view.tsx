@@ -13,8 +13,9 @@ import {
   ListOrdered, Quote, Code, Minus,
   AlignCenter, AlignRight,
   Highlighter, Undo2, Redo2, Unlink,
-  LayoutGrid, Search, Sparkles,
+  LayoutGrid, Search, Sparkles, Star,
 } from "lucide-react";
+import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { PhoneInput } from "@/components/phone-input";
@@ -224,6 +225,7 @@ function FolderNode({
   onCreateFormInFolder: (folderId: number) => void;
   onCreateKnowledgeItem: (folderId: number, type: KnowledgeItemType) => void;
 }) {
+  const { isFavourite, toggleFavourite } = useFavourites();
   const isExpanded = expanded.has(node.id);
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState(node.name);
@@ -399,12 +401,21 @@ function FolderNode({
                   </div>
                   {fieldCount > 0 && <div className="text-[10px] text-muted-foreground"><List className="inline w-2.5 h-2.5 mr-0.5" />{fieldCount} field{fieldCount !== 1 ? 's' : ''}</div>}
                 </div>
-                <button
-                  onClick={e => onDeleteForm(form.id, e)}
-                  className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
-                >
-                  <Trash2 className="w-3 h-3" />
-                </button>
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={e => { e.stopPropagation(); toggleFavourite('form', form.id, form.name); }}
+                    className={cn("p-0.5 rounded text-muted-foreground hover:text-amber-400 transition-colors flex-shrink-0", isFavourite('form', form.id) && "opacity-100 text-amber-400")}
+                    title={isFavourite('form', form.id) ? "Remove from favourites" : "Add to favourites"}
+                  >
+                    <Star className={cn("w-3 h-3", isFavourite('form', form.id) && "fill-amber-400")} />
+                  </button>
+                  <button
+                    onClick={e => onDeleteForm(form.id, e)}
+                    className="p-0.5 rounded text-muted-foreground hover:text-red-400 transition-colors flex-shrink-0 mt-0.5"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -1701,6 +1712,15 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
   };
 
   useEffect(() => { fetchForms(); fetchFolders(); fetchKnowledgeItems(); }, [fetchForms, fetchFolders, fetchKnowledgeItems]);
+
+  useEffect(() => {
+    function handleOpen(e: Event) {
+      const d = (e as CustomEvent).detail;
+      if (d?.type === 'form') setSelectedId(d.id);
+    }
+    window.addEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+    return () => window.removeEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
+  }, []);
 
   const createFolder = async (parentId: number | null = null) => {
     const name = prompt("Folder name:", parentId ? "New Subfolder" : "New Folder");
