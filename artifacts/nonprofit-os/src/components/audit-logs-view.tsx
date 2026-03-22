@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useAuditLogsData } from '@/hooks/use-app-data';
+import type { AuditLog } from '@workspace/api-client-react';
 import {
   Loader2, FileText, Search, Filter, RefreshCw,
   Plus, Pencil, Trash2, Download, Upload, Cpu, Settings
@@ -40,7 +41,7 @@ export function AuditLogsView() {
 
   const filtered = useMemo(() => {
     if (!logs) return [];
-    return logs.filter(log => {
+    return (logs as AuditLog[]).filter((log: AuditLog) => {
       const matchesAction = filterAction === 'all' || log.action === filterAction;
       const q = search.toLowerCase();
       const matchesSearch = !q ||
@@ -130,7 +131,7 @@ export function AuditLogsView() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((log, i) => (
+              {(filtered as AuditLog[]).map((log: AuditLog, i: number) => (
                 <tr
                   key={log.id}
                   className={cn(

@@ -26,6 +26,16 @@ export interface Process {
   included: boolean;
   target: string;
   achievement: string;
+  trafficLight?: string;
+  aiAgentActive?: boolean;
+  priority?: string;
+  governanceFramework?: string;
+  processOwner?: string;
+  frequency?: string;
+  risk?: string;
+  regulation?: string;
+  automationPotential?: string;
+  createdAt?: string;
 }
 
 export interface CreateProcessBody {
@@ -43,6 +53,16 @@ export interface CreateProcessBody {
   included?: boolean;
   target?: string;
   achievement?: string;
+  trafficLight?: string;
+  aiAgentActive?: boolean;
+  priority?: string;
+  governanceFramework?: string;
+  processOwner?: string;
+  frequency?: string;
+  risk?: string;
+  regulation?: string;
+  automationPotential?: string;
+  [key: string]: string | boolean | number | undefined;
 }
 
 export interface UpdateProcessBody {
@@ -60,6 +80,16 @@ export interface UpdateProcessBody {
   included?: boolean;
   target?: string;
   achievement?: string;
+  trafficLight?: string;
+  aiAgentActive?: boolean;
+  priority?: string;
+  governanceFramework?: string;
+  processOwner?: string;
+  frequency?: string;
+  risk?: string;
+  regulation?: string;
+  automationPotential?: string;
+  [key: string]: string | boolean | number | undefined;
 }
 
 export interface DeleteResponse {

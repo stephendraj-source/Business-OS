@@ -175,9 +175,9 @@ function Th({ children, className, title }: { children: React.ReactNode; classNa
   );
 }
 
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
+function Td({ children, className, colSpan }: { children: React.ReactNode; className?: string; colSpan?: number }) {
   return (
-    <td className={cn("px-4 py-3 border-b border-border/50 text-sm", className)}>{children}</td>
+    <td colSpan={colSpan} className={cn("px-4 py-3 border-b border-border/50 text-sm", className)}>{children}</td>
   );
 }
 

@@ -30,6 +30,7 @@ interface Agent {
   urlCount?: number;
   fileCount?: number;
   scheduleCount?: number;
+  createdBy?: number;
 }
 
 interface KnowledgeUrl {

@@ -1348,7 +1348,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <div className="flex items-center justify-center py-1.5 px-1">
               <select
                 value={pv ?? 5}
-                onChange={e => updateProcess({ id: process.id, data: { priority: Number(e.target.value) } })}
+                onChange={e => updateProcess({ id: process.id, data: { priority: e.target.value } })}
                 className="w-full text-xs bg-transparent border border-border/50 rounded px-1 py-0.5 text-center focus:outline-none focus:border-primary/50 cursor-pointer"
               >
                 <option value={1}>1</option>
@@ -1795,7 +1795,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           categories={categories ?? []}
           onClose={() => setShowAddModal(false)}
           onCreateAndPopulate={(body, useAi) => {
-            createProcess({ data: body }, {
+            createProcess({ data: body as any }, {
               onSuccess: (created) => {
                 if (useAi) {
                   aiPopulate({ id: created.id }, { onSettled: () => setShowAddModal(false) });
@@ -1808,6 +1808,71 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           isCreating={isCreating}
           isPopulating={isAiPopulating}
         />
+      )}
+
+      {/* ── Export modal ──────────────────────────────────────────── */}
+      {showExportModal && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowExportModal(false)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 flex flex-col gap-5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Download className="w-4 h-4 text-primary" />
+                <h3 className="text-base font-semibold text-foreground">Export Processes</h3>
+              </div>
+              <button onClick={() => setShowExportModal(false)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground -mt-2">Choose your export format. You can select a save location on the next step.</p>
+
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { fmt: 'xlsx' as const, icon: FileSpreadsheet, label: 'Excel', sub: '.xlsx', color: 'text-emerald-400', border: 'border-emerald-500/40 bg-emerald-500/10' },
+                { fmt: 'csv'  as const, icon: FileText,        label: 'CSV',   sub: '.csv',  color: 'text-blue-400',   border: 'border-blue-500/40 bg-blue-500/10'   },
+              ] as const).map(({ fmt, icon: Icon, label, sub, color, border }) => (
+                <button
+                  key={fmt}
+                  onClick={() => setExportFormat(fmt)}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all",
+                    exportFormat === fmt ? `${border} border-opacity-100` : "border-border hover:border-muted-foreground/30"
+                  )}
+                >
+                  <Icon className={cn("w-7 h-7", exportFormat === fmt ? color : "text-muted-foreground")} />
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-foreground">{label}</div>
+                    <div className="text-[10px] text-muted-foreground">{sub}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-secondary/40 border border-border text-xs text-muted-foreground">
+              <FolderOpen className="w-3.5 h-3.5 flex-none text-muted-foreground/60" />
+              <span>A <strong>Save As</strong> dialog will let you choose where to save the file (in supported browsers). Otherwise it saves to your Downloads folder.</span>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-secondary transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => doExport(exportFormat)}
+                disabled={exporting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm font-medium transition-colors disabled:opacity-50"
+              >
+                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {exporting ? 'Exporting…' : 'Export'}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -2069,71 +2134,6 @@ function AddProcessModal({
           </div>
         </form>
       </div>
-
-      {/* ── Export modal ──────────────────────────────────────────── */}
-      {showExportModal && createPortal(
-        <div className="fixed inset-0 z-[200] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowExportModal(false)} />
-          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6 flex flex-col gap-5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Download className="w-4 h-4 text-primary" />
-                <h3 className="text-base font-semibold text-foreground">Export Processes</h3>
-              </div>
-              <button onClick={() => setShowExportModal(false)} className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary transition-colors">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-muted-foreground -mt-2">Choose your export format. You can select a save location on the next step.</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              {([
-                { fmt: 'xlsx' as const, icon: FileSpreadsheet, label: 'Excel', sub: '.xlsx', color: 'text-emerald-400', border: 'border-emerald-500/40 bg-emerald-500/10' },
-                { fmt: 'csv'  as const, icon: FileText,        label: 'CSV',   sub: '.csv',  color: 'text-blue-400',   border: 'border-blue-500/40 bg-blue-500/10'   },
-              ] as const).map(({ fmt, icon: Icon, label, sub, color, border }) => (
-                <button
-                  key={fmt}
-                  onClick={() => setExportFormat(fmt)}
-                  className={cn(
-                    "flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all",
-                    exportFormat === fmt ? `${border} border-opacity-100` : "border-border hover:border-muted-foreground/30"
-                  )}
-                >
-                  <Icon className={cn("w-7 h-7", exportFormat === fmt ? color : "text-muted-foreground")} />
-                  <div className="text-center">
-                    <div className="text-sm font-medium text-foreground">{label}</div>
-                    <div className="text-[10px] text-muted-foreground">{sub}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-secondary/40 border border-border text-xs text-muted-foreground">
-              <FolderOpen className="w-3.5 h-3.5 flex-none text-muted-foreground/60" />
-              <span>A <strong>Save As</strong> dialog will let you choose where to save the file (in supported browsers). Otherwise it saves to your Downloads folder.</span>
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowExportModal(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-secondary transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => doExport(exportFormat)}
-                disabled={exporting}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 text-sm font-medium transition-colors disabled:opacity-50"
-              >
-                {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {exporting ? 'Exporting…' : 'Export'}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

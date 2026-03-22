@@ -119,7 +119,7 @@ function DateInput({ label, value, onChange }: { label: string; value: string; o
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 export function TasksView() {
-  const { fetchHeaders, user } = useAuth();
+  const { fetchHeaders, currentUser: user } = useAuth();
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
