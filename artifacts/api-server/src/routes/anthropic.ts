@@ -289,9 +289,19 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
 5. Explain relationships between processes, workflows, activities, and initiatives
 6. Answer questions about document content for wikis and uploaded files
 
+## Your identity
+
+You are the **AI Assistant Agent**. Always use "AI Assistant Agent" as your agent_name when calling create_task.
+
 ## Read-only mode with task creation
 
-You can query the database to retrieve data and answer questions. You cannot directly update or delete records. However, you CAN create tasks that are sent for human approval. If you identify something that should be changed or created in the system, use the create_task tool to propose it — a human will review and approve or reject the task before any action is taken. Always explain to the user what task you are creating and why.
+You can query the database to retrieve data and answer questions. You cannot directly update or delete records. However, you CAN create tasks that are sent for human approval. If the user asks you to make any database change (update a record, create an activity, set a KPI, etc.), ALWAYS use the create_task tool — never attempt direct writes. Explain clearly what task you are creating and why. After creating the task, the user will be asked which queue to route it to.
+
+## Final action statement
+
+At the end of EVERY response, add a line in this exact format (always on its own line at the very end):
+
+**Final action taken:** [one-sentence summary of the most important thing you did — e.g. "Queried 12 processes for missing KPIs." or "Created a pending-approval task to update Process #5 KPI."]
 
 ## Document navigation links
 
@@ -365,7 +375,7 @@ const DB_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "create_task",
-    description: "Create a task that requires human approval before any action is taken. Use this when you identify something that should be done in the system — describe exactly what you want to do in ai_instructions. A human will review and approve or reject the task. Only after approval will the instructions be executed.",
+    description: "Create a task that requires human approval before any action is taken. Use this when you identify something that should be done in the system — describe exactly what you want to do in ai_instructions. A human will review and approve or reject the task. Only after approval will the instructions be executed. Always set agent_name to 'AI Assistant Agent' when calling this from the AI Assistant.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -373,6 +383,7 @@ const DB_TOOLS: Anthropic.Tool[] = [
         description: { type: "string", description: "What this task is about and why it is needed" },
         ai_instructions: { type: "string", description: "Detailed instructions of exactly what actions should be carried out when a human approves this task (e.g. 'Update process #12 KPI to Revenue Growth Rate. Create an activity called Q3 Review Meeting.')" },
         priority: { type: "string", enum: ["high", "normal", "low"], description: "Task priority" },
+        agent_name: { type: "string", description: "Name of the agent creating this task. Always use 'AI Assistant Agent' for tasks created through the AI Assistant." },
       },
       required: ["name", "description", "ai_instructions"],
     },
@@ -395,17 +406,20 @@ async function executeTool(name: string, input: Record<string, any>, tenantId: n
       }
 
       case "create_task": {
-        const { name, description = "", ai_instructions, priority = "normal" } = input;
+        const { name, description = "", ai_instructions, priority = "normal", agent_name = "AI Assistant Agent" } = input;
+        const fullDescription = description
+          ? `${description}\n\nCreated by: ${agent_name}`
+          : `Created by: ${agent_name}`;
         const result = await db.execute(sql`
           INSERT INTO tasks (tenant_id, name, description, priority, source, approval_status, ai_instructions, created_by)
-          VALUES (${tenantId}, ${name}, ${description}, ${priority}, 'AI Agents', 'pending', ${ai_instructions}, ${createdBy})
+          VALUES (${tenantId}, ${name}, ${fullDescription}, ${priority}, 'AI Agents', 'pending', ${ai_instructions}, ${createdBy})
           RETURNING id, task_number, name
         `);
         const task = (result.rows as any[])[0];
         return {
           success: true,
-          message: `Task #${task.task_number} "${name}" created and is pending human approval. A human must review and approve this task before any actions are executed.`,
-          data: task,
+          message: `Task #${task.task_number} "${name}" created by ${agent_name} and is pending human approval. The user will be asked which queue to route this to.`,
+          data: { task_id: task.id, task_number: task.task_number, task_name: name, agent_name },
         };
       }
 
@@ -597,8 +611,8 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
 
         const result = await executeTool(tb.name, tb.input as Record<string, any>, tenantId, createdBy);
 
-        // Notify client of result
-        send({ tool_result: { id: tb.id, name: tb.name, success: result.success, message: result.message } });
+        // Notify client of result (include data so frontend can react, e.g. queue picker for create_task)
+        send({ tool_result: { id: tb.id, name: tb.name, success: result.success, message: result.message, data: result.data } });
 
         // Add tool result string to fullResponse so it's persisted
         const resultLine = `\n\n> **Tool: ${tb.name}** — ${result.success ? "✓" : "✗"} ${result.message}`;

@@ -8,7 +8,7 @@ import {
   businessUnits, userBusinessUnits,
   regions, userRegions,
 } from '@workspace/db';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export const orgRouter = Router();
 
