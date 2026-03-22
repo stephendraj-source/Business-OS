@@ -55,7 +55,7 @@ const NODE_RX = 10;
 
 const DEFAULT_COLORS = [
   '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#ec4899', '#14b8a6', '#f97316', '#64748b',
+  '#ec4899', '#14b8a6', '#f97316', '#334155',
 ];
 
 function uid() {
@@ -104,6 +104,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const [connectMode, setConnectMode] = useState(false);
   const [connectSource, setConnectSource] = useState<string | null>(null);
   const [editingLabel, setEditingLabel] = useState<{ nodeId: string; value: string } | null>(null);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameValue, setNameValue] = useState(mindmapName);
   const [loading, setLoading] = useState(true);
@@ -262,6 +263,31 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     updateMapData(prev => ({ ...prev, nodes: [...prev.nodes, node] }));
     setSelectedNodeId(node.id);
     setSelectedEdgeId(null);
+  };
+
+  // ── Add child node ────────────────────────────────────────────────────────
+
+  const addChildNode = (parentId: string) => {
+    const parent = mapDataRef.current.nodes.find(n => n.id === parentId);
+    if (!parent) return;
+    const childId = uid();
+    const child: MapNode = {
+      id: childId,
+      label: 'New node',
+      x: parent.x + NODE_W + 60,
+      y: parent.y + (Math.random() * 60 - 30),
+      color: parent.color,
+      type: 'normal',
+      taskId: null,
+      taskData: null,
+    };
+    const edge = { id: uid(), sourceId: parentId, targetId: childId };
+    updateMapData(prev => ({
+      nodes: [...prev.nodes, child],
+      edges: [...prev.edges, edge],
+    }));
+    setSelectedNodeId(childId);
+    setEditingLabel({ nodeId: childId, value: 'New node' });
   };
 
   // ── Delete selected ───────────────────────────────────────────────────────
@@ -437,8 +463,14 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         setConnectMode(false);
       }
     } else {
-      setSelectedNodeId(nodeId);
-      setSelectedEdgeId(null);
+      if (selectedNodeId === nodeId) {
+        // Second click on already-selected node → start inline editing
+        const node = mapData.nodes.find(n => n.id === nodeId);
+        if (node) setEditingLabel({ nodeId, value: node.label });
+      } else {
+        setSelectedNodeId(nodeId);
+        setSelectedEdgeId(null);
+      }
     }
   };
 
@@ -555,12 +587,30 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
             : "Connect"}
         </button>
         <div className="w-px h-4 bg-border mx-0.5" />
-        <button onClick={() => setTransform(t => ({ ...t, scale: Math.min(3, t.scale * 1.2) }))}
-          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom in">
+        <button onClick={() => {
+          const el = svgRef.current;
+          if (!el) return;
+          const { width, height } = el.getBoundingClientRect();
+          setTransform(t => {
+            const newScale = Math.min(3, t.scale * 1.2);
+            const ratio = newScale / t.scale;
+            const cx = width / 2; const cy = height / 2;
+            return { scale: newScale, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
+          });
+        }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom in">
           <ZoomIn className="w-3.5 h-3.5" />
         </button>
-        <button onClick={() => setTransform(t => ({ ...t, scale: Math.max(0.15, t.scale * 0.8) }))}
-          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom out">
+        <button onClick={() => {
+          const el = svgRef.current;
+          if (!el) return;
+          const { width, height } = el.getBoundingClientRect();
+          setTransform(t => {
+            const newScale = Math.max(0.15, t.scale * 0.8);
+            const ratio = newScale / t.scale;
+            const cx = width / 2; const cy = height / 2;
+            return { scale: newScale, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
+          });
+        }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom out">
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
         <button onClick={() => fitView()}
@@ -580,8 +630,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       {/* Canvas + Panel */}
       <div className="flex flex-1 min-h-0">
         {/* SVG Canvas */}
-        <div className="flex-1 relative overflow-hidden bg-[#0a0f1a]"
-          style={{ backgroundImage: 'radial-gradient(circle, #1e293b 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+        <div className="flex-1 relative overflow-hidden bg-white"
+          style={{ backgroundImage: 'radial-gradient(circle, #cbd5e1 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
           <svg
             ref={svgRef}
             className="w-full h-full"
@@ -593,7 +643,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           >
             <defs>
               <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="#475569" />
+                <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
               </marker>
             </defs>
             <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
@@ -609,7 +659,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     className="mm-edge"
                     d={edgePath(src, dst)}
                     fill="none"
-                    stroke={isSelected ? '#6366f1' : '#334155'}
+                    stroke={isSelected ? '#6366f1' : '#94a3b8'}
                     strokeWidth={isSelected ? 2 : 1.5}
                     strokeDasharray={isSelected ? '6 3' : undefined}
                     markerEnd="url(#arrowhead)"
@@ -622,9 +672,11 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
               {/* Nodes */}
               {mapData.nodes.map(node => {
                 const isSelected = selectedNodeId === node.id;
+                const isHovered = hoveredNodeId === node.id;
                 const isTaskNode = node.type === 'task';
                 const isConnectSrc = connectSource === node.id;
                 const h = nodeHeight(node);
+                const showPlus = (isSelected || isHovered) && !connectMode && !editingLabel;
 
                 return (
                   <g
@@ -635,6 +687,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     onPointerDown={e => handleNodePointerDown(e, node.id)}
                     onPointerUp={e => handleNodePointerUp(e, node.id)}
                     onDoubleClick={e => handleNodeDoubleClick(e, node.id)}
+                    onPointerEnter={() => setHoveredNodeId(node.id)}
+                    onPointerLeave={() => setHoveredNodeId(id => id === node.id ? null : id)}
                   >
                     {/* Selection ring */}
                     {(isSelected || isConnectSrc) && (
@@ -644,26 +698,26 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {/* Node body */}
                     <rect
                       x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
-                      fill={isTaskNode ? '#0f2a1a' : '#0f172a'}
+                      fill={isTaskNode ? '#f0fdf4' : '#ffffff'}
                       stroke={isTaskNode ? '#10b981' : node.color}
                       strokeWidth={isTaskNode ? 2 : 1.5}
                     />
                     {/* Left color bar (normal nodes) */}
                     {!isTaskNode && (
-                      <rect x={0} y={0} width={4} height={h} rx={2}
+                      <rect x={0} y={0} width={5} height={h} rx={NODE_RX}
                         fill={node.color} />
                     )}
                     {/* Task badge */}
                     {isTaskNode && (
                       <g transform={`translate(${NODE_W - 20}, 8)`}>
-                        <circle r={8} fill="#10b981" opacity={0.2} />
+                        <circle r={8} fill="#10b981" opacity={0.15} />
                         <CheckSquare width={10} height={10} x={-5} y={-5}
-                          className="text-emerald-400" strokeWidth={1.5} />
+                          stroke="#059669" strokeWidth={1.5} fill="none" />
                       </g>
                     )}
                     {/* Label */}
                     {editingLabel?.nodeId === node.id ? (
-                      <foreignObject x={isTaskNode ? 8 : 12} y={12} width={NODE_W - 28} height={h - 20}>
+                      <foreignObject x={isTaskNode ? 8 : 12} y={8} width={NODE_W - 24} height={h - 12}>
                         <input
                           value={editingLabel.value}
                           onChange={e => setEditingLabel(l => l ? { ...l, value: e.target.value } : null)}
@@ -671,17 +725,18 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                           onKeyDown={e => { if (e.key === 'Enter') commitLabelEdit(); if (e.key === 'Escape') setEditingLabel(null); }}
                           autoFocus
                           style={{
-                            width: '100%', background: 'transparent', border: 'none',
-                            outline: 'none', color: '#f1f5f9', fontSize: 11, fontWeight: 600,
+                            width: '100%', height: '100%', background: 'transparent', border: 'none',
+                            outline: 'none', color: '#1e293b', fontSize: 12, fontWeight: 600,
+                            cursor: 'text',
                           }}
                         />
                       </foreignObject>
                     ) : (
                       <>
                         <text
-                          x={isTaskNode ? 10 : 14} y={isTaskNode ? 22 : 22}
-                          fill={isTaskNode ? '#6ee7b7' : '#f1f5f9'}
-                          fontSize={11} fontWeight={600}
+                          x={isTaskNode ? 10 : 14} y={isTaskNode ? 22 : h / 2 + 4}
+                          fill={isTaskNode ? '#065f46' : '#1e293b'}
+                          fontSize={12} fontWeight={600}
                           style={{ userSelect: 'none', pointerEvents: 'none' }}
                         >
                           {node.label.length > 22 ? node.label.slice(0, 20) + '…' : node.label}
@@ -692,11 +747,25 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                           </text>
                         )}
                         {isTaskNode && node.taskData && node.taskData.endDate && (
-                          <text x={10} y={56} fill="#64748b" fontSize={9} style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                          <text x={10} y={56} fill="#94a3b8" fontSize={9} style={{ userSelect: 'none', pointerEvents: 'none' }}>
                             Due: {node.taskData.endDate}
                           </text>
                         )}
                       </>
+                    )}
+                    {/* + Add Child button */}
+                    {showPlus && (
+                      <g
+                        transform={`translate(${NODE_W + 6}, ${h / 2 - 10})`}
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => { e.stopPropagation(); addChildNode(node.id); }}
+                        title="Add child node"
+                      >
+                        <rect x={0} y={0} width={20} height={20} rx={10} fill="#6366f1" />
+                        <text x={10} y={14} textAnchor="middle" fill="#ffffff" fontSize={14} fontWeight={700}
+                          style={{ userSelect: 'none', pointerEvents: 'none', lineHeight: 1 }}>+</text>
+                      </g>
                     )}
                   </g>
                 );
@@ -707,9 +776,9 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           {/* Empty state */}
           {!mapData.nodes.length && (
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <GitBranch className="w-12 h-12 text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground/50">Click "Add Node" to start mapping</p>
-              <p className="text-xs text-muted-foreground/30 mt-1">Drag to pan · Scroll to zoom · Double-click node to rename</p>
+              <GitBranch className="w-12 h-12 text-slate-300 mb-3" />
+              <p className="text-sm text-slate-400">Click "Add Node" to start mapping</p>
+              <p className="text-xs text-slate-300 mt-1">Drag to pan · Scroll to zoom · Click node to select · Click again to rename</p>
             </div>
           )}
         </div>
