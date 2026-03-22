@@ -141,7 +141,7 @@ function RoleBadge({ orgRoles }: { orgRoles: string[] }) {
       {labels.map(label => (
         <span key={label} className={cn(
           'text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide',
-          label === 'All Administrators' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+          label.toLowerCase().includes('administrators') ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
         )}>
           {label}
         </span>
