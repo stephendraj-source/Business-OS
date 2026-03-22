@@ -24,6 +24,7 @@ import connectorConfigsRouter from "./connector-configs";
 import { strategyRouter } from "./strategy";
 import { favouritesRouter } from "./favourites";
 import { mindmapsRouter } from "./mindmaps";
+import meetingsRouter from "./meetings";
 
 const router: IRouter = Router();
 
@@ -52,5 +53,6 @@ router.use(connectorConfigsRouter);
 router.use(strategyRouter);
 router.use(favouritesRouter);
 router.use(mindmapsRouter);
+router.use(meetingsRouter);
 
 export default router;

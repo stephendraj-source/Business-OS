@@ -4,7 +4,7 @@ import {
   Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
   GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
-  Star,
+  Star, Calendar,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { cn } from '@/lib/utils';
@@ -19,7 +19,8 @@ export type ActiveView =
   | 'dashboards' | 'reports' | 'audit-logs' | 'settings'
   | 'ai-agents' | 'workflows' | 'forms'
   | 'users' | 'initiatives' | 'configuration'
-  | 'activities' | 'tasks' | 'strategy' | 'strategic-planning';
+  | 'activities' | 'tasks' | 'strategy' | 'strategic-planning'
+  | 'meetings';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -55,6 +56,7 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'governance',        label: 'Governance',         sectionId: 'governance'   },
   { id: 'workflows',         label: 'Workflows',          sectionId: 'workflows'    },
   { id: 'forms',             label: 'Forms and Documents',sectionId: 'workflows'    },
+  { id: 'meetings',          label: 'Meetings',           sectionId: 'workflows'    },
   { id: 'activities',        label: 'Activities',         sectionId: 'workflows'    },
   { id: 'tasks',             label: 'Tasks',              sectionId: 'workflows'    },
   { id: 'ai-agents',         label: 'AI Agents',          sectionId: 'ai'           },
@@ -88,6 +90,7 @@ const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
   'strategic-planning':{ label: 'Strategic Planning',   section: 'Strategy'     },
   activities:          { label: 'Activities',           section: 'Workflows'    },
   tasks:               { label: 'Tasks',                section: 'Workflows'    },
+  meetings:            { label: 'Meetings',             section: 'Workflows'    },
 };
 
 function getIcon(id: ActiveView) {
@@ -102,6 +105,7 @@ function getIcon(id: ActiveView) {
     case 'governance':         return <ShieldCheck className={cls} />;
     case 'workflows':          return <GitBranch className={cls} />;
     case 'forms':              return <ClipboardList className={cls} />;
+    case 'meetings':           return <Calendar className={cls} />;
     case 'activities':         return <Activity className={cls} />;
     case 'tasks':              return <ListTodo className={cls} />;
     case 'ai-agents':          return <Bot className={cls} />;
