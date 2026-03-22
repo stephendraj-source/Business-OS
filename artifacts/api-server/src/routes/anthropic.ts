@@ -303,9 +303,15 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
 
 You are the **AI Assistant Agent**. Always use "AI Assistant Agent" as your agent_name when calling create_task.
 
-## Read-only mode with task creation
+## Task creation rules
 
-You can query the database to retrieve data and answer questions. You cannot directly update or delete records. However, you CAN create tasks that are sent for human approval. If the user asks you to make any database change (update a record, create an activity, set a KPI, etc.), ALWAYS use the create_task tool — never attempt direct writes. Explain clearly what task you are creating and why. After creating the task, the user will be asked which queue to route it to.
+You have two task tools — use the right one:
+
+**\`suggest_task\`** — Use when the user explicitly asks to CREATE a task (and optionally assign it to a person or queue). This opens a pre-filled form for the user to review and confirm. The task is NOT saved until they click "Create Task". If you are missing important information (like who to assign to), set \`clarification_needed\` and the user will be prompted. Do not use \`create_task\` for this case.
+
+**\`create_task\`** — Use ONLY when the user asks you to make a database change that needs human approval (update a record, create an activity, set a KPI, etc.). Include detailed \`ai_instructions\` so a human reviewer knows exactly what to do.
+
+You cannot directly update or delete records. For all other database changes, use \`create_task\` with a clear \`ai_instructions\` field. After creating the task, the user will be asked which queue to route it to.
 
 ## Final action statement
 
@@ -386,16 +392,33 @@ const DB_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: "create_task",
-    description: "Create a task that requires human approval before any action is taken. Use this when you identify something that should be done in the system — describe exactly what you want to do in ai_instructions. A human will review and approve or reject the task. Only after approval will the instructions be executed. Always set agent_name to 'AI Assistant Agent' when calling this from the AI Assistant.",
+    name: "suggest_task",
+    description: "Use this when the user explicitly asks to CREATE a task and optionally assign it to a person or queue. This opens a pre-filled task creation form for the user to review and confirm — the task is NOT written to the database until the user clicks 'Create Task'. Do NOT use this for other database changes (updating records, creating activities, setting KPIs, etc.) — use create_task for those approval workflows.",
     input_schema: {
       type: "object" as const,
       properties: {
         name: { type: "string", description: "Short, clear task title" },
         description: { type: "string", description: "What this task is about and why it is needed" },
-        ai_instructions: { type: "string", description: "Detailed instructions of exactly what actions should be carried out when a human approves this task (e.g. 'Update process #12 KPI to Revenue Growth Rate. Create an activity called Q3 Review Meeting.')" },
+        priority: { type: "string", enum: ["high", "normal", "low"], description: "Task priority based on what the user indicated" },
+        assigned_to_name: { type: "string", description: "Full name of the user to assign to, if the user specified one (must match a real user name in the system)" },
+        queue_name: { type: "string", description: "Name of the queue to route to, if the user specified one" },
+        due_date: { type: "string", description: "ISO date string YYYY-MM-DD if the user mentioned a due date, otherwise omit" },
+        clarification_needed: { type: "string", description: "If something important is missing or unclear (e.g. no assignee mentioned and you need one), describe what you need to know. Leave empty if the form can be shown as-is." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "create_task",
+    description: "Create a task that requires human approval before any action is taken. Use this ONLY when you identify a database change that needs to happen (update a record, create an activity, set a KPI, etc.) — describe exactly what to do in ai_instructions. A human will review and approve or reject. Do NOT use this just for creating a task — use suggest_task for that.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Short, clear task title" },
+        description: { type: "string", description: "What this task is about and why it is needed" },
+        ai_instructions: { type: "string", description: "Detailed instructions of exactly what actions should be carried out when a human approves this task" },
         priority: { type: "string", enum: ["high", "normal", "low"], description: "Task priority" },
-        agent_name: { type: "string", description: "Name of the agent creating this task. Always use 'AI Assistant Agent' for tasks created through the AI Assistant." },
+        agent_name: { type: "string", description: "Always use 'AI Assistant Agent' for tasks created through the AI Assistant." },
       },
       required: ["name", "description", "ai_instructions"],
     },
@@ -415,6 +438,17 @@ async function executeTool(name: string, input: Record<string, any>, tenantId: n
         const result = await db.execute(sql.raw(sql_query));
         const rows = result.rows as any[];
         return { success: true, message: `Query returned ${rows.length} row(s)`, data: rows.slice(0, 50) };
+      }
+
+      case "suggest_task": {
+        const { name, description = "", priority = "normal", assigned_to_name, queue_name, due_date, clarification_needed } = input;
+        return {
+          success: true,
+          message: clarification_needed
+            ? `Task form suggestion ready — clarification needed: ${clarification_needed}`
+            : `Task form opened with pre-filled values for "${name}".`,
+          data: { name, description, priority, assigned_to_name, queue_name, due_date, clarification_needed },
+        };
       }
 
       case "create_task": {

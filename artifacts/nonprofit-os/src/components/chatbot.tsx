@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink, Wrench, CheckCircle2, XCircle, Layers, ArrowRight, Hash, GitBranch, User } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink, Wrench, CheckCircle2, XCircle, Layers, ArrowRight, Hash, GitBranch, User, ClipboardList, AlertCircle, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
@@ -52,6 +52,16 @@ interface MentionUser { id: number; name: string; email: string; role?: string }
 interface MentionProcess { id: number; processName: string; category?: string }
 interface MentionField { key: string; label: string; hasSublist?: boolean }
 interface MentionWorkflow { id: number; workflowNumber: number; name: string; description: string }
+
+interface SuggestedTask {
+  name: string;
+  description?: string;
+  priority?: 'high' | 'normal' | 'low';
+  assigned_to_name?: string;
+  queue_name?: string;
+  due_date?: string;
+  clarification_needed?: string;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PANEL_W = 440;
@@ -153,6 +163,209 @@ function QueuePicker({
   );
 }
 
+// ── Task Quick-Create Modal ───────────────────────────────────────────────────
+function TaskQuickCreateModal({
+  suggestion,
+  fetchHeaders,
+  onClose,
+  onCreated,
+}: {
+  suggestion: SuggestedTask;
+  fetchHeaders: () => Record<string, string>;
+  onClose: () => void;
+  onCreated: (taskNumber: number, taskName: string) => void;
+}) {
+  const [name, setName] = useState(suggestion.name ?? '');
+  const [description, setDescription] = useState(suggestion.description ?? '');
+  const [priority, setPriority] = useState<'high' | 'normal' | 'low'>(suggestion.priority ?? 'normal');
+  const [dueDate, setDueDate] = useState(suggestion.due_date ?? '');
+  const [assignValue, setAssignValue] = useState('');
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [queues, setQueues] = useState<{ id: number; name: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API}/users`, { headers: fetchHeaders() }).then(r => r.ok ? r.json() : []),
+      fetch(`${API}/org/task-queues`, { headers: fetchHeaders() }).then(r => r.ok ? r.json() : []),
+    ]).then(([u, q]) => {
+      setUsers(u);
+      setQueues(q);
+      // Pre-select from suggestion
+      if (suggestion.assigned_to_name) {
+        const match = (u as { id: number; name: string }[]).find(
+          usr => usr.name.toLowerCase() === suggestion.assigned_to_name!.toLowerCase()
+        );
+        if (match) { setAssignValue(`user:${match.id}`); return; }
+      }
+      if (suggestion.queue_name) {
+        const match = (q as { id: number; name: string }[]).find(
+          qu => qu.name.toLowerCase() === suggestion.queue_name!.toLowerCase()
+        );
+        if (match) setAssignValue(`queue:${match.id}`);
+      }
+    }).catch(() => {});
+  }, []);
+
+  async function handleCreate() {
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      let assignedTo: number | null = null;
+      let queueId: number | null = null;
+      if (assignValue) {
+        const [type, id] = assignValue.split(':');
+        if (type === 'user') assignedTo = Number(id);
+        if (type === 'queue') queueId = Number(id);
+      }
+      const r = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          priority,
+          status: 'open',
+          source: 'Users',
+          assignedTo,
+          queueId,
+          endDate: dueDate || null,
+        }),
+      });
+      if (!r.ok) throw new Error('Failed');
+      const task = await r.json();
+      setSaved(true);
+      onCreated(task.task_number, task.name);
+    } catch {
+      setSaving(false);
+    }
+  }
+
+  if (saved) {
+    return (
+      <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-3 flex items-center gap-2 text-xs text-green-400">
+        <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+        Task created successfully.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 bg-secondary/30 border-b border-border">
+        <ClipboardList className="w-4 h-4 text-primary flex-shrink-0" />
+        <span className="text-sm font-semibold flex-1">New Task</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Clarification notice */}
+      {suggestion.clarification_needed && (
+        <div className="mx-4 mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+          <AlertCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+          <span>{suggestion.clarification_needed}</span>
+        </div>
+      )}
+
+      {/* Form */}
+      <div className="px-4 py-3 space-y-3">
+        {/* Name */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Title *</label>
+          <input
+            value={name}
+            onChange={e => setName(e.target.value)}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder="Task title…"
+          />
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Description</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            rows={3}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+            placeholder="What needs to be done…"
+          />
+        </div>
+
+        {/* Priority + Due date row */}
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Priority</label>
+            <select
+              value={priority}
+              onChange={e => setPriority(e.target.value as 'high' | 'normal' | 'low')}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            >
+              <option value="high">High</option>
+              <option value="normal">Normal</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
+              <Calendar className="w-3 h-3" />Due Date
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+        </div>
+
+        {/* Assign to */}
+        <div>
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">Assign To</label>
+          <select
+            value={assignValue}
+            onChange={e => setAssignValue(e.target.value)}
+            className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          >
+            <option value="">— Unassigned —</option>
+            {users.length > 0 && (
+              <optgroup label="Users">
+                {users.map(u => <option key={`u-${u.id}`} value={`user:${u.id}`}>{u.name}</option>)}
+              </optgroup>
+            )}
+            {queues.length > 0 && (
+              <optgroup label="Queues">
+                {queues.map(q => <option key={`q-${q.id}`} value={`queue:${q.id}`}>{q.name}</option>)}
+              </optgroup>
+            )}
+          </select>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border bg-secondary/20">
+        <button
+          onClick={onClose}
+          className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleCreate}
+          disabled={saving || !name.trim()}
+          className="flex items-center gap-2 px-4 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors"
+        >
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+          Create Task
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main chatbot component ────────────────────────────────────────────────────
 export function Chatbot() {
   const { fetchHeaders } = useAuth();
@@ -179,6 +392,10 @@ export function Chatbot() {
   const [queues, setQueues] = useState<Queue[]>([]);
   const [pendingTask, setPendingTask] = useState<PendingTask | null>(null);
   const [queueDismissed, setQueueDismissed] = useState(false);
+
+  // Task quick-create state
+  const [suggestedTask, setSuggestedTask] = useState<SuggestedTask | null>(null);
+  const [taskCreatedMsg, setTaskCreatedMsg] = useState<string | null>(null);
 
   // Slash-mention picker state
   const [showMention, setShowMention] = useState(false);
@@ -360,6 +577,8 @@ export function Chatbot() {
     setToolEvents([]);
     setPendingTask(null);
     setQueueDismissed(false);
+    setSuggestedTask(null);
+    setTaskCreatedMsg(null);
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', content, createdAt: new Date().toISOString() }]);
 
     try {
@@ -402,6 +621,10 @@ export function Chatbot() {
               // Capture pending task for queue picker
               if (parsed.tool_result.name === 'create_task' && parsed.tool_result.success && parsed.tool_result.data) {
                 setPendingTask(parsed.tool_result.data as PendingTask);
+              }
+              // Open task quick-create form
+              if (parsed.tool_result.name === 'suggest_task' && parsed.tool_result.success && parsed.tool_result.data) {
+                setSuggestedTask(parsed.tool_result.data as SuggestedTask);
               }
             }
           } catch {}
@@ -720,6 +943,27 @@ export function Chatbot() {
                               onSelect={(queueId, queueName) => assignQueue(pendingTask.task_id, queueId, queueName)}
                               onDismiss={() => setQueueDismissed(true)}
                             />
+                          )}
+
+                          {/* Task quick-create form — shown when AI calls suggest_task */}
+                          {isLast && !streaming && suggestedTask && !taskCreatedMsg && (
+                            <div className="mt-2">
+                              <TaskQuickCreateModal
+                                suggestion={suggestedTask}
+                                fetchHeaders={fetchHeaders}
+                                onClose={() => setSuggestedTask(null)}
+                                onCreated={(num, name) => {
+                                  setSuggestedTask(null);
+                                  setTaskCreatedMsg(`Task #${num} "${name}" created.`);
+                                }}
+                              />
+                            </div>
+                          )}
+                          {isLast && !streaming && taskCreatedMsg && (
+                            <div className="mt-2 px-3 py-2.5 rounded-xl bg-green-500/10 border border-green-500/30 text-xs text-green-400 flex items-center gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                              {taskCreatedMsg}
+                            </div>
                           )}
                         </div>
                       </div>
