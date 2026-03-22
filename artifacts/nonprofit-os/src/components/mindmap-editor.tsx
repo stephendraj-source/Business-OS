@@ -555,6 +555,18 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     return () => window.removeEventListener('keydown', handler);
   }, [selectedNodeId, selectedEdgeId]);
 
+  // ── Orphan detection ──────────────────────────────────────────────────────
+
+  function isOrphan(nodeId: string): boolean {
+    return !mapData.edges.some(e => e.sourceId === nodeId || e.targetId === nodeId);
+  }
+
+  // Start link-to-node mode: pre-arm connect mode with this node as the source
+  const startLinkOrphan = (nodeId: string) => {
+    setConnectMode(true);
+    setConnectSource(nodeId);
+  };
+
   // ── Selected node ─────────────────────────────────────────────────────────
 
   const selectedNode = mapData.nodes.find(n => n.id === selectedNodeId) ?? null;
@@ -712,6 +724,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                 const isHovered = hoveredNodeId === node.id;
                 const isTaskNode = node.type === 'task';
                 const isConnectSrc = connectSource === node.id;
+                const orphaned = isOrphan(node.id);
                 const h = nodeHeight(node);
                 const showPlus = (isSelected || isHovered) && !connectMode && !editingLabel;
 
@@ -736,6 +749,11 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                       stroke="none"
                       style={{ pointerEvents: 'fill' }}
                     />
+                    {/* Orphan indicator — dashed amber ring when no connections */}
+                    {orphaned && !isSelected && !isConnectSrc && (
+                      <rect x={-3} y={-3} width={NODE_W + 6} height={h + 6} rx={NODE_RX + 2}
+                        fill="none" stroke="#f59e0b" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.6} />
+                    )}
                     {/* Selection ring */}
                     {(isSelected || isConnectSrc) && (
                       <rect x={-3} y={-3} width={NODE_W + 6} height={h + 6} rx={NODE_RX + 2}
@@ -974,6 +992,22 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                       <Unlink className="w-3 h-3" /> Unlink from task system
                     </button>
                   </div>
+
+                  {/* Link orphaned node */}
+                  {isOrphan(selectedNode.id) && (
+                    <div className="border-t border-amber-500/20 pt-3">
+                      <p className="text-[10px] text-amber-400/80 mb-2 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full border border-amber-400 border-dashed" />
+                        This node has no connections
+                      </p>
+                      <button
+                        onClick={() => startLinkOrphan(selectedNode.id)}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                      >
+                        <Link className="w-3 h-3" /> Link to existing node
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
@@ -1018,6 +1052,22 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {taskLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
                     Convert to Task
                   </button>
+
+                  {/* Link orphaned node */}
+                  {isOrphan(selectedNode.id) && (
+                    <div className="border-t border-amber-500/20 pt-3">
+                      <p className="text-[10px] text-amber-400/80 mb-2 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full border border-amber-400 border-dashed" />
+                        This node has no connections
+                      </p>
+                      <button
+                        onClick={() => startLinkOrphan(selectedNode.id)}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs text-amber-300 border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+                      >
+                        <Link className="w-3 h-3" /> Link to existing node
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
