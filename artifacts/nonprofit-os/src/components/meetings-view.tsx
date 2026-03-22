@@ -184,7 +184,6 @@ export function MeetingsView() {
 
   const selected = meetings.find(m => m.id === selectedId) ?? null;
 
-  // Group filtered meetings by month
   const grouped: { label: string; items: Meeting[] }[] = [];
   for (const m of filtered) {
     const label = m.meeting_date
@@ -195,18 +194,18 @@ export function MeetingsView() {
   }
 
   return (
-    <div className="flex h-full bg-[hsl(var(--background))] text-white overflow-hidden">
+    <div className="flex h-full bg-background text-foreground overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <div className="w-72 flex-shrink-0 flex flex-col border-r border-white/10">
+      <div className="w-72 flex-shrink-0 flex flex-col border-r border-border">
 
         {/* Sidebar header */}
-        <div className="px-4 pt-4 pb-3 border-b border-white/10 flex-shrink-0">
+        <div className="px-4 pt-4 pb-3 border-b border-border flex-shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-blue-400" />
-              <span className="text-sm font-semibold">Meetings</span>
-              <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full tabular-nums">{meetings.length}</span>
+              <span className="text-sm font-semibold text-foreground">Meetings</span>
+              <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full tabular-nums">{meetings.length}</span>
             </div>
             <div className="flex items-center gap-1">
               <input
@@ -218,7 +217,7 @@ export function MeetingsView() {
               <button
                 onClick={() => importInputRef.current?.click()} disabled={importing || creating}
                 title="Import from PDF or Word"
-                className="flex items-center gap-1 text-[11px] bg-white/6 hover:bg-white/10 border border-white/12 text-white/60 hover:text-white px-2 py-1 rounded-md transition-colors disabled:opacity-50"
+                className="flex items-center gap-1 text-[11px] bg-secondary hover:bg-accent border border-border text-muted-foreground hover:text-foreground px-2 py-1 rounded-md transition-colors disabled:opacity-50"
               >
                 {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
                 Import
@@ -235,11 +234,11 @@ export function MeetingsView() {
 
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/35" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <input
               value={search} onChange={e => setSearch(e.target.value)}
               placeholder="Search meetings…"
-              className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+              className="w-full bg-background border border-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50"
             />
           </div>
 
@@ -252,8 +251,8 @@ export function MeetingsView() {
                 className={cn(
                   'text-[11px] px-2.5 py-0.5 rounded-full border transition-colors',
                   typeFilter === t
-                    ? 'bg-blue-600/25 border-blue-500/40 text-blue-300'
-                    : 'border-white/10 text-white/45 hover:border-white/20 hover:text-white/65'
+                    ? 'bg-blue-600/25 border-blue-500/40 text-blue-400'
+                    : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground'
                 )}
               >
                 {t === 'all' ? 'All' : TYPE_CONFIG[t].label}
@@ -266,19 +265,19 @@ export function MeetingsView() {
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center h-24">
-              <Loader2 className="w-4 h-4 animate-spin text-white/30" />
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
             </div>
           ) : filtered.length === 0 ? (
             <div className="p-6 text-center">
-              <Calendar className="w-8 h-8 mx-auto mb-2 text-white/15" />
-              <p className="text-xs text-white/35">
+              <Calendar className="w-8 h-8 mx-auto mb-2 text-muted-foreground opacity-30" />
+              <p className="text-xs text-muted-foreground">
                 {search || typeFilter !== 'all' ? 'No matches found' : 'No meetings yet'}
               </p>
             </div>
           ) : (
             grouped.map(group => (
               <div key={group.label}>
-                <div className="px-4 py-2 text-[10px] font-semibold text-white/30 uppercase tracking-widest sticky top-0 bg-[hsl(var(--background))] z-10">
+                <div className="px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest sticky top-0 bg-background z-10">
                   {group.label}
                 </div>
                 {group.items.map(m => (
@@ -289,31 +288,30 @@ export function MeetingsView() {
                       'w-full text-left px-4 py-3 transition-colors group relative',
                       selectedId === m.id
                         ? 'bg-blue-500/10 border-l-2 border-l-blue-500'
-                        : 'border-l-2 border-l-transparent hover:bg-white/4'
+                        : 'border-l-2 border-l-transparent hover:bg-secondary'
                     )}
                   >
                     <div className="flex items-start gap-2.5">
-                      {/* Type dot */}
                       <div className={cn('w-2 h-2 rounded-full flex-shrink-0 mt-1.5', TYPE_CONFIG[m.meeting_type]?.dot ?? 'bg-blue-400')} />
                       <div className="flex-1 min-w-0">
-                        <p className={cn('text-sm font-medium truncate', selectedId === m.id ? 'text-white' : 'text-white/85')}>
+                        <p className={cn('text-sm font-medium truncate', selectedId === m.id ? 'text-foreground' : 'text-foreground/85')}>
                           {m.title}
                         </p>
                         {m.meeting_date && (
-                          <p className="text-[11px] text-white/40 mt-0.5 flex items-center gap-1">
+                          <p className="text-[11px] text-muted-foreground mt-0.5 flex items-center gap-1">
                             <Clock className="w-3 h-3 flex-shrink-0" />
                             {formatDateShort(m.meeting_date)}
                           </p>
                         )}
                         {m.location && (
-                          <p className="text-[11px] text-white/35 truncate mt-0.5 flex items-center gap-1">
+                          <p className="text-[11px] text-muted-foreground truncate mt-0.5 flex items-center gap-1">
                             <MapPin className="w-3 h-3 flex-shrink-0" />{m.location}
                           </p>
                         )}
                       </div>
                       <button
                         onClick={e => { e.stopPropagation(); deleteMeeting(m.id); }}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-white/35 hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
@@ -329,10 +327,10 @@ export function MeetingsView() {
       {/* ── Main panel ── */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {!selected ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/30 gap-3">
+          <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
             <Calendar className="w-14 h-14 opacity-15" />
             <div className="text-center">
-              <p className="text-sm font-medium text-white/40">No meeting selected</p>
+              <p className="text-sm font-medium text-muted-foreground">No meeting selected</p>
               <p className="text-xs mt-1">Choose one from the list or create a new meeting</p>
             </div>
           </div>
@@ -425,30 +423,30 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
     <div className="flex-1 flex flex-col overflow-hidden">
 
       {/* Header */}
-      <div className="px-6 pt-5 pb-0 border-b border-white/10 flex-shrink-0">
+      <div className="px-6 pt-5 pb-0 border-b border-border flex-shrink-0">
         {/* Title row */}
         <div className="flex items-start gap-3 mb-4">
           <div className="flex-1 min-w-0">
             <input
               value={title}
               onChange={e => setTitle(e.target.value)}
-              className="w-full bg-transparent text-xl font-semibold text-white border-none outline-none placeholder-white/25 leading-tight"
+              className="w-full bg-transparent text-xl font-semibold text-foreground border-none outline-none placeholder-muted-foreground leading-tight"
               placeholder="Meeting title…"
             />
             <div className="flex items-center gap-2.5 mt-2 flex-wrap">
               <TypeBadge type={meetingType} />
               {meetingDate && (
-                <span className="text-xs text-white/45 flex items-center gap-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <Clock className="w-3 h-3" />{formatDate(meetingDate)}
                 </span>
               )}
               {location && (
-                <span className="text-xs text-white/45 flex items-center gap-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="w-3 h-3" />{location}
                 </span>
               )}
               {organizerName && (
-                <span className="text-xs text-white/45 flex items-center gap-1">
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <User className="w-3 h-3" />{organizerName}
                 </span>
               )}
@@ -456,7 +454,7 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
           </div>
           {/* Save indicator */}
           <div className="flex items-center gap-2 pt-1 flex-shrink-0">
-            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-white/30" />}
+            {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
             {saved && !saving && (
               <span className="text-[11px] text-emerald-400 flex items-center gap-1">
                 <Check className="w-3 h-3" />Saved
@@ -465,7 +463,7 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
           </div>
         </div>
 
-        {/* Tab bar — scrollable to prevent overflow */}
+        {/* Tab bar */}
         <div className="flex overflow-x-auto scrollbar-none -mx-1 px-1">
           {TABS.map(t => {
             const badge = t.id === 'actions' && actions.length > 0 ? actions.length
@@ -480,7 +478,7 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
                   'flex items-center gap-1.5 text-xs px-3 py-2.5 border-b-2 transition-colors whitespace-nowrap flex-shrink-0 -mb-px',
                   tab === t.id
                     ? 'border-blue-500 text-blue-400'
-                    : 'border-transparent text-white/40 hover:text-white/65'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
                 )}
               >
                 {t.icon}
@@ -488,7 +486,7 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
                 {badge !== null && (
                   <span className={cn(
                     'text-[10px] px-1.5 py-px rounded-full font-medium',
-                    tab === t.id ? 'bg-blue-500/20 text-blue-400' : 'bg-white/8 text-white/40'
+                    tab === t.id ? 'bg-blue-500/20 text-blue-400' : 'bg-secondary text-muted-foreground'
                   )}>
                     {badge}
                   </span>
@@ -549,14 +547,14 @@ function MeetingDetail({ meeting, processes, workflows, agents, users, onUpdate 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-white/40 uppercase tracking-widest mb-1.5">{label}</label>
+      <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-1.5">{label}</label>
       {children}
     </div>
   );
 }
 
-const inputCls = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-white/25';
-const selectCls = 'w-full bg-[hsl(var(--background))] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50';
+const inputCls = 'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-muted-foreground';
+const selectCls = 'w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50';
 
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
@@ -584,7 +582,7 @@ function OverviewTab({ meetingType, setMeetingType, meetingDate, setMeetingDate,
                 onClick={() => setMeetingType(t)}
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs font-medium transition-all',
-                  meetingType === t ? cn(cfg.color, 'shadow-sm') : 'border-white/12 text-white/45 hover:border-white/20 hover:text-white/65'
+                  meetingType === t ? cn(cfg.color, 'shadow-sm') : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground'
                 )}
               >
                 {cfg.icon}{cfg.label}
@@ -625,7 +623,7 @@ function OverviewTab({ meetingType, setMeetingType, meetingDate, setMeetingDate,
             <option value="">— Select a user —</option>
             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <span className="text-xs text-white/30 flex-shrink-0">or</span>
+          <span className="text-xs text-muted-foreground flex-shrink-0">or</span>
           <input
             value={organizerName}
             onChange={e => { setOrganizerName(e.target.value); setOrganizerId(null); }}
@@ -633,7 +631,7 @@ function OverviewTab({ meetingType, setMeetingType, meetingDate, setMeetingDate,
             className={cn(inputCls, 'flex-1')}
           />
         </div>
-        <p className="text-[11px] text-white/30 mt-1">Organiser may differ from the meeting creator.</p>
+        <p className="text-[11px] text-muted-foreground mt-1">Organiser may differ from the meeting creator.</p>
       </Field>
 
       <Field label="Linked Process">
@@ -665,26 +663,26 @@ function AgendaTab({ items, onChange }: { items: AgendaItem[]; onChange: (v: Age
     <div className="p-6 max-w-2xl">
       <div className="flex items-center gap-2 mb-5">
         <ListChecks className="w-4 h-4 text-blue-400" />
-        <h3 className="text-sm font-semibold">Agenda Items</h3>
-        <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{items.length}</span>
+        <h3 className="text-sm font-semibold text-foreground">Agenda Items</h3>
+        <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{items.length}</span>
       </div>
 
       {items.length === 0 && (
-        <p className="text-xs text-white/35 italic mb-4">No agenda items yet — add one below.</p>
+        <p className="text-xs text-muted-foreground italic mb-4">No agenda items yet — add one below.</p>
       )}
 
       <div className="space-y-2 mb-4">
         {items.map((item, i) => (
           <div key={item.id} className="flex items-center gap-2.5 group">
-            <span className="text-xs text-white/30 w-5 text-right flex-shrink-0 font-mono">{i + 1}</span>
+            <span className="text-xs text-muted-foreground w-5 text-right flex-shrink-0 font-mono">{i + 1}</span>
             <input
               value={item.text}
               onChange={e => onChange(items.map(it => it.id === item.id ? { ...it, text: e.target.value } : it))}
-              className="flex-1 bg-white/5 border border-white/8 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+              className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50"
             />
             <button
               onClick={() => onChange(items.filter(it => it.id !== item.id))}
-              className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-white/35 hover:text-red-400 hover:bg-red-400/10 transition-all"
+              className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -692,12 +690,12 @@ function AgendaTab({ items, onChange }: { items: AgendaItem[]; onChange: (v: Age
         ))}
       </div>
 
-      <div className="flex gap-2 pt-3 border-t border-white/8">
+      <div className="flex gap-2 pt-3 border-t border-border">
         <input
           value={newText} onChange={e => setNewText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && add()}
           placeholder="Add agenda item… (Enter to add)"
-          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-white/25"
+          className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-muted-foreground"
         />
         <button
           onClick={add}
@@ -736,29 +734,29 @@ function AttendeesTab({ attendees, users, onChange }: { attendees: Attendee[]; u
     <div className="p-6 max-w-2xl">
       <div className="flex items-center gap-2 mb-5">
         <Users className="w-4 h-4 text-blue-400" />
-        <h3 className="text-sm font-semibold">Attendees</h3>
-        <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{attendees.length}</span>
+        <h3 className="text-sm font-semibold text-foreground">Attendees</h3>
+        <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{attendees.length}</span>
       </div>
 
       {attendees.length === 0 && (
-        <p className="text-xs text-white/35 italic mb-4">No attendees added yet.</p>
+        <p className="text-xs text-muted-foreground italic mb-4">No attendees added yet.</p>
       )}
 
       {attendees.length > 0 && (
         <div className="space-y-1.5 mb-5">
           {attendees.map(a => (
-            <div key={a.id} className="flex items-center gap-3 bg-white/4 border border-white/8 rounded-lg px-3 py-2.5 group">
+            <div key={a.id} className="flex items-center gap-3 bg-secondary border border-border rounded-lg px-3 py-2.5 group">
               <div className="w-7 h-7 rounded-full bg-blue-600/20 flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-semibold text-blue-400">{a.name[0]?.toUpperCase()}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm text-white font-medium truncate">{a.name}</p>
-                {a.email && <p className="text-[11px] text-white/40 truncate">{a.email}</p>}
+                <p className="text-sm text-foreground font-medium truncate">{a.name}</p>
+                {a.email && <p className="text-[11px] text-muted-foreground truncate">{a.email}</p>}
               </div>
-              {a.role && <span className="text-[11px] bg-white/8 text-white/50 px-2 py-0.5 rounded-full flex-shrink-0">{a.role}</span>}
+              {a.role && <span className="text-[11px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full flex-shrink-0">{a.role}</span>}
               <button
                 onClick={() => onChange(attendees.filter(at => at.id !== a.id))}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded text-white/35 hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
+                className="opacity-0 group-hover:opacity-100 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all flex-shrink-0"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -769,8 +767,8 @@ function AttendeesTab({ attendees, users, onChange }: { attendees: Attendee[]; u
 
       <div className="space-y-3">
         {/* Add from users */}
-        <div className="border border-white/8 rounded-xl p-4">
-          <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest mb-3">Add from Users</p>
+        <div className="border border-border rounded-xl p-4">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Add from Users</p>
           <div className="flex gap-2">
             <select value={selectedUserId} onChange={e => setSelectedUserId(e.target.value)} className={cn(selectCls, 'flex-1')}>
               <option value="">— Select user —</option>
@@ -778,7 +776,7 @@ function AttendeesTab({ attendees, users, onChange }: { attendees: Attendee[]; u
                 <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
               ))}
             </select>
-            <input value={role} onChange={e => setRole(e.target.value)} placeholder="Role" className="w-28 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-white/25" />
+            <input value={role} onChange={e => setRole(e.target.value)} placeholder="Role" className="w-28 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-muted-foreground" />
             <button onClick={addUser} className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/30 text-blue-400 px-3 py-2 rounded-lg text-xs hover:bg-blue-600/30 transition-colors">
               <Plus className="w-3.5 h-3.5" />Add
             </button>
@@ -786,12 +784,12 @@ function AttendeesTab({ attendees, users, onChange }: { attendees: Attendee[]; u
         </div>
 
         {/* Add external */}
-        <div className="border border-white/8 rounded-xl p-4">
-          <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest mb-3">Add External Attendee</p>
+        <div className="border border-border rounded-xl p-4">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">Add External Attendee</p>
           <div className="flex gap-2 flex-wrap">
             <input value={manualName} onChange={e => setManualName(e.target.value)} placeholder="Name *" className={cn(inputCls, 'flex-1 min-w-28')} />
             <input value={manualEmail} onChange={e => setManualEmail(e.target.value)} placeholder="Email" className={cn(inputCls, 'flex-1 min-w-28')} />
-            <input value={role} onChange={e => setRole(e.target.value)} placeholder="Role" className="w-28 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-white/25" />
+            <input value={role} onChange={e => setRole(e.target.value)} placeholder="Role" className="w-28 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-muted-foreground" />
             <button onClick={addManual} className="flex items-center gap-1 bg-blue-600/20 border border-blue-500/30 text-blue-400 px-3 py-2 rounded-lg text-xs hover:bg-blue-600/30 transition-colors">
               <Plus className="w-3.5 h-3.5" />Add
             </button>
@@ -809,22 +807,22 @@ function DiscussionsTab({ value, onChange }: { value: string; onChange: (v: stri
     <div className="p-6 max-w-2xl">
       <div className="flex items-center gap-2 mb-5">
         <MessageSquare className="w-4 h-4 text-blue-400" />
-        <h3 className="text-sm font-semibold">Key Discussions</h3>
+        <h3 className="text-sm font-semibold text-foreground">Key Discussions</h3>
       </div>
       <textarea
         value={value} onChange={e => onChange(e.target.value)}
         placeholder="Record the key discussions, decisions made, and important points raised during the meeting…"
         rows={16}
-        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none leading-relaxed placeholder-white/25"
+        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none leading-relaxed placeholder-muted-foreground"
       />
-      <p className="text-[11px] text-white/30 mt-1.5">{value.length.toLocaleString()} characters · auto-saved</p>
+      <p className="text-[11px] text-muted-foreground mt-1.5">{value.length.toLocaleString()} characters · auto-saved</p>
     </div>
   );
 }
 
 // ── Actions Tab ───────────────────────────────────────────────────────────────
 
-const PRIORITY_COLORS: Record<string, string> = { low: 'text-white/45', medium: 'text-yellow-400', high: 'text-red-400' };
+const PRIORITY_COLORS: Record<string, string> = { low: 'text-muted-foreground', medium: 'text-yellow-400', high: 'text-red-400' };
 
 function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number; actions: ActionItem[]; users: User[]; onChange: (v: ActionItem[]) => void }) {
   const { toast } = useToast();
@@ -864,15 +862,15 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
     <div className="p-6 max-w-2xl">
       <div className="flex items-center gap-2 mb-5">
         <ClipboardList className="w-4 h-4 text-blue-400" />
-        <h3 className="text-sm font-semibold">Action Items</h3>
-        <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{actions.length}</span>
+        <h3 className="text-sm font-semibold text-foreground">Action Items</h3>
+        <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{actions.length}</span>
         {actions.filter(a => a.taskId).length > 0 && (
           <span className="text-[11px] text-emerald-400">{actions.filter(a => a.taskId).length} linked to tasks</span>
         )}
       </div>
 
       {actions.length === 0 && (
-        <p className="text-xs text-white/35 italic mb-4">No action items recorded yet.</p>
+        <p className="text-xs text-muted-foreground italic mb-4">No action items recorded yet.</p>
       )}
 
       <div className="space-y-2 mb-4">
@@ -881,7 +879,7 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
             key={action.id}
             className={cn(
               'flex items-start gap-3 border rounded-xl px-4 py-3 group transition-colors',
-              action.status === 'done' ? 'border-white/6 bg-white/2 opacity-60' : 'border-white/10 bg-white/4'
+              action.status === 'done' ? 'border-border/50 bg-secondary/40 opacity-60' : 'border-border bg-secondary'
             )}
           >
             <button
@@ -890,21 +888,21 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
             >
               {action.status === 'done'
                 ? <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                : <Circle className="w-4 h-4 text-white/35 hover:text-blue-400 transition-colors" />
+                : <Circle className="w-4 h-4 text-muted-foreground hover:text-blue-400 transition-colors" />
               }
             </button>
             <div className="flex-1 min-w-0">
               <input
                 value={action.text}
                 onChange={e => onChange(actions.map(a => a.id === action.id ? { ...a, text: e.target.value } : a))}
-                className={cn('w-full bg-transparent text-sm focus:outline-none', action.status === 'done' ? 'line-through text-white/40' : 'text-white')}
+                className={cn('w-full bg-transparent text-sm focus:outline-none', action.status === 'done' ? 'line-through text-muted-foreground' : 'text-foreground')}
               />
               <div className="flex items-center gap-3 mt-1 flex-wrap">
                 {action.assigneeName && (
-                  <span className="text-[11px] text-white/45 flex items-center gap-1"><User className="w-3 h-3" />{action.assigneeName}</span>
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" />{action.assigneeName}</span>
                 )}
                 {action.dueDate && (
-                  <span className="text-[11px] text-white/45 flex items-center gap-1"><Calendar className="w-3 h-3" />{action.dueDate}</span>
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1"><Calendar className="w-3 h-3" />{action.dueDate}</span>
                 )}
                 {action.priority && (
                   <span className={cn('text-[11px] font-medium capitalize', PRIORITY_COLORS[action.priority])}>{action.priority}</span>
@@ -927,7 +925,7 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
               )}
               <button
                 onClick={() => onChange(actions.filter(a => a.id !== action.id))}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-white/35 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-muted-foreground hover:text-red-400 hover:bg-red-400/10 transition-all"
               >
                 <Trash2 className="w-3 h-3" />
               </button>
@@ -937,8 +935,8 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
       </div>
 
       {/* Add form */}
-      <div className="border border-white/8 rounded-xl p-4 space-y-3">
-        <p className="text-[11px] font-semibold text-white/40 uppercase tracking-widest">Add Action Item</p>
+      <div className="border border-border rounded-xl p-4 space-y-3">
+        <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Add Action Item</p>
         <input
           value={newText} onChange={e => setNewText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && addAction()}
@@ -946,9 +944,9 @@ function ActionsTab({ meetingId, actions, users, onChange }: { meetingId: number
           className={inputCls}
         />
         <div className="flex gap-2 flex-wrap">
-          <input value={newAssignee} onChange={e => setNewAssignee(e.target.value)} placeholder="Assignee" className="flex-1 min-w-24 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-white/25" />
-          <input type="date" value={newDue} onChange={e => setNewDue(e.target.value)} className="flex-1 min-w-28 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
-          <select value={newPriority} onChange={e => setNewPriority(e.target.value as ActionItem['priority'])} className="bg-[hsl(var(--background))] border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50">
+          <input value={newAssignee} onChange={e => setNewAssignee(e.target.value)} placeholder="Assignee" className="flex-1 min-w-24 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50 placeholder-muted-foreground" />
+          <input type="date" value={newDue} onChange={e => setNewDue(e.target.value)} className="flex-1 min-w-28 bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+          <select value={newPriority} onChange={e => setNewPriority(e.target.value as ActionItem['priority'])} className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50">
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
@@ -973,12 +971,12 @@ function LinksTab({ workflows, agents, linkedWfIds, linkedAgentIds, onWfChange, 
       <div>
         <div className="flex items-center gap-2 mb-1">
           <GitBranch className="w-4 h-4 text-violet-400" />
-          <h3 className="text-sm font-semibold">Linked Workflows</h3>
-          {linkedWfIds.length > 0 && <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{linkedWfIds.length}</span>}
+          <h3 className="text-sm font-semibold text-foreground">Linked Workflows</h3>
+          {linkedWfIds.length > 0 && <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{linkedWfIds.length}</span>}
         </div>
-        <p className="text-xs text-white/35 mb-3">Workflows relevant to or triggered by this meeting.</p>
+        <p className="text-xs text-muted-foreground mb-3">Workflows relevant to or triggered by this meeting.</p>
         {workflows.length === 0 ? (
-          <p className="text-xs text-white/35 italic">No workflows available.</p>
+          <p className="text-xs text-muted-foreground italic">No workflows available.</p>
         ) : (
           <div className="space-y-1.5">
             {workflows.map(wf => {
@@ -988,10 +986,10 @@ function LinksTab({ workflows, agents, linkedWfIds, linkedAgentIds, onWfChange, 
                   key={wf.id}
                   onClick={() => onWfChange(linked ? linkedWfIds.filter(id => id !== wf.id) : [...linkedWfIds, wf.id])}
                   className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors',
-                    linked ? 'bg-violet-500/10 border-violet-500/25 text-violet-300' : 'border-white/8 text-white/50 hover:border-white/18 hover:text-white/70'
+                    linked ? 'bg-violet-500/10 border-violet-500/25 text-violet-300' : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground'
                   )}
                 >
-                  <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0', linked ? 'bg-violet-500 border-violet-500' : 'border-white/20')}>
+                  <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0', linked ? 'bg-violet-500 border-violet-500' : 'border-border')}>
                     {linked && <Check className="w-3 h-3 text-white" />}
                   </div>
                   <GitBranch className="w-3.5 h-3.5 flex-shrink-0" />
@@ -1006,12 +1004,12 @@ function LinksTab({ workflows, agents, linkedWfIds, linkedAgentIds, onWfChange, 
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Cpu className="w-4 h-4 text-emerald-400" />
-          <h3 className="text-sm font-semibold">Linked AI Agents</h3>
-          {linkedAgentIds.length > 0 && <span className="text-[11px] text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{linkedAgentIds.length}</span>}
+          <h3 className="text-sm font-semibold text-foreground">Linked AI Agents</h3>
+          {linkedAgentIds.length > 0 && <span className="text-[11px] text-muted-foreground bg-secondary px-1.5 py-0.5 rounded-full">{linkedAgentIds.length}</span>}
         </div>
-        <p className="text-xs text-white/35 mb-3">AI Agents to run in relation to this meeting's outcomes.</p>
+        <p className="text-xs text-muted-foreground mb-3">AI Agents to run in relation to this meeting's outcomes.</p>
         {agents.length === 0 ? (
-          <p className="text-xs text-white/35 italic">No AI agents available.</p>
+          <p className="text-xs text-muted-foreground italic">No AI agents available.</p>
         ) : (
           <div className="space-y-1.5">
             {agents.map(ag => {
@@ -1021,10 +1019,10 @@ function LinksTab({ workflows, agents, linkedWfIds, linkedAgentIds, onWfChange, 
                   key={ag.id}
                   onClick={() => onAgentChange(linked ? linkedAgentIds.filter(id => id !== ag.id) : [...linkedAgentIds, ag.id])}
                   className={cn('w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors',
-                    linked ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' : 'border-white/8 text-white/50 hover:border-white/18 hover:text-white/70'
+                    linked ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300' : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground'
                   )}
                 >
-                  <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0', linked ? 'bg-emerald-500 border-emerald-500' : 'border-white/20')}>
+                  <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0', linked ? 'bg-emerald-500 border-emerald-500' : 'border-border')}>
                     {linked && <Check className="w-3 h-3 text-white" />}
                   </div>
                   <Cpu className="w-3.5 h-3.5 flex-shrink-0" />

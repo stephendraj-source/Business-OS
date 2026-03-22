@@ -34,7 +34,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           onClick={() => onChange(c)}
           className={cn(
             'w-7 h-7 rounded-full border-2 transition-transform hover:scale-110',
-            value === c ? 'border-white scale-110' : 'border-transparent',
+            value === c ? 'border-foreground scale-110' : 'border-transparent',
           )}
           style={{ backgroundColor: c }}
         />
@@ -65,45 +65,45 @@ function QueueFormDialog({ initial, onSave, onClose, saving }: QueueFormProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[hsl(var(--card))] border border-white/10 rounded-xl shadow-2xl w-full max-w-md p-6">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-white">
+          <h2 className="text-lg font-semibold text-foreground">
             {initial ? 'Edit Queue' : 'New Queue'}
           </h2>
-          <button onClick={onClose} className="text-white/40 hover:text-white/80 transition-colors">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-white/60 mb-1">Name <span className="text-red-400">*</span></label>
+            <label className="block text-sm text-muted-foreground mb-1">Name <span className="text-red-500">*</span></label>
             <input
               autoFocus
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. Support Escalations"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring"
             />
           </div>
 
           <div>
-            <label className="block text-sm text-white/60 mb-2">Color</label>
+            <label className="block text-sm text-muted-foreground mb-2">Color</label>
             <ColorPicker value={color} onChange={setColor} />
             <div className="mt-2 flex items-center gap-2">
               <div className="w-5 h-5 rounded-full" style={{ backgroundColor: color }} />
-              <span className="text-xs text-white/40">{color}</span>
+              <span className="text-xs text-muted-foreground">{color}</span>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm text-white/60 mb-1">Description</label>
+            <label className="block text-sm text-muted-foreground mb-1">Description</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Optional description…"
               rows={3}
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/30 resize-none"
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring resize-none"
             />
           </div>
 
@@ -111,7 +111,7 @@ function QueueFormDialog({ initial, onSave, onClose, saving }: QueueFormProps) {
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 rounded-lg border border-white/10 text-sm text-white/60 hover:text-white hover:border-white/20 transition-colors"
+              className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:border-border/80 transition-colors"
             >
               Cancel
             </button>
@@ -143,43 +143,43 @@ interface DeleteConfirmProps {
 function DeleteConfirmDialog({ queue, taskCount, onConfirm, onClose, deleting }: DeleteConfirmProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-[hsl(var(--card))] border border-red-500/30 rounded-xl shadow-2xl w-full max-w-md p-6">
+      <div className="bg-card border border-red-500/30 rounded-xl shadow-2xl w-full max-w-md p-6">
         <div className="flex items-start gap-4 mb-5">
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center">
             <AlertTriangle className="w-5 h-5 text-red-400" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-white">Delete Queue?</h2>
-            <p className="text-sm text-white/50 mt-0.5">This action cannot be undone.</p>
+            <h2 className="text-lg font-semibold text-foreground">Delete Queue?</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">This action cannot be undone.</p>
           </div>
         </div>
 
-        <div className="bg-white/5 rounded-lg p-4 mb-5 space-y-2">
+        <div className="bg-secondary rounded-lg p-4 mb-5 space-y-2">
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: queue.color }} />
-            <span className="text-sm font-medium text-white">{queue.name}</span>
+            <span className="text-sm font-medium text-foreground">{queue.name}</span>
           </div>
           {queue.description && (
-            <p className="text-xs text-white/40 pl-5">{queue.description}</p>
+            <p className="text-xs text-muted-foreground pl-5">{queue.description}</p>
           )}
         </div>
 
         {taskCount === null ? (
-          <div className="flex items-center gap-2 text-white/40 text-sm mb-5">
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-5">
             <Loader2 className="w-4 h-4 animate-spin" />
             Checking affected tasks…
           </div>
         ) : taskCount > 0 ? (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 mb-5 flex items-start gap-3">
             <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="text-sm text-amber-300">
+            <p className="text-sm text-amber-600 dark:text-amber-300">
               <strong>{taskCount} task{taskCount !== 1 ? 's' : ''}</strong> currently assigned to this queue will
               lose their queue assignment when it is deleted.
             </p>
           </div>
         ) : (
-          <div className="bg-white/5 rounded-lg px-4 py-3 mb-5">
-            <p className="text-sm text-white/50">No tasks are currently assigned to this queue.</p>
+          <div className="bg-secondary rounded-lg px-4 py-3 mb-5">
+            <p className="text-sm text-muted-foreground">No tasks are currently assigned to this queue.</p>
           </div>
         )}
 
@@ -187,7 +187,7 @@ function DeleteConfirmDialog({ queue, taskCount, onConfirm, onClose, deleting }:
           <button
             onClick={onClose}
             disabled={deleting}
-            className="flex-1 py-2 rounded-lg border border-white/10 text-sm text-white/60 hover:text-white hover:border-white/20 transition-colors disabled:opacity-50"
+            className="flex-1 py-2 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
           >
             Cancel
           </button>
@@ -307,14 +307,14 @@ export function QueuesView() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-[hsl(var(--background))]">
+    <div className="flex flex-col h-full bg-background">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <div className="flex items-center gap-3">
-          <Inbox className="w-5 h-5 text-indigo-400" />
+          <Inbox className="w-5 h-5 text-indigo-500" />
           <div>
-            <h1 className="text-lg font-semibold text-white">Task Queues</h1>
-            <p className="text-xs text-white/40">Manage queues that tasks can be assigned to</p>
+            <h1 className="text-lg font-semibold text-foreground">Task Queues</h1>
+            <p className="text-xs text-muted-foreground">Manage queues that tasks can be assigned to</p>
           </div>
         </div>
         <button
@@ -329,17 +329,17 @@ export function QueuesView() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
-          <div className="flex items-center justify-center h-40 gap-3 text-white/40">
+          <div className="flex items-center justify-center h-40 gap-3 text-muted-foreground">
             <Loader2 className="w-5 h-5 animate-spin" />
             <span className="text-sm">Loading queues…</span>
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-40 gap-3 text-red-400">
+          <div className="flex items-center justify-center h-40 gap-3 text-red-500">
             <AlertTriangle className="w-5 h-5" />
             <span className="text-sm">{error}</span>
           </div>
         ) : queues.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-3 text-white/30">
+          <div className="flex flex-col items-center justify-center h-40 gap-3 text-muted-foreground">
             <Inbox className="w-10 h-10" />
             <p className="text-sm">No queues yet. Create one to get started.</p>
           </div>
@@ -348,27 +348,27 @@ export function QueuesView() {
             {queues.map(q => (
               <div
                 key={q.id}
-                className="group bg-white/5 hover:bg-white/8 border border-white/10 hover:border-white/20 rounded-xl p-4 transition-all"
+                className="group bg-card hover:bg-accent/30 border border-border hover:border-border/80 rounded-xl p-4 transition-all"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className="w-4 h-4 rounded-full flex-shrink-0 ring-2 ring-white/10"
+                      className="w-4 h-4 rounded-full flex-shrink-0 ring-2 ring-border"
                       style={{ backgroundColor: q.color }}
                     />
-                    <span className="text-sm font-medium text-white truncate">{q.name}</span>
+                    <span className="text-sm font-medium text-foreground truncate">{q.name}</span>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                     <button
                       onClick={() => setEditQueue(q)}
-                      className="p-1.5 rounded-md hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+                      className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
                       title="Edit queue"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => openDelete(q)}
-                      className="p-1.5 rounded-md hover:bg-red-500/20 text-white/50 hover:text-red-400 transition-colors"
+                      className="p-1.5 rounded-md hover:bg-red-500/20 text-muted-foreground hover:text-red-500 transition-colors"
                       title="Delete queue"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -376,7 +376,7 @@ export function QueuesView() {
                   </div>
                 </div>
                 {q.description && (
-                  <p className="text-xs text-white/40 mt-2 pl-7 line-clamp-2">{q.description}</p>
+                  <p className="text-xs text-muted-foreground mt-2 pl-7 line-clamp-2">{q.description}</p>
                 )}
               </div>
             ))}
