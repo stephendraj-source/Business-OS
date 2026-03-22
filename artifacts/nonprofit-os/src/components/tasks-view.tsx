@@ -58,9 +58,9 @@ interface WorkflowItem { id: number; workflowNumber: number; name: string }
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PRIORITIES = [
-  { value: 'high',   label: 'High',   color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',     icon: AlertTriangle },
-  { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', icon: Flag },
   { value: 'low',    label: 'Low',    color: 'bg-secondary text-secondary-foreground',                            icon: ChevronRight },
+  { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', icon: Flag },
+  { value: 'high',   label: 'High',   color: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',     icon: AlertTriangle },
 ] as const;
 
 const STATUSES = [
