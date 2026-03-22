@@ -7,6 +7,7 @@ import {
 import { eq, max, and, desc, isNull } from "drizzle-orm";
 import crypto from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
@@ -134,6 +135,15 @@ Please process this submission according to your instructions.`;
   }).returning();
 
   try {
+    if (tenantId !== null) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        await db.update(agentRunLogsTable)
+          .set({ status: "error", error: "Insufficient credits", completedAt: new Date() })
+          .where(eq(agentRunLogsTable.id, logEntry.id));
+        return;
+      }
+    }
     const message = await anthropic.messages.create({
       model: "claude-opus-4-5",
       max_tokens: 4096,

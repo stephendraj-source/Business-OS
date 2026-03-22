@@ -3,6 +3,7 @@ import { db, processesTable, activitiesTable, initiatives, workflowsTable, check
 import { sql, eq, max, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type Anthropic from "@anthropic-ai/sdk";
+import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
@@ -199,6 +200,20 @@ router.post("/tasks/:id/approve", async (req, res) => {
     // If there are AI instructions, execute them via Claude with write tools
     let aiResult = "";
     if (task.ai_instructions && task.ai_instructions.trim()) {
+      if (task.tenant_id !== null && task.tenant_id !== undefined) {
+        const credit = await useCredit(task.tenant_id);
+        if (!credit.ok) {
+          aiResult = "Insufficient credits — AI instructions were not executed.";
+          await db.execute(sql`
+            UPDATE tasks SET ai_result = ${aiResult}, updated_at = now() WHERE id = ${id}
+          `);
+          const updated = await db.execute(sql`
+            SELECT ${TASK_COLS} FROM tasks t ${TASK_JOINS} WHERE t.id = ${id} LIMIT 1
+          `);
+          res.json({ task: (updated.rows as any[])[0], aiResult });
+          return;
+        }
+      }
       try {
         aiResult = await executeAiInstructions(task.ai_instructions, task.tenant_id);
       } catch (execErr: any) {
@@ -266,6 +281,12 @@ router.post("/tasks/:id/run-agent", async (req, res) => {
     const systemPrompt = task.ai_agent_instructions
       ? `You are an AI agent named "${task.ai_agent_name}". ${task.ai_agent_instructions}`
       : `You are an AI agent named "${task.ai_agent_name}". Complete the task provided.`;
+
+    const tenantIdForRun: number | null = task.tenant_id ?? null;
+    if (tenantIdForRun !== null) {
+      const credit = await useCredit(tenantIdForRun);
+      if (!credit.ok) { res.status(402).json({ error: "Insufficient credits. Please contact your administrator." }); return; }
+    }
 
     const userMessage = `Task: ${task.name}\n\nDescription: ${task.description}\n\nPriority: ${task.priority}\nStatus: ${task.status}`;
     const message = await anthropic.messages.create({
@@ -466,6 +487,11 @@ router.post("/tasks/:id/processes/auto-detect", async (req, res) => {
 
     const processes = processResult.rows as any[];
     if (!processes.length) { res.json({ process_ids: [] }); return; }
+
+    if (tenantId !== null) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) { res.status(402).json({ error: "Insufficient credits. Please contact your administrator." }); return; }
+    }
 
     const processList = processes.map(p =>
       `#${p.number}: ${p.process_name}${p.category ? ` [${p.category}]` : ''}${p.purpose ? ` — ${p.purpose}` : ''}`
