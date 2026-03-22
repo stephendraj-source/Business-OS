@@ -251,6 +251,37 @@ function GoalEditPanel({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // ── Linked initiatives ────────────────────────────────────────────────────────
+  const [allInitiatives, setAllInitiatives] = useState<{ id: number; initiative_id: string; name: string }[]>([]);
+  const [linkedIds, setLinkedIds] = useState<number[]>([]);
+  const [linkSaving, setLinkSaving] = useState(false);
+
+  useEffect(() => {
+    const h = { ...fetchHeaders(), 'Content-Type': 'application/json' };
+    Promise.all([
+      fetch(`${API}/initiatives`, { headers: h }).then(r => r.json()).catch(() => []),
+      fetch(`${API}/strategic-goals/${goal.id}/initiatives`, { headers: h }).then(r => r.json()).catch(() => []),
+    ]).then(([all, linked]) => {
+      setAllInitiatives(Array.isArray(all) ? all : []);
+      setLinkedIds(Array.isArray(linked) ? linked.map((i: any) => i.id) : []);
+    });
+  }, [goal.id]);
+
+  const toggleInitiative = async (initiativeId: number) => {
+    const next = linkedIds.includes(initiativeId)
+      ? linkedIds.filter(id => id !== initiativeId)
+      : [...linkedIds, initiativeId];
+    setLinkedIds(next);
+    setLinkSaving(true);
+    try {
+      await fetch(`${API}/strategic-goals/${goal.id}/initiatives`, {
+        method: 'PUT',
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ initiative_ids: next }),
+      });
+    } finally { setLinkSaving(false); }
+  };
+
   const isDirty =
     form.title !== goal.title ||
     form.description !== goal.description ||
@@ -370,6 +401,47 @@ function GoalEditPanel({
               />
             ))}
           </div>
+        </div>
+
+        {/* Linked Initiatives */}
+        <div className="space-y-2 pt-2 border-t border-border">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Flag className="w-3.5 h-3.5" />
+              Linked Initiatives
+              {linkedIds.length > 0 && (
+                <span className="bg-primary/15 text-primary text-[10px] px-1.5 py-0.5 rounded-full font-semibold">{linkedIds.length}</span>
+              )}
+            </label>
+            {linkSaving && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          </div>
+          {allInitiatives.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic">No initiatives available.</p>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+              {allInitiatives.map(ini => {
+                const checked = linkedIds.includes(ini.id);
+                return (
+                  <button
+                    key={ini.id}
+                    onClick={() => toggleInitiative(ini.id)}
+                    className={cn(
+                      'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left text-sm transition-colors',
+                      checked
+                        ? 'bg-primary/10 border-primary/30 text-foreground'
+                        : 'border-border text-muted-foreground hover:border-primary/20 hover:text-foreground'
+                    )}
+                  >
+                    <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors', checked ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
+                      {checked && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                    </div>
+                    <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">{ini.initiative_id}</span>
+                    <span className="truncate">{ini.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Save */}

@@ -202,7 +202,7 @@ export function InitiativesView() {
 
 // ── Detail Panel ──────────────────────────────────────────────────────────────
 
-type DetailTab = 'overview' | 'urls' | 'assignees' | 'processes';
+type DetailTab = 'overview' | 'urls' | 'assignees' | 'processes' | 'goals';
 
 function InitiativeDetail({ initiative, onClose, onSaved }: {
   initiative: InitiativeDetail;
@@ -244,6 +244,7 @@ function InitiativeDetail({ initiative, onClose, onSaved }: {
           { key: 'urls', label: `Links (${initiative.urls.length})`, icon: Link },
           { key: 'assignees', label: `People (${initiative.assignees.length})`, icon: Users },
           { key: 'processes', label: `Processes (${initiative.processes.length})`, icon: GitBranch },
+          { key: 'goals', label: 'Strategic Goals', icon: Flag },
         ] as { key: DetailTab; label: string; icon: React.ElementType }[]).map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={cn('flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-colors',
@@ -260,6 +261,7 @@ function InitiativeDetail({ initiative, onClose, onSaved }: {
         {tab === 'urls' && <UrlsTab initiative={initiative} onSaved={async () => { await onSaved(); showSave(); }} />}
         {tab === 'assignees' && <AssigneesTab initiative={initiative} onSaved={async () => { await onSaved(); showSave(); }} />}
         {tab === 'processes' && <ProcessesTab initiative={initiative} onSaved={async () => { await onSaved(); showSave(); }} />}
+        {tab === 'goals' && <GoalsTab initiative={initiative} />}
       </div>
     </div>
   );
@@ -568,6 +570,103 @@ function ProcessesTab({ initiative, onSaved }: { initiative: InitiativeDetail; o
         {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
         Save Linked Processes
       </button>
+    </div>
+  );
+}
+
+// ── Goals Tab ──────────────────────────────────────────────────────────────────
+
+function GoalsTab({ initiative }: { initiative: InitiativeDetail }) {
+  const [allGoals, setAllGoals] = useState<{ id: number; goal_number: number; title: string; status: string; color: string }[]>([]);
+  const [linkedIds, setLinkedIds] = useState<number[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      fetch(`${API}/strategic-goals`).then(r => r.json()).catch(() => []),
+      fetch(`${API}/initiatives/${initiative.id}/strategic-goals`).then(r => r.json()).catch(() => []),
+    ]).then(([all, linked]) => {
+      setAllGoals(Array.isArray(all) ? all : []);
+      setLinkedIds(Array.isArray(linked) ? linked.map((g: any) => g.id) : []);
+    });
+  }, [initiative.id]);
+
+  const toggle = async (goalId: number) => {
+    const next = linkedIds.includes(goalId)
+      ? linkedIds.filter(id => id !== goalId)
+      : [...linkedIds, goalId];
+    setLinkedIds(next);
+    setSaving(true);
+    try {
+      await fetch(`${API}/initiatives/${initiative.id}/strategic-goals`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal_ids: next }),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="p-6 space-y-4 max-w-xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold">Linked Strategic Goals</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Link this initiative to one or more strategic goals.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+          {saved && <span className="text-xs text-green-400 font-medium">Saved ✓</span>}
+        </div>
+      </div>
+
+      {allGoals.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">No strategic goals defined yet. Create goals in Strategic Planning.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {allGoals.map(goal => {
+            const checked = linkedIds.includes(goal.id);
+            return (
+              <button
+                key={goal.id}
+                onClick={() => toggle(goal.id)}
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors',
+                  checked
+                    ? 'bg-primary/10 border-primary/30 text-foreground'
+                    : 'border-border text-muted-foreground hover:border-primary/20 hover:text-foreground'
+                )}
+              >
+                <div className={cn('w-4 h-4 rounded border flex items-center justify-center flex-shrink-0', checked ? 'bg-primary border-primary' : 'border-muted-foreground/40')}>
+                  {checked && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                </div>
+                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: goal.color }} />
+                <span className="text-[10px] font-mono text-muted-foreground flex-shrink-0">
+                  GOAL-{String(goal.goal_number).padStart(3, '0')}
+                </span>
+                <span className="text-sm truncate flex-1">{goal.title}</span>
+                <span className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0',
+                  goal.status === 'active' ? 'bg-green-500/15 text-green-400' :
+                  goal.status === 'achieved' ? 'bg-blue-500/15 text-blue-400' :
+                  goal.status === 'paused' ? 'bg-yellow-500/15 text-yellow-400' :
+                  'bg-muted text-muted-foreground'
+                )}>
+                  {goal.status}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {linkedIds.length > 0 && (
+        <p className="text-xs text-muted-foreground pt-1">
+          {linkedIds.length} goal{linkedIds.length !== 1 ? 's' : ''} linked · changes save automatically
+        </p>
+      )}
     </div>
   );
 }

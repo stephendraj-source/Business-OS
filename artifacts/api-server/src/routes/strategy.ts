@@ -147,4 +147,80 @@ router.delete("/strategic-goals/:id", async (req, res) => {
   }
 });
 
+// ── GET /strategic-goals/:id/initiatives — list linked initiatives ─────────────
+router.get("/strategic-goals/:id/initiatives", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rows = await db.execute(sql`
+      SELECT i.id, i.initiative_id, i.name, i.goals, i.achievement, i.start_date, i.end_date
+      FROM strategic_goal_initiatives sgi
+      JOIN initiatives i ON i.id = sgi.initiative_id
+      WHERE sgi.goal_id = ${id}
+      ORDER BY i.name
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── PUT /strategic-goals/:id/initiatives — set linked initiatives ──────────────
+router.put("/strategic-goals/:id/initiatives", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { initiative_ids = [] }: { initiative_ids: number[] } = req.body;
+    await db.execute(sql`DELETE FROM strategic_goal_initiatives WHERE goal_id = ${id}`);
+    for (const initiativeId of initiative_ids) {
+      await db.execute(sql`
+        INSERT INTO strategic_goal_initiatives (goal_id, initiative_id)
+        VALUES (${id}, ${initiativeId})
+        ON CONFLICT DO NOTHING
+      `);
+    }
+    res.json({ goal_id: id, initiative_ids });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── GET /initiatives/:id/strategic-goals — list linked goals for an initiative ─
+router.get("/initiatives/:id/strategic-goals", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const rows = await db.execute(sql`
+      SELECT sg.id, sg.goal_number, sg.title, sg.description, sg.status, sg.color, sg.target_date
+      FROM strategic_goal_initiatives sgi
+      JOIN strategic_goals sg ON sg.id = sgi.goal_id
+      WHERE sgi.initiative_id = ${id}
+      ORDER BY sg.goal_number
+    `);
+    res.json(rows.rows);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── PUT /initiatives/:id/strategic-goals — set linked goals for an initiative ──
+router.put("/initiatives/:id/strategic-goals", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { goal_ids = [] }: { goal_ids: number[] } = req.body;
+    await db.execute(sql`DELETE FROM strategic_goal_initiatives WHERE initiative_id = ${id}`);
+    for (const goalId of goal_ids) {
+      await db.execute(sql`
+        INSERT INTO strategic_goal_initiatives (goal_id, initiative_id)
+        VALUES (${goalId}, ${id})
+        ON CONFLICT DO NOTHING
+      `);
+    }
+    res.json({ initiative_id: id, goal_ids });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export { router as strategyRouter };
