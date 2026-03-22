@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
+  GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
+  X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +11,13 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'strategy' | 'strategic-planning';
+export type ActiveView =
+  | 'table' | 'tree' | 'portfolio' | 'process-map'
+  | 'connectors' | 'governance'
+  | 'dashboards' | 'reports' | 'audit-logs' | 'settings'
+  | 'ai-agents' | 'workflows' | 'forms'
+  | 'users' | 'initiatives' | 'configuration'
+  | 'activities' | 'tasks' | 'strategy' | 'strategic-planning';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -19,30 +27,152 @@ interface LayoutProps {
   onBack?: () => void;
 }
 
-type ViewMeta = { label: string; section: string };
+// ── Navigation data ────────────────────────────────────────────────────────────
 
-const VIEW_META: Record<ActiveView, ViewMeta> = {
-  table:        { label: 'Master Catalogue',   section: 'Core Views' },
-  tree:         { label: 'Master Map',          section: 'Core Views' },
-  portfolio:    { label: 'Process Catalogue',   section: 'Core Views' },
-  'process-map':{ label: 'Process Map',         section: 'Core Views' },
-  governance:   { label: 'Governance',          section: 'Governance' },
-  connectors:   { label: 'Connectors',          section: 'Integrations' },
-  dashboards:   { label: 'Dashboards',          section: 'System' },
-  reports:      { label: 'Reports',             section: 'System' },
-  'audit-logs': { label: 'Audit & Logs',        section: 'System' },
-  settings:     { label: 'Settings',            section: 'System' },
-  'ai-agents':  { label: 'AI Agents',           section: 'AI' },
-  'workflows':  { label: 'Workflows',           section: 'Workflows' },
-  'forms':      { label: 'Forms and Documents',    section: 'Workflows' },
-  'users':         { label: 'Users',             section: 'Admin' },
-  'configuration': { label: 'Configuration',    section: 'Admin' },
-  'initiatives':         { label: 'Initiatives',        section: 'Strategy' },
-  'strategy':            { label: 'Mission & Vision',   section: 'Strategy' },
-  'strategic-planning':  { label: 'Strategic Planning', section: 'Strategy' },
-  'activities':    { label: 'Activities',        section: 'Workflows' },
-  'tasks':         { label: 'Tasks',             section: 'Workflows' },
+interface SectionDef { id: string; label: string; }
+interface ItemDef { id: ActiveView; label: string; sectionId: string; adminOnly?: boolean; }
+
+const SECTIONS_DEF: SectionDef[] = [
+  { id: 'core',         label: 'Core Views'   },
+  { id: 'strategy',     label: 'Strategy'     },
+  { id: 'governance',   label: 'Governance'   },
+  { id: 'workflows',    label: 'Workflows'    },
+  { id: 'ai',           label: 'AI'           },
+  { id: 'integrations', label: 'Integrations' },
+  { id: 'system',       label: 'System'       },
+  { id: 'admin',        label: 'Admin'        },
+];
+
+const ITEMS_DEF: ItemDef[] = [
+  { id: 'table',             label: 'Master Catalogue',   sectionId: 'core'         },
+  { id: 'tree',              label: 'Master Map',         sectionId: 'core'         },
+  { id: 'portfolio',         label: 'Process Catalogue',  sectionId: 'core'         },
+  { id: 'process-map',       label: 'Process Map',        sectionId: 'core'         },
+  { id: 'strategy',          label: 'Mission & Vision',   sectionId: 'strategy'     },
+  { id: 'strategic-planning',label: 'Strategic Planning', sectionId: 'strategy'     },
+  { id: 'governance',        label: 'Governance',         sectionId: 'governance'   },
+  { id: 'workflows',         label: 'Workflows',          sectionId: 'workflows'    },
+  { id: 'forms',             label: 'Forms and Documents',sectionId: 'workflows'    },
+  { id: 'activities',        label: 'Activities',         sectionId: 'workflows'    },
+  { id: 'tasks',             label: 'Tasks',              sectionId: 'workflows'    },
+  { id: 'ai-agents',         label: 'AI Agents',          sectionId: 'ai'           },
+  { id: 'connectors',        label: 'Connectors',         sectionId: 'integrations' },
+  { id: 'dashboards',        label: 'Dashboards',         sectionId: 'system'       },
+  { id: 'reports',           label: 'Reports',            sectionId: 'system'       },
+  { id: 'audit-logs',        label: 'Audit & Logs',       sectionId: 'system'       },
+  { id: 'settings',          label: 'Settings',           sectionId: 'system'       },
+  { id: 'users',             label: 'Users',              sectionId: 'admin', adminOnly: true },
+  { id: 'configuration',     label: 'Configuration',      sectionId: 'admin', adminOnly: true },
+];
+
+const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
+  table:               { label: 'Master Catalogue',    section: 'Core Views'   },
+  tree:                { label: 'Master Map',           section: 'Core Views'   },
+  portfolio:           { label: 'Process Catalogue',   section: 'Core Views'   },
+  'process-map':       { label: 'Process Map',         section: 'Core Views'   },
+  governance:          { label: 'Governance',           section: 'Governance'   },
+  connectors:          { label: 'Connectors',           section: 'Integrations' },
+  dashboards:          { label: 'Dashboards',           section: 'System'       },
+  reports:             { label: 'Reports',              section: 'System'       },
+  'audit-logs':        { label: 'Audit & Logs',         section: 'System'       },
+  settings:            { label: 'Settings',             section: 'System'       },
+  'ai-agents':         { label: 'AI Agents',            section: 'AI'           },
+  workflows:           { label: 'Workflows',            section: 'Workflows'    },
+  forms:               { label: 'Forms and Documents',  section: 'Workflows'    },
+  users:               { label: 'Users',                section: 'Admin'        },
+  configuration:       { label: 'Configuration',        section: 'Admin'        },
+  initiatives:         { label: 'Initiatives',          section: 'Strategy'     },
+  strategy:            { label: 'Mission & Vision',     section: 'Strategy'     },
+  'strategic-planning':{ label: 'Strategic Planning',   section: 'Strategy'     },
+  activities:          { label: 'Activities',           section: 'Workflows'    },
+  tasks:               { label: 'Tasks',                section: 'Workflows'    },
 };
+
+function getIcon(id: ActiveView) {
+  const cls = 'w-5 h-5';
+  switch (id) {
+    case 'table':              return <TableProperties className={cls} />;
+    case 'tree':               return <Network className={cls} />;
+    case 'portfolio':          return <Briefcase className={cls} />;
+    case 'process-map':        return <Map className={cls} />;
+    case 'strategy':           return <Compass className={cls} />;
+    case 'strategic-planning': return <TrendingUp className={cls} />;
+    case 'governance':         return <ShieldCheck className={cls} />;
+    case 'workflows':          return <GitBranch className={cls} />;
+    case 'forms':              return <ClipboardList className={cls} />;
+    case 'activities':         return <Activity className={cls} />;
+    case 'tasks':              return <ListTodo className={cls} />;
+    case 'ai-agents':          return <Bot className={cls} />;
+    case 'connectors':         return <Plug className={cls} />;
+    case 'dashboards':         return <LayoutDashboard className={cls} />;
+    case 'reports':            return <FileBarChart className={cls} />;
+    case 'audit-logs':         return <Bell className={cls} />;
+    case 'settings':           return <Settings className={cls} />;
+    case 'users':              return <Users className={cls} />;
+    case 'configuration':      return <Settings2 className={cls} />;
+    case 'initiatives':        return <Flag className={cls} />;
+    default:                   return <Box className={cls} />;
+  }
+}
+
+// ── Storage helpers ────────────────────────────────────────────────────────────
+
+const STORAGE_SECTIONS = 'bos-nav-sections-v1';
+const STORAGE_ITEMS    = 'bos-nav-items-v1';
+
+function defaultSectionOrder(): string[] {
+  return SECTIONS_DEF.map(s => s.id);
+}
+
+function defaultItemOrder(): Record<string, ActiveView[]> {
+  const out: Record<string, ActiveView[]> = {};
+  for (const s of SECTIONS_DEF) out[s.id] = [];
+  for (const item of ITEMS_DEF) out[item.sectionId].push(item.id);
+  return out;
+}
+
+function loadSectionOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_SECTIONS);
+    if (!raw) return defaultSectionOrder();
+    const parsed: string[] = JSON.parse(raw);
+    const valid = new Set(SECTIONS_DEF.map(s => s.id));
+    const filtered = parsed.filter(id => valid.has(id));
+    const missing = SECTIONS_DEF.map(s => s.id).filter(id => !filtered.includes(id));
+    return [...filtered, ...missing];
+  } catch { return defaultSectionOrder(); }
+}
+
+function loadItemOrder(): Record<string, ActiveView[]> {
+  try {
+    const raw = localStorage.getItem(STORAGE_ITEMS);
+    if (!raw) return defaultItemOrder();
+    const parsed: Record<string, ActiveView[]> = JSON.parse(raw);
+    const validItems = new Set(ITEMS_DEF.map(i => i.id));
+    const def = defaultItemOrder();
+    // For each section, ensure all items are present and no invalid ones
+    const out: Record<string, ActiveView[]> = {};
+    const allAccountedFor = new Set<ActiveView>();
+    for (const s of SECTIONS_DEF) {
+      const saved = (parsed[s.id] || []).filter(id => validItems.has(id as ActiveView));
+      out[s.id] = saved as ActiveView[];
+      saved.forEach(id => allAccountedFor.add(id as ActiveView));
+    }
+    // Add any items not in saved state to their default section
+    for (const item of ITEMS_DEF) {
+      if (!allAccountedFor.has(item.id)) out[item.sectionId].push(item.id);
+    }
+    return out;
+  } catch { return defaultItemOrder(); }
+}
+
+// ── Drag & drop types ──────────────────────────────────────────────────────────
+
+type DragKind = 'section' | 'item';
+interface DragState { kind: DragKind; id: string; sectionId?: string; }
+interface DropTarget { kind: DragKind; id: string; pos: 'before' | 'after'; sectionId?: string; }
+
+// ── Main Layout ────────────────────────────────────────────────────────────────
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
   const orgName = useOrgName();
@@ -51,15 +181,149 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const { logout, isSuperUser, isAdmin, fetchHeaders } = useAuth();
   const { credits } = useCredits();
 
-  const [showChangePw, setShowChangePw] = useState(false);
-  const [currentPw, setCurrentPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [confirmPw, setConfirmPw] = useState('');
-  const [showCurrentPw, setShowCurrentPw] = useState(false);
-  const [showNewPw, setShowNewPw] = useState(false);
-  const [pwSaving, setPwSaving] = useState(false);
-  const [pwError, setPwError] = useState('');
-  const [pwSuccess, setPwSuccess] = useState(false);
+  // ── Change password modal state ──────────────────────────────────────────────
+  const [showChangePw, setShowChangePw]     = useState(false);
+  const [currentPw, setCurrentPw]           = useState('');
+  const [newPw, setNewPw]                   = useState('');
+  const [confirmPw, setConfirmPw]           = useState('');
+  const [showCurrentPw, setShowCurrentPw]   = useState(false);
+  const [showNewPw, setShowNewPw]           = useState(false);
+  const [pwSaving, setPwSaving]             = useState(false);
+  const [pwError, setPwError]               = useState('');
+  const [pwSuccess, setPwSuccess]           = useState(false);
+
+  // ── Nav reorder state ────────────────────────────────────────────────────────
+  const [sectionOrder, setSectionOrder] = useState<string[]>(loadSectionOrder);
+  const [itemOrder, setItemOrder]       = useState<Record<string, ActiveView[]>>(loadItemOrder);
+  const dragRef = useRef<DragState | null>(null);
+  const [dropTarget, setDropTarget]     = useState<DropTarget | null>(null);
+
+  // Persist whenever order changes
+  useEffect(() => { localStorage.setItem(STORAGE_SECTIONS, JSON.stringify(sectionOrder)); }, [sectionOrder]);
+  useEffect(() => { localStorage.setItem(STORAGE_ITEMS, JSON.stringify(itemOrder)); }, [itemOrder]);
+
+  function resetNavOrder() {
+    setSectionOrder(defaultSectionOrder());
+    setItemOrder(defaultItemOrder());
+    localStorage.removeItem(STORAGE_SECTIONS);
+    localStorage.removeItem(STORAGE_ITEMS);
+  }
+
+  // ── Drag handlers — sections ─────────────────────────────────────────────────
+
+  function onSectionDragStart(e: React.DragEvent, sectionId: string) {
+    dragRef.current = { kind: 'section', id: sectionId };
+    e.dataTransfer.effectAllowed = 'move';
+    // Transparent drag image
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:fixed;top:-100px;opacity:0';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }
+
+  function onSectionDragOver(e: React.DragEvent, sectionId: string) {
+    if (!dragRef.current || dragRef.current.id === sectionId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    setDropTarget({ kind: 'section', id: sectionId, pos });
+  }
+
+  function onSectionDrop(e: React.DragEvent, targetSectionId: string) {
+    e.preventDefault();
+    const src = dragRef.current;
+    if (!src || src.kind !== 'section' || src.id === targetSectionId) { endDrag(); return; }
+    setSectionOrder(prev => {
+      const next = prev.filter(s => s !== src.id);
+      const targetIdx = next.indexOf(targetSectionId);
+      const pos = dropTarget?.pos ?? 'after';
+      next.splice(pos === 'before' ? targetIdx : targetIdx + 1, 0, src.id);
+      return next;
+    });
+    endDrag();
+  }
+
+  // ── Drag handlers — items ────────────────────────────────────────────────────
+
+  function onItemDragStart(e: React.DragEvent, itemId: ActiveView, sectionId: string) {
+    dragRef.current = { kind: 'item', id: itemId, sectionId };
+    e.dataTransfer.effectAllowed = 'move';
+    const ghost = document.createElement('div');
+    ghost.style.cssText = 'position:fixed;top:-100px;opacity:0';
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }
+
+  function onItemDragOver(e: React.DragEvent, itemId: ActiveView, sectionId: string) {
+    const src = dragRef.current;
+    if (!src || src.kind !== 'item') return;
+    if (src.id === itemId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const pos = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    setDropTarget({ kind: 'item', id: itemId, pos, sectionId });
+  }
+
+  // Allow dropping item onto a section header → append to that section
+  function onSectionHeaderItemDragOver(e: React.DragEvent, sectionId: string) {
+    const src = dragRef.current;
+    if (!src || src.kind !== 'item') return;
+    if (src.sectionId === sectionId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDropTarget({ kind: 'section', id: sectionId, pos: 'after' });
+  }
+
+  function onItemDrop(e: React.DragEvent, targetItemId: ActiveView, targetSectionId: string) {
+    e.preventDefault();
+    const src = dragRef.current;
+    if (!src || src.kind !== 'item') { endDrag(); return; }
+    const srcId = src.id as ActiveView;
+    const srcSection = src.sectionId!;
+    const pos = dropTarget?.pos ?? 'after';
+
+    setItemOrder(prev => {
+      const next = { ...prev };
+      // Remove from source section
+      next[srcSection] = next[srcSection].filter(id => id !== srcId);
+      // Insert into target section
+      const targetList = [...(next[targetSectionId] || [])];
+      const targetIdx = targetList.indexOf(targetItemId);
+      if (targetIdx === -1) {
+        targetList.push(srcId);
+      } else {
+        targetList.splice(pos === 'before' ? targetIdx : targetIdx + 1, 0, srcId);
+      }
+      next[targetSectionId] = targetList;
+      return next;
+    });
+    endDrag();
+  }
+
+  function onSectionHeaderItemDrop(e: React.DragEvent, targetSectionId: string) {
+    e.preventDefault();
+    const src = dragRef.current;
+    if (!src || src.kind !== 'item' || src.sectionId === targetSectionId) { endDrag(); return; }
+    const srcId = src.id as ActiveView;
+    setItemOrder(prev => {
+      const next = { ...prev };
+      next[src.sectionId!] = next[src.sectionId!].filter(id => id !== srcId);
+      next[targetSectionId] = [...(next[targetSectionId] || []), srcId];
+      return next;
+    });
+    endDrag();
+  }
+
+  function endDrag() {
+    dragRef.current = null;
+    setDropTarget(null);
+  }
+
+  // ── Password handlers ────────────────────────────────────────────────────────
 
   async function handleChangePw(e: React.FormEvent) {
     e.preventDefault();
@@ -75,23 +339,19 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
       const data = await r.json();
       if (!r.ok) { setPwError(data.error || 'Failed to change password'); return; }
       setPwSuccess(true);
-      setTimeout(() => {
-        setShowChangePw(false);
-        setCurrentPw(''); setNewPw(''); setConfirmPw('');
-        setPwSuccess(false); setPwError('');
-      }, 1500);
-    } catch {
-      setPwError('Network error — please try again');
-    } finally {
-      setPwSaving(false);
-    }
+      setTimeout(() => { setShowChangePw(false); setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwSuccess(false); setPwError(''); }, 1500);
+    } catch { setPwError('Network error — please try again'); }
+    finally { setPwSaving(false); }
   }
 
-  function closePwModal() {
-    setShowChangePw(false);
-    setCurrentPw(''); setNewPw(''); setConfirmPw('');
-    setPwError(''); setPwSuccess(false);
-  }
+  function closePwModal() { setShowChangePw(false); setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError(''); setPwSuccess(false); }
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  const sectionMap = Object.fromEntries(SECTIONS_DEF.map(s => [s.id, s]));
+  const itemMap    = Object.fromEntries(ITEMS_DEF.map(i => [i.id, i]));
+
+  const draggingItemId = dragRef.current?.kind === 'item' ? dragRef.current.id : null;
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden text-foreground">
@@ -108,77 +368,146 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
+        <nav
+          className="flex-1 overflow-y-auto py-4 px-3 space-y-6"
+          onDragOver={e => e.preventDefault()}
+          onDrop={endDrag}
+        >
+          {sectionOrder.map(sectionId => {
+            const section = sectionMap[sectionId];
+            if (!section) return null;
+            const items = (itemOrder[sectionId] || [])
+              .map(id => itemMap[id])
+              .filter(Boolean)
+              .filter(item => !item.adminOnly || isAdmin);
+            // Hide admin section entirely for non-admins
+            if (section.id === 'admin' && !isAdmin) return null;
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Core Views</div>
-            <div className="space-y-1">
-              <NavItem icon={<TableProperties />} label="Master Catalogue" active={activeView === 'table'} onClick={() => onViewChange('table')} />
-              <NavItem icon={<Network />} label="Master Map" active={activeView === 'tree'} onClick={() => onViewChange('tree')} />
-              <NavItem icon={<Briefcase />} label="Process Catalogue" active={activeView === 'portfolio'} onClick={() => onViewChange('portfolio')} />
-              <NavItem icon={<Map />} label="Process Map" active={activeView === 'process-map'} onClick={() => onViewChange('process-map')} />
-            </div>
-          </div>
+            const isSectionDropTarget = dropTarget?.kind === 'section' && dropTarget.id === sectionId;
+            const isDraggingSection = dragRef.current?.kind === 'section' && dragRef.current.id === sectionId;
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Strategy</div>
-            <div className="space-y-1">
-              <NavItem icon={<Compass />} label="Mission & Vision" active={activeView === 'strategy'} onClick={() => onViewChange('strategy')} />
-              <NavItem icon={<TrendingUp />} label="Strategic Planning" active={activeView === 'strategic-planning'} onClick={() => onViewChange('strategic-planning')} />
-            </div>
-          </div>
+            return (
+              <div
+                key={sectionId}
+                className={cn(
+                  'relative rounded-xl transition-all duration-150',
+                  isDraggingSection && 'opacity-40',
+                )}
+              >
+                {/* Drop indicator before section */}
+                {isSectionDropTarget && dropTarget?.pos === 'before' && (
+                  <div className="absolute -top-3 left-0 right-0 flex items-center gap-1 z-10 px-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    <div className="flex-1 h-0.5 bg-primary rounded-full" />
+                  </div>
+                )}
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Governance</div>
-            <div className="space-y-1">
-              <NavItem icon={<ShieldCheck />} label="Governance" active={activeView === 'governance'} onClick={() => onViewChange('governance')} />
-            </div>
-          </div>
+                {/* Section header — draggable */}
+                <div
+                  className="group flex items-center gap-1 mb-1.5 px-2"
+                  draggable
+                  onDragStart={e => onSectionDragStart(e, sectionId)}
+                  onDragOver={e => {
+                    onSectionDragOver(e, sectionId);
+                    onSectionHeaderItemDragOver(e, sectionId);
+                  }}
+                  onDrop={e => {
+                    if (dragRef.current?.kind === 'section') onSectionDrop(e, sectionId);
+                    else onSectionHeaderItemDrop(e, sectionId);
+                  }}
+                >
+                  <div className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5">
+                    <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
+                  </div>
+                  <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider select-none">
+                    {section.label}
+                  </span>
+                </div>
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Workflows</div>
-            <div className="space-y-1">
-              <NavItem icon={<GitBranch />} label="Workflows" active={activeView === 'workflows'} onClick={() => onViewChange('workflows')} />
-              <NavItem icon={<ClipboardList />} label="Forms and Documents" active={activeView === 'forms'} onClick={() => onViewChange('forms')} />
-              <NavItem icon={<Activity />} label="Activities" active={activeView === 'activities'} onClick={() => onViewChange('activities')} />
-              <NavItem icon={<ListTodo />} label="Tasks" active={activeView === 'tasks'} onClick={() => onViewChange('tasks')} />
-            </div>
-          </div>
+                {/* Drop indicator when item dragged onto section header */}
+                {dropTarget?.kind === 'section' && dropTarget.id === sectionId && dragRef.current?.kind === 'item' && (
+                  <div className="mx-2 mb-1 h-0.5 bg-primary/60 rounded-full" />
+                )}
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">AI</div>
-            <div className="space-y-1">
-              <NavItem icon={<Bot />} label="AI Agents" active={activeView === 'ai-agents'} onClick={() => onViewChange('ai-agents')} />
-            </div>
-          </div>
+                {/* Items */}
+                <div className="space-y-0.5">
+                  {items.map(item => {
+                    const isDragging  = draggingItemId === item.id;
+                    const isDropBefore = dropTarget?.kind === 'item' && dropTarget.id === item.id && dropTarget.pos === 'before';
+                    const isDropAfter  = dropTarget?.kind === 'item' && dropTarget.id === item.id && dropTarget.pos === 'after';
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Integrations</div>
-            <div className="space-y-1">
-              <NavItem icon={<Plug />} label="Connectors" active={activeView === 'connectors'} onClick={() => onViewChange('connectors')} />
-            </div>
-          </div>
+                    return (
+                      <div key={item.id} className={cn('relative', isDragging && 'opacity-40')}>
+                        {/* Drop line before */}
+                        {isDropBefore && (
+                          <div className="absolute -top-px left-3 right-3 flex items-center gap-1 z-10">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                            <div className="flex-1 h-0.5 bg-primary rounded-full" />
+                          </div>
+                        )}
 
-          <div>
-            <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">System</div>
-            <div className="space-y-1">
-              <NavItem icon={<LayoutDashboard />} label="Dashboards" active={activeView === 'dashboards'} onClick={() => onViewChange('dashboards')} />
-              <NavItem icon={<FileBarChart />} label="Reports" active={activeView === 'reports'} onClick={() => onViewChange('reports')} />
-              <NavItem icon={<Bell />} label="Audit &amp; Logs" active={activeView === 'audit-logs'} onClick={() => onViewChange('audit-logs')} />
-              <NavItem icon={<Settings />} label="Settings" active={activeView === 'settings'} onClick={() => onViewChange('settings')} />
-            </div>
-          </div>
+                        <div
+                          className="group flex items-center"
+                          draggable
+                          onDragStart={e => onItemDragStart(e, item.id, sectionId)}
+                          onDragOver={e => onItemDragOver(e, item.id, sectionId)}
+                          onDrop={e => onItemDrop(e, item.id, sectionId)}
+                          onDragEnd={endDrag}
+                        >
+                          {/* Drag handle */}
+                          <div className="opacity-0 group-hover:opacity-40 cursor-grab active:cursor-grabbing transition-opacity pl-1 pr-0.5 py-2 flex-shrink-0">
+                            <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
+                          </div>
 
-          {isAdmin && (
-            <div>
-              <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Admin</div>
-              <div className="space-y-1">
-                <NavItem icon={<Users />} label="Users" active={activeView === 'users'} onClick={() => onViewChange('users')} />
-                <NavItem icon={<Settings2 />} label="Configuration" active={activeView === 'configuration'} onClick={() => onViewChange('configuration')} />
+                          {/* Nav button */}
+                          <button
+                            onClick={() => onViewChange(item.id)}
+                            className={cn(
+                              'flex-1 flex items-center gap-3 px-2.5 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium min-w-0',
+                              activeView === item.id
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                            )}
+                          >
+                            <span className={cn('w-5 h-5 flex-shrink-0', activeView === item.id ? 'text-primary' : 'text-sidebar-foreground/60')}>
+                              {getIcon(item.id)}
+                            </span>
+                            <span className="truncate">{item.label}</span>
+                          </button>
+                        </div>
+
+                        {/* Drop line after */}
+                        {isDropAfter && (
+                          <div className="absolute -bottom-px left-3 right-3 flex items-center gap-1 z-10">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                            <div className="flex-1 h-0.5 bg-primary rounded-full" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Drop indicator after section */}
+                {isSectionDropTarget && dropTarget?.pos === 'after' && dragRef.current?.kind === 'section' && (
+                  <div className="absolute -bottom-3 left-0 right-0 flex items-center gap-1 z-10 px-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                    <div className="flex-1 h-0.5 bg-primary rounded-full" />
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })}
 
+          {/* Reset button */}
+          <button
+            onClick={resetNavOrder}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] text-sidebar-foreground/30 hover:text-sidebar-foreground/60 hover:bg-sidebar-accent/50 transition-colors"
+            title="Reset navigation to default order"
+          >
+            <RotateCcw className="w-3 h-3 flex-shrink-0" />
+            Reset navigation order
+          </button>
         </nav>
 
         {/* Credits Widget — visible to tenant admins only */}
@@ -203,12 +532,8 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
               )}>
                 {credits.toLocaleString()}
               </div>
-              {credits <= 0 && (
-                <div className="mt-1 text-[10px] text-red-400/80">No credits remaining</div>
-              )}
-              {credits > 0 && credits < 500 && (
-                <div className="mt-1 text-[10px] text-amber-400/80">Credits running low</div>
-              )}
+              {credits <= 0 && <div className="mt-1 text-[10px] text-red-400/80">No credits remaining</div>}
+              {credits > 0 && credits < 500 && <div className="mt-1 text-[10px] text-amber-400/80">Credits running low</div>}
             </div>
           </div>
         )}
@@ -257,7 +582,6 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   <X className="w-4 h-4" />
                 </button>
               </div>
-
               {pwSuccess ? (
                 <div className="px-6 py-8 text-center space-y-2">
                   <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-green-500/10 mb-1">
@@ -270,61 +594,33 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Current Password</label>
                     <div className="relative">
-                      <input
-                        type={showCurrentPw ? 'text' : 'password'}
-                        value={currentPw}
-                        onChange={e => setCurrentPw(e.target.value)}
-                        placeholder="••••••••"
-                        required
-                        autoFocus
-                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
+                      <input type={showCurrentPw ? 'text' : 'password'} value={currentPw} onChange={e => setCurrentPw(e.target.value)} placeholder="••••••••" required autoFocus
+                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
                       <button type="button" onClick={() => setShowCurrentPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                         {showCurrentPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">New Password</label>
                     <div className="relative">
-                      <input
-                        type={showNewPw ? 'text' : 'password'}
-                        value={newPw}
-                        onChange={e => setNewPw(e.target.value)}
-                        placeholder="At least 6 characters"
-                        required
-                        minLength={6}
-                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                      />
+                      <input type={showNewPw ? 'text' : 'password'} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="At least 6 characters" required minLength={6}
+                        className="w-full px-3 pr-9 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
                       <button type="button" onClick={() => setShowNewPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                         {showNewPw ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
-
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Confirm New Password</label>
-                    <input
-                      type="password"
-                      value={confirmPw}
-                      onChange={e => setConfirmPw(e.target.value)}
-                      placeholder="Repeat new password"
-                      required
-                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    />
+                    <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Repeat new password" required
+                      className="w-full px-3 py-2 text-sm border border-border rounded-xl bg-background focus:outline-none focus:ring-2 focus:ring-primary/30" />
                   </div>
-
                   {pwError && (
-                    <div className="px-3 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive">
-                      {pwError}
-                    </div>
+                    <div className="px-3 py-2.5 rounded-xl bg-destructive/10 border border-destructive/20 text-xs text-destructive">{pwError}</div>
                   )}
-
                   <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={closePwModal} className="flex-1 px-4 py-2 text-sm rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors">
-                      Cancel
-                    </button>
+                    <button type="button" onClick={closePwModal} className="flex-1 px-4 py-2 text-sm rounded-xl border border-border text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
                     <button type="submit" disabled={pwSaving} className="flex-1 px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-60 transition-all">
                       {pwSaving ? 'Saving…' : 'Update Password'}
                     </button>
@@ -341,53 +637,23 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
 
         {/* Breadcrumb bar */}
         <div className="flex-none flex items-center gap-1 h-10 px-4 border-b border-border bg-card/60 backdrop-blur-sm z-30">
-          {/* Back button */}
-          <button
-            onClick={onBack}
-            disabled={!canGoBack}
-            title={canGoBack ? 'Go back' : 'No history'}
-            className={cn(
-              "flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
-              canGoBack
-                ? "text-foreground/70 hover:text-foreground hover:bg-secondary cursor-pointer"
-                : "text-muted-foreground/30 cursor-not-allowed"
-            )}
-          >
+          <button onClick={onBack} disabled={!canGoBack} title={canGoBack ? 'Go back' : 'No history'}
+            className={cn("flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
+              canGoBack ? "text-foreground/70 hover:text-foreground hover:bg-secondary cursor-pointer" : "text-muted-foreground/30 cursor-not-allowed")}>
             <ChevronLeft className="w-4 h-4" />
           </button>
-
-          {/* Divider */}
           <div className="w-px h-4 bg-border mx-1" />
-
-          {/* Breadcrumb segments */}
           <div className="flex items-center gap-0.5 text-xs min-w-0">
-            {/* Home / org name */}
-            <button
-              onClick={() => onViewChange('table')}
-              className={cn(
-                "flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap",
-                activeView === 'table'
-                  ? "text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary"
-              )}
-            >
+            <button onClick={() => onViewChange('table')}
+              className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap",
+                activeView === 'table' ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
               <Home className="w-3 h-3 flex-shrink-0" />
               <span className="hidden sm:inline truncate max-w-[120px]">{orgName}</span>
             </button>
-
             <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
-
-            {/* Section */}
-            <span className="px-1.5 py-0.5 text-muted-foreground whitespace-nowrap hidden md:inline">
-              {meta.section}
-            </span>
-
+            <span className="px-1.5 py-0.5 text-muted-foreground whitespace-nowrap hidden md:inline">{meta.section}</span>
             <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0 hidden md:inline" />
-
-            {/* Current page */}
-            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium whitespace-nowrap">
-              {meta.label}
-            </span>
+            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium whitespace-nowrap">{meta.label}</span>
           </div>
         </div>
 
@@ -397,34 +663,6 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </div>
 
       </main>
-
     </div>
-  );
-}
-
-function NavItem({ icon, label, active, onClick, disabled }: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium",
-        disabled && "opacity-50 cursor-not-allowed",
-        active
-          ? "bg-primary/10 text-primary"
-          : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-      )}
-    >
-      <span className={cn("w-5 h-5", active ? "text-primary" : "text-sidebar-foreground/60")}>
-        {icon}
-      </span>
-      {label}
-    </button>
   );
 }
