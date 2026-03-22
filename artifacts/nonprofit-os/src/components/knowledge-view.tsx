@@ -10,8 +10,13 @@ import {
   List, ListOrdered, Quote, Code, Code2,
   AlignLeft, AlignCenter, AlignRight,
   Highlighter, Undo2, Redo2, Unlink, Minus,
-  Search, RefreshCw, Sparkles,
+  Search, RefreshCw, Sparkles, FileDown,
 } from "lucide-react";
+import {
+  Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel,
+  AlignmentType, UnderlineType, convertInchesToTwip,
+} from "docx";
+import { saveAs } from "file-saver";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -280,6 +285,139 @@ function TbSep() {
 // ── Process type for slash picker ─────────────────────────────────────────────
 interface ProcessMeta { id: number; processName: string; category: string; }
 
+// ── TipTap → docx conversion helpers ──────────────────────────────────────────
+function ttAlignment(align?: string): AlignmentType {
+  if (align === "center") return AlignmentType.CENTER;
+  if (align === "right") return AlignmentType.RIGHT;
+  if (align === "justify") return AlignmentType.JUSTIFIED;
+  return AlignmentType.LEFT;
+}
+function ttHeading(level?: number): HeadingLevel {
+  if (level === 1) return HeadingLevel.HEADING_1;
+  if (level === 2) return HeadingLevel.HEADING_2;
+  if (level === 3) return HeadingLevel.HEADING_3;
+  return HeadingLevel.HEADING_4;
+}
+function ttInlines(content: any[]): TextRun[] {
+  return (content || []).flatMap((n: any) => {
+    if (n.type === "hardBreak") return [new TextRun({ break: 1 })];
+    if (n.type !== "text") return [];
+    const marks = new Set((n.marks || []).map((m: any) => m.type));
+    return [new TextRun({
+      text: n.text || "",
+      bold: marks.has("bold"),
+      italics: marks.has("italic"),
+      underline: marks.has("underline") ? { type: UnderlineType.SINGLE } : undefined,
+      strike: marks.has("strike"),
+      font: marks.has("code") ? "Courier New" : undefined,
+    })];
+  });
+}
+function ttBlocks(nodes: any[]): Paragraph[] {
+  return (nodes || []).flatMap((n: any) => {
+    switch (n.type) {
+      case "paragraph":
+        return [new Paragraph({
+          children: ttInlines(n.content || []),
+          alignment: ttAlignment(n.attrs?.textAlign),
+          spacing: { after: 120 },
+        })];
+      case "heading":
+        return [new Paragraph({
+          children: ttInlines(n.content || []),
+          heading: ttHeading(n.attrs?.level),
+          spacing: { before: 240, after: 120 },
+        })];
+      case "bulletList":
+        return (n.content || []).flatMap((li: any) =>
+          (li.content || []).flatMap((p: any) => [new Paragraph({
+            children: [new TextRun("• "), ...ttInlines(p.content || [])],
+            indent: { left: convertInchesToTwip(0.4) },
+            spacing: { after: 60 },
+          })])
+        );
+      case "orderedList":
+        return (n.content || []).flatMap((li: any, i: number) =>
+          (li.content || []).flatMap((p: any, j: number) => [new Paragraph({
+            children: [new TextRun(j === 0 ? `${i + 1}. ` : "     "), ...ttInlines(p.content || [])],
+            indent: { left: convertInchesToTwip(0.4) },
+            spacing: { after: 60 },
+          })])
+        );
+      case "blockquote":
+        return ttBlocks(n.content || []).map(p => {
+          (p as any).properties = (p as any).properties || {};
+          return p;
+        });
+      case "codeBlock":
+        return [new Paragraph({
+          children: [(n.content || []).map((c: any) => c.text || "").join("")].map(
+            text => new TextRun({ text, font: "Courier New" })
+          ),
+          spacing: { before: 120, after: 120 },
+        })];
+      case "horizontalRule":
+        return [new Paragraph({ thematicBreak: true })];
+      default:
+        return [];
+    }
+  });
+}
+async function downloadAsDocx(title: string, editorJson: any) {
+  const doc = new DocxDocument({
+    sections: [{
+      children: [
+        new Paragraph({ text: title, heading: HeadingLevel.TITLE, spacing: { after: 320 } }),
+        ...ttBlocks(editorJson?.content || []),
+      ],
+    }],
+    styles: {
+      default: {
+        document: { run: { font: "Calibri", size: 22 } },
+      },
+    },
+  });
+  const blob = await Packer.toBlob(doc);
+  saveAs(blob, `${title || "wiki-page"}.docx`);
+}
+function downloadAsPDF(title: string, html: string) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${title}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Georgia, "Times New Roman", serif; font-size: 12pt; line-height: 1.7; color: #111; padding: 2cm; max-width: 18cm; margin: 0 auto; }
+    h1 { font-size: 2em; margin: 0.6em 0 0.3em; border-bottom: 2px solid #333; padding-bottom: 0.2em; }
+    h2 { font-size: 1.5em; margin: 0.8em 0 0.3em; }
+    h3 { font-size: 1.2em; margin: 0.8em 0 0.3em; }
+    p { margin: 0.5em 0; }
+    ul, ol { margin: 0.5em 0 0.5em 1.5em; }
+    li { margin: 0.2em 0; }
+    blockquote { border-left: 4px solid #999; padding-left: 1em; color: #444; margin: 0.5em 0; }
+    pre, code { font-family: "Courier New", monospace; background: #f4f4f4; padding: 0.2em 0.4em; border-radius: 3px; }
+    pre { padding: 0.8em; display: block; white-space: pre-wrap; }
+    hr { border: none; border-top: 1px solid #aaa; margin: 1em 0; }
+    mark { background: #ff0; }
+    strong { font-weight: bold; }
+    em { font-style: italic; }
+    a { color: #2563eb; }
+    .page-title { font-size: 2.4em; font-weight: bold; margin-bottom: 1em; border-bottom: 2px solid #333; padding-bottom: 0.4em; }
+    @media print { body { padding: 0; } @page { margin: 2cm; } }
+  </style>
+</head>
+<body>
+  <div class="page-title">${title}</div>
+  ${html}
+  <script>window.onload = () => { window.print(); window.close(); }<\/script>
+</body>
+</html>`);
+  win.document.close();
+}
+
 // ── Wiki Editor ───────────────────────────────────────────────────────────────
 
 function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (title: string, content: string) => Promise<void>; saving: boolean }) {
@@ -462,6 +600,20 @@ function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (ti
         >
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           {dirty ? "Save" : "Saved"}
+        </button>
+        <button
+          onClick={() => downloadAsPDF(title, editor.getHTML())}
+          title="Download as PDF"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-secondary hover:bg-secondary/80 text-foreground transition-colors shrink-0"
+        >
+          <FileDown className="w-3.5 h-3.5" />PDF
+        </button>
+        <button
+          onClick={() => downloadAsDocx(title, editor.getJSON())}
+          title="Download as Word"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs bg-secondary hover:bg-secondary/80 text-foreground transition-colors shrink-0"
+        >
+          <FileDown className="w-3.5 h-3.5" />Word
         </button>
       </div>
 
