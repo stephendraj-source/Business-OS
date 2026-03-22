@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
-  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2,
+  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2, Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
@@ -1160,6 +1160,30 @@ export function ReportsView() {
     } catch { /* ignore */ }
   }
 
+  async function duplicateCustomReport(r: CustomReportDef) {
+    try {
+      const res = await fetch(`${API}/reports`, {
+        method: 'POST',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ title: `Copy of ${r.name}`, description: r.description, fields: r.fields }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const newReport: CustomReportDef = {
+        id: data.id,
+        name: data.title,
+        description: data.description ?? '',
+        fields: data.fields ?? [],
+        createdAt: data.createdAt ?? new Date().toISOString(),
+        isOwner: true,
+        canEdit: true,
+        shares: [],
+      };
+      setCustomReports(prev => [...prev, newReport]);
+      setActiveReport(String(data.id));
+    } catch { /* ignore */ }
+  }
+
   function reorderField(fromKey: string, toKey: string, side: 'before' | 'after') {
     if (fromKey === toKey) return;
     const next = [...activeFields];
@@ -1380,6 +1404,13 @@ export function ReportsView() {
                       className="text-muted-foreground/40 hover:text-primary transition-colors p-1 rounded"
                     >
                       <Share2 className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); duplicateCustomReport(r); }}
+                      title="Duplicate report"
+                      className="text-muted-foreground/40 hover:text-green-400 transition-colors p-1 rounded"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
                     </button>
                     {r.isOwner && (
                       <button
