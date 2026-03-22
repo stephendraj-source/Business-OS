@@ -480,10 +480,14 @@ router.post("/tasks/:id/processes/auto-detect", async (req, res) => {
     const task = taskResult.rows[0] as any;
     if (!task) { res.status(404).json({ error: "Task not found" }); return; }
 
-    // Get all processes for this tenant
-    const processResult = tenantId
+    // Get all processes for this tenant (fall back to all processes if none found for the tenant)
+    let processResult = tenantId
       ? await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes WHERE tenant_id = ${tenantId} ORDER BY number`)
       : await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes ORDER BY number`);
+
+    if (!processResult.rows.length && tenantId !== null) {
+      processResult = await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes ORDER BY number`);
+    }
 
     const processes = processResult.rows as any[];
     if (!processes.length) { res.json({ process_ids: [] }); return; }
