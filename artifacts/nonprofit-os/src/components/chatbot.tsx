@@ -48,6 +48,9 @@ interface PendingTask {
   agent_name: string;
 }
 
+interface MentionUser { id: number; name: string; email: string; role?: string }
+interface MentionProcess { id: number; processName: string; category?: string }
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PANEL_W = 440;
 const PANEL_H = 560;
@@ -175,6 +178,15 @@ export function Chatbot() {
   const [pendingTask, setPendingTask] = useState<PendingTask | null>(null);
   const [queueDismissed, setQueueDismissed] = useState(false);
 
+  // Slash-mention picker state
+  const [showMention, setShowMention] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionUsers, setMentionUsers] = useState<MentionUser[]>([]);
+  const [mentionProcesses, setMentionProcesses] = useState<MentionProcess[]>([]);
+  const [mentionLoaded, setMentionLoaded] = useState(false);
+  const [mentionHighlight, setMentionHighlight] = useState(0);
+  const slashIdxRef = useRef<number>(-1);
+
   // ── Drag handling ───────────────────────────────────────────────────────────
   const onHeaderMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
@@ -225,6 +237,53 @@ export function Chatbot() {
       if (r.ok) setQueues(await r.json());
     } catch {}
   };
+
+  // ── Slash-mention helpers ────────────────────────────────────────────────────
+  const loadMentionData = async () => {
+    if (mentionLoaded) return;
+    try {
+      const [ur, pr] = await Promise.all([
+        fetch(`${API}/users`, { headers: fetchHeaders() }),
+        fetch(`${API}/processes`, { headers: fetchHeaders() }),
+      ]);
+      if (ur.ok) setMentionUsers(await ur.json());
+      if (pr.ok) setMentionProcesses(await pr.json());
+      setMentionLoaded(true);
+    } catch {}
+  };
+
+  const openMentionPicker = (ta: HTMLTextAreaElement) => {
+    slashIdxRef.current = ta.selectionStart;
+    setMentionQuery('');
+    setMentionHighlight(0);
+    setShowMention(true);
+    loadMentionData();
+  };
+
+  const closeMentionPicker = () => { setShowMention(false); setMentionQuery(''); };
+
+  const insertMention = (text: string) => {
+    const ta = inputRef.current;
+    if (!ta) return;
+    const before = input.slice(0, slashIdxRef.current);
+    const after = input.slice(ta.selectionStart);
+    setInput(`${before}${text} ${after}`);
+    closeMentionPicker();
+    setTimeout(() => ta.focus(), 0);
+  };
+
+  const mentionQ = mentionQuery.toLowerCase();
+  const filteredMentionUsers = mentionUsers.filter(u =>
+    u.name.toLowerCase().includes(mentionQ) || u.email.toLowerCase().includes(mentionQ)
+  );
+  const filteredMentionProcesses = mentionProcesses.filter(p =>
+    (p.processName || '').toLowerCase().includes(mentionQ) ||
+    (p.category || '').toLowerCase().includes(mentionQ)
+  );
+  const allMentionItems: Array<{ label: string; sub: string; text: string }> = [
+    ...filteredMentionUsers.map(u => ({ label: u.name, sub: u.role ?? u.email, text: `@${u.name}` })),
+    ...filteredMentionProcesses.map(p => ({ label: p.processName, sub: p.category ?? 'Process', text: `[${p.processName}]` })),
+  ];
 
   // ── Conversation management ─────────────────────────────────────────────────
   const fetchConversations = async () => {
@@ -348,7 +407,37 @@ export function Chatbot() {
   }, [input, streaming, activeConvId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showMention) {
+      if (e.key === 'Escape') { e.preventDefault(); closeMentionPicker(); return; }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setMentionHighlight(h => Math.min(h + 1, allMentionItems.length - 1)); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setMentionHighlight(h => Math.max(h - 1, 0)); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const item = allMentionItems[mentionHighlight];
+        if (item) insertMention(item.text);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    const cursor = e.target.selectionStart;
+    setInput(val);
+    if (showMention) {
+      const afterSlash = val.slice(slashIdxRef.current + 1, cursor);
+      if (afterSlash.includes(' ') || afterSlash.includes('\n') || cursor <= slashIdxRef.current) {
+        closeMentionPicker();
+      } else {
+        setMentionQuery(afterSlash);
+        setMentionHighlight(0);
+      }
+    } else {
+      if (e.nativeEvent instanceof InputEvent && e.nativeEvent.data === '/' && inputRef.current) {
+        openMentionPicker(inputRef.current);
+      }
+    }
   };
 
   const startNewChat = () => {
@@ -628,13 +717,70 @@ export function Chatbot() {
 
             {/* Input */}
             <div className="border-t border-border p-3 bg-card flex-none">
+              {/* Slash-mention picker */}
+              {showMention && (
+                <div className="mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
+                  <div className="px-3 py-1.5 border-b border-border flex items-center gap-2">
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mention a user or process</span>
+                    {mentionQuery && <span className="text-[10px] text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded">/{mentionQuery}</span>}
+                  </div>
+                  {allMentionItems.length === 0 ? (
+                    <div className="px-3 py-3 text-xs text-muted-foreground italic">{mentionLoaded ? 'No matches' : 'Loading…'}</div>
+                  ) : (
+                    <>
+                      {filteredMentionUsers.length > 0 && (
+                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Users</div>
+                      )}
+                      {filteredMentionUsers.map((u, i) => {
+                        const globalIdx = i;
+                        return (
+                          <button
+                            key={`u-${u.id}`}
+                            onMouseDown={e => { e.preventDefault(); insertMention(`@${u.name}`); }}
+                            className={cn("w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary/60 transition-colors", mentionHighlight === globalIdx && "bg-secondary/60")}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">{u.name[0]?.toUpperCase()}</div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-foreground truncate">{u.name}</div>
+                              <div className="text-[10px] text-muted-foreground truncate">{u.role ?? u.email}</div>
+                            </div>
+                            <span className="ml-auto text-[10px] font-mono text-muted-foreground/50 flex-shrink-0">@{u.name}</span>
+                          </button>
+                        );
+                      })}
+                      {filteredMentionProcesses.length > 0 && (
+                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Processes</div>
+                      )}
+                      {filteredMentionProcesses.map((p, i) => {
+                        const globalIdx = filteredMentionUsers.length + i;
+                        return (
+                          <button
+                            key={`p-${p.id}`}
+                            onMouseDown={e => { e.preventDefault(); insertMention(`[${p.processName}]`); }}
+                            className={cn("w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary/60 transition-colors", mentionHighlight === globalIdx && "bg-secondary/60")}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                              <Layers className="w-3 h-3 text-blue-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-foreground truncate">{p.processName}</div>
+                              <div className="text-[10px] text-muted-foreground truncate">{p.category ?? 'Process'}</div>
+                            </div>
+                            <span className="ml-auto text-[10px] font-mono text-muted-foreground/50 flex-shrink-0">[process]</span>
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
+              )}
               <div className="flex gap-2 items-end">
                 <textarea
                   ref={inputRef}
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask anything, or request a database change (I'll create a task for approval)…"
+                  placeholder="Ask anything… type / to mention a user or process"
                   rows={2}
                   disabled={streaming}
                   className="flex-1 resize-none bg-secondary/50 border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition-all"
