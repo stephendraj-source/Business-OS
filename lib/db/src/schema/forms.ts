@@ -42,3 +42,15 @@ export const formSubmissionsTable = pgTable("form_submissions", {
 });
 
 export type FormSubmissionRow = typeof formSubmissionsTable.$inferSelect;
+
+export const mindmapsTable = pgTable("mindmaps", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().default("New Mind Map"),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  folderId: integer("folder_id").references(() => formFoldersTable.id, { onDelete: "set null" }),
+  data: text("data").notNull().default('{"nodes":[],"edges":[]}'),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type Mindmap = typeof mindmapsTable.$inferSelect;

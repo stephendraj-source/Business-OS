@@ -1,0 +1,927 @@
+import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
+  GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
+  AlignLeft, ChevronDown, Calendar,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
+
+const API = '/api';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface TaskData {
+  name: string;
+  description: string;
+  priority: 'low' | 'normal' | 'high' | 'urgent';
+  status: 'open' | 'in_progress' | 'done' | 'cancelled';
+  assignedTo: number | null;
+  queueId: number | null;
+  endDate: string | null;
+  approvalStatus: 'none' | 'pending' | 'approved' | 'rejected';
+  source: string;
+  aiInstructions: string;
+}
+
+interface MapNode {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  color: string;
+  type: 'normal' | 'task';
+  taskId: number | null;
+  taskData: TaskData | null;
+}
+
+interface MapEdge {
+  id: string;
+  sourceId: string;
+  targetId: string;
+}
+
+interface MapData {
+  nodes: MapNode[];
+  edges: MapEdge[];
+}
+
+interface Transform { x: number; y: number; scale: number; }
+
+const NODE_W = 180;
+const NODE_H = 54;
+const TASK_NODE_H = 72;
+const NODE_RX = 10;
+
+const DEFAULT_COLORS = [
+  '#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
+  '#ec4899', '#14b8a6', '#f97316', '#64748b',
+];
+
+function uid() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID().slice(0, 8);
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function defaultTaskData(): TaskData {
+  return {
+    name: '', description: '', priority: 'normal', status: 'open',
+    assignedTo: null, queueId: null, endDate: null,
+    approvalStatus: 'none', source: 'Mind Map', aiInstructions: '',
+  };
+}
+
+function nodeHeight(node: MapNode) {
+  return node.type === 'task' ? TASK_NODE_H : NODE_H;
+}
+
+// ── Edge path helper ──────────────────────────────────────────────────────────
+
+function edgePath(src: MapNode, dst: MapNode): string {
+  const sx = src.x + NODE_W / 2;
+  const sy = src.y + nodeHeight(src) / 2;
+  const dx = dst.x + NODE_W / 2;
+  const dy = dst.y + nodeHeight(dst) / 2;
+  const cx = (sx + dx) / 2;
+  return `M ${sx} ${sy} C ${cx} ${sy}, ${cx} ${dy}, ${dx} ${dy}`;
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+interface MindmapEditorProps {
+  mindmapId: number;
+  mindmapName: string;
+  onRename: (name: string) => void;
+}
+
+export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEditorProps) {
+  const { fetchHeaders } = useAuth();
+
+  const [mapData, setMapData] = useState<MapData>({ nodes: [], edges: [] });
+  const [transform, setTransform] = useState<Transform>({ x: 60, y: 60, scale: 1 });
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [connectMode, setConnectMode] = useState(false);
+  const [connectSource, setConnectSource] = useState<string | null>(null);
+  const [editingLabel, setEditingLabel] = useState<{ nodeId: string; value: string } | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [nameValue, setNameValue] = useState(mindmapName);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [queues, setQueues] = useState<{ id: number; name: string }[]>([]);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const panRef = useRef<{ startX: number; startY: number; origTx: number; origTy: number } | null>(null);
+  const dragRef = useRef<{ nodeId: string; startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mapDataRef = useRef(mapData);
+
+  useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
+  useEffect(() => { setNameValue(mindmapName); }, [mindmapName]);
+
+  // ── Load ──────────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`${API}/mindmaps/${mindmapId}`, { headers: fetchHeaders() })
+      .then(r => r.json())
+      .then(async (mm) => {
+        let data: MapData = { nodes: [], edges: [] };
+        try { data = JSON.parse(mm.data); } catch {}
+        // Re-sync task nodes with live task records
+        const synced = await syncTaskNodes(data, fetchHeaders());
+        setMapData(synced);
+        fitView(synced);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [mindmapId]);
+
+  useEffect(() => {
+    fetch(`${API}/users`, { headers: fetchHeaders() })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setUsers(d.map((u: any) => ({ id: u.id, name: u.name || u.email }))); }).catch(() => {});
+    fetch(`${API}/org/task-queues`, { headers: fetchHeaders() })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setQueues(d); }).catch(() => {});
+  }, []);
+
+  // ── Sync task nodes ───────────────────────────────────────────────────────
+
+  async function syncTaskNodes(data: MapData, headers: HeadersInit): Promise<MapData> {
+    const taskNodes = data.nodes.filter(n => n.type === 'task' && n.taskId);
+    if (!taskNodes.length) return data;
+    const updated = await Promise.all(
+      taskNodes.map(async (n) => {
+        try {
+          const r = await fetch(`${API}/tasks/${n.taskId}`, { headers });
+          if (!r.ok) return n;
+          const t = await r.json();
+          return { ...n, label: t.name || n.label, taskData: taskToData(t) };
+        } catch { return n; }
+      })
+    );
+    const map = new Map(updated.map(n => [n.id, n]));
+    return { ...data, nodes: data.nodes.map(n => map.get(n.id) ?? n) };
+  }
+
+  function taskToData(t: any): TaskData {
+    return {
+      name: t.name ?? '',
+      description: t.description ?? '',
+      priority: t.priority ?? 'normal',
+      status: t.status ?? 'open',
+      assignedTo: t.assigned_to ?? null,
+      queueId: t.queue_id ?? null,
+      endDate: t.end_date ? t.end_date.slice(0, 10) : null,
+      approvalStatus: t.approval_status ?? 'none',
+      source: t.source ?? 'Mind Map',
+      aiInstructions: t.ai_instructions ?? '',
+    };
+  }
+
+  // ── Auto-save ─────────────────────────────────────────────────────────────
+
+  const scheduleSave = useCallback((data: MapData) => {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(async () => {
+      setSaving(true);
+      try {
+        await fetch(`${API}/mindmaps/${mindmapId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+          body: JSON.stringify({ data: JSON.stringify(data) }),
+        });
+        setSavedAt(new Date());
+      } catch {}
+      setSaving(false);
+    }, 1000);
+  }, [mindmapId, fetchHeaders]);
+
+  const updateMapData = useCallback((fn: (prev: MapData) => MapData) => {
+    setMapData(prev => {
+      const next = fn(prev);
+      scheduleSave(next);
+      return next;
+    });
+  }, [scheduleSave]);
+
+  // ── Fit view ──────────────────────────────────────────────────────────────
+
+  const fitView = (data?: MapData) => {
+    const d = data ?? mapDataRef.current;
+    if (!d.nodes.length) { setTransform({ x: 60, y: 60, scale: 1 }); return; }
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const { width, height } = svgEl.getBoundingClientRect();
+    const minX = Math.min(...d.nodes.map(n => n.x));
+    const minY = Math.min(...d.nodes.map(n => n.y));
+    const maxX = Math.max(...d.nodes.map(n => n.x + NODE_W));
+    const maxY = Math.max(...d.nodes.map(n => n.y + nodeHeight(n)));
+    const pad = 80;
+    const scaleX = (width - pad * 2) / (maxX - minX || 1);
+    const scaleY = (height - pad * 2) / (maxY - minY || 1);
+    const scale = Math.min(1.2, Math.max(0.2, Math.min(scaleX, scaleY)));
+    setTransform({
+      x: (width - (maxX - minX) * scale) / 2 - minX * scale,
+      y: (height - (maxY - minY) * scale) / 2 - minY * scale,
+      scale,
+    });
+  };
+
+  // ── Rename mindmap ────────────────────────────────────────────────────────
+
+  const commitRename = async () => {
+    const trimmed = nameValue.trim();
+    if (trimmed && trimmed !== mindmapName) {
+      await fetch(`${API}/mindmaps/${mindmapId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      onRename(trimmed);
+    } else setNameValue(mindmapName);
+    setEditingName(false);
+  };
+
+  // ── Add node ──────────────────────────────────────────────────────────────
+
+  const addNode = () => {
+    const svgEl = svgRef.current;
+    const { x, y, scale } = transform;
+    const cx = svgEl ? (svgEl.clientWidth / 2 - x) / scale : 200;
+    const cy = svgEl ? (svgEl.clientHeight / 2 - y) / scale : 200;
+    const node: MapNode = {
+      id: uid(), label: 'New node',
+      x: cx - NODE_W / 2 + (Math.random() * 40 - 20),
+      y: cy - NODE_H / 2 + (Math.random() * 40 - 20),
+      color: DEFAULT_COLORS[Math.floor(Math.random() * DEFAULT_COLORS.length)],
+      type: 'normal', taskId: null, taskData: null,
+    };
+    updateMapData(prev => ({ ...prev, nodes: [...prev.nodes, node] }));
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  };
+
+  // ── Delete selected ───────────────────────────────────────────────────────
+
+  const deleteSelected = () => {
+    if (selectedNodeId) {
+      updateMapData(prev => ({
+        nodes: prev.nodes.filter(n => n.id !== selectedNodeId),
+        edges: prev.edges.filter(e => e.sourceId !== selectedNodeId && e.targetId !== selectedNodeId),
+      }));
+      setSelectedNodeId(null);
+    } else if (selectedEdgeId) {
+      updateMapData(prev => ({ ...prev, edges: prev.edges.filter(e => e.id !== selectedEdgeId) }));
+      setSelectedEdgeId(null);
+    }
+  };
+
+  // ── Convert node to/from task ─────────────────────────────────────────────
+
+  const convertToTask = async (nodeId: string) => {
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    if (!node || node.type === 'task') return;
+    setTaskLoading(true);
+    try {
+      const r = await fetch(`${API}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ name: node.label, source: 'Mind Map', priority: 'normal', approvalStatus: 'none' }),
+      });
+      const task = await r.json();
+      updateMapData(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === nodeId
+          ? { ...n, type: 'task', taskId: task.id, taskData: taskToData(task), label: task.name || n.label }
+          : n
+        ),
+      }));
+    } catch {}
+    setTaskLoading(false);
+  };
+
+  const unlinkTask = (nodeId: string) => {
+    updateMapData(prev => ({
+      ...prev,
+      nodes: prev.nodes.map(n => n.id === nodeId
+        ? { ...n, type: 'normal', taskId: null, taskData: null }
+        : n
+      ),
+    }));
+  };
+
+  // ── Update task field ─────────────────────────────────────────────────────
+
+  const updateTaskField = async (nodeId: string, field: keyof TaskData, value: any) => {
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    if (!node || !node.taskId) return;
+
+    const newTaskData = { ...node.taskData!, [field]: value };
+    if (field === 'name') {
+      updateMapData(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === nodeId ? { ...n, label: value, taskData: newTaskData } : n),
+      }));
+    } else {
+      updateMapData(prev => ({
+        ...prev,
+        nodes: prev.nodes.map(n => n.id === nodeId ? { ...n, taskData: newTaskData } : n),
+      }));
+    }
+
+    const apiField: Record<string, string> = {
+      name: 'name', description: 'description', priority: 'priority',
+      status: 'status', assignedTo: 'assignedTo', queueId: 'queueId',
+      endDate: 'endDate', approvalStatus: 'approvalStatus',
+      source: 'source', aiInstructions: 'aiInstructions',
+    };
+    await fetch(`${API}/tasks/${node.taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+      body: JSON.stringify({ [apiField[field] ?? field]: value }),
+    }).catch(() => {});
+  };
+
+  // ── Interaction: Pointer events ───────────────────────────────────────────
+
+  const svgToCanvas = (clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return { cx: 0, cy: 0 };
+    return {
+      cx: (clientX - rect.left - transform.x) / transform.scale,
+      cy: (clientY - rect.top - transform.y) / transform.scale,
+    };
+  };
+
+  const handleSvgPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if ((e.target as SVGElement).closest('.mm-node')) return;
+    if ((e.target as SVGElement).closest('.mm-edge')) return;
+    setSelectedNodeId(null);
+    setSelectedEdgeId(null);
+    if (connectMode) { setConnectSource(null); setConnectMode(false); return; }
+    const rect = svgRef.current!.getBoundingClientRect();
+    panRef.current = { startX: e.clientX, startY: e.clientY, origTx: transform.x, origTy: transform.y };
+    svgRef.current!.setPointerCapture(e.pointerId);
+  };
+
+  const handleSvgPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (panRef.current) {
+      const dx = e.clientX - panRef.current.startX;
+      const dy = e.clientY - panRef.current.startY;
+      setTransform(t => ({ ...t, x: panRef.current!.origTx + dx, y: panRef.current!.origTy + dy }));
+    }
+    if (dragRef.current) {
+      const rect = svgRef.current!.getBoundingClientRect();
+      const dx = (e.clientX - dragRef.current.startX) / transform.scale;
+      const dy = (e.clientY - dragRef.current.startY) / transform.scale;
+      if (Math.abs(dx) > 2 || Math.abs(dy) > 2) dragRef.current.moved = true;
+      if (dragRef.current.moved) {
+        const newX = dragRef.current.origX + dx;
+        const newY = dragRef.current.origY + dy;
+        updateMapData(prev => ({
+          ...prev,
+          nodes: prev.nodes.map(n => n.id === dragRef.current!.nodeId ? { ...n, x: newX, y: newY } : n),
+        }));
+      }
+    }
+  };
+
+  const handleSvgPointerUp = () => {
+    panRef.current = null;
+    dragRef.current = null;
+  };
+
+  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    const rect = svgRef.current!.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const delta = e.deltaY < 0 ? 1.1 : 0.9;
+    setTransform(t => {
+      const newScale = Math.min(3, Math.max(0.15, t.scale * delta));
+      const ratio = newScale / t.scale;
+      return { scale: newScale, x: mouseX - (mouseX - t.x) * ratio, y: mouseY - (mouseY - t.y) * ratio };
+    });
+  };
+
+  const handleNodePointerDown = (e: React.PointerEvent, nodeId: string) => {
+    e.stopPropagation();
+    if (editingLabel?.nodeId === nodeId) return;
+    const node = mapData.nodes.find(n => n.id === nodeId)!;
+    dragRef.current = { nodeId, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y, moved: false };
+    svgRef.current!.setPointerCapture(e.pointerId);
+  };
+
+  const handleNodePointerUp = (e: React.PointerEvent, nodeId: string) => {
+    e.stopPropagation();
+    if (dragRef.current?.moved) { dragRef.current = null; return; }
+    dragRef.current = null;
+    if (connectMode) {
+      if (!connectSource) {
+        setConnectSource(nodeId);
+      } else if (connectSource !== nodeId) {
+        const alreadyExists = mapData.edges.some(
+          ed => (ed.sourceId === connectSource && ed.targetId === nodeId) ||
+                (ed.sourceId === nodeId && ed.targetId === connectSource)
+        );
+        if (!alreadyExists) {
+          updateMapData(prev => ({
+            ...prev,
+            edges: [...prev.edges, { id: uid(), sourceId: connectSource!, targetId: nodeId }],
+          }));
+        }
+        setConnectSource(null);
+        setConnectMode(false);
+      }
+    } else {
+      setSelectedNodeId(nodeId);
+      setSelectedEdgeId(null);
+    }
+  };
+
+  const handleNodeDoubleClick = (e: React.MouseEvent, nodeId: string) => {
+    e.stopPropagation();
+    const node = mapData.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    setEditingLabel({ nodeId, value: node.label });
+  };
+
+  const commitLabelEdit = () => {
+    if (!editingLabel) return;
+    const { nodeId, value } = editingLabel;
+    updateMapData(prev => ({
+      ...prev,
+      nodes: prev.nodes.map(n => n.id === nodeId ? { ...n, label: value } : n),
+    }));
+    // Sync name to task if task node
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    if (node?.type === 'task' && node.taskId) {
+      fetch(`${API}/tasks/${node.taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ name: value }),
+      }).catch(() => {});
+    }
+    setEditingLabel(null);
+  };
+
+  const handleEdgeClick = (e: React.MouseEvent, edgeId: string) => {
+    e.stopPropagation();
+    setSelectedEdgeId(edgeId);
+    setSelectedNodeId(null);
+  };
+
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+      if (e.key === 'Escape') { setSelectedNodeId(null); setSelectedEdgeId(null); setConnectMode(false); setConnectSource(null); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedNodeId, selectedEdgeId]);
+
+  // ── Selected node ─────────────────────────────────────────────────────────
+
+  const selectedNode = mapData.nodes.find(n => n.id === selectedNodeId) ?? null;
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card flex-shrink-0">
+        <GitBranch className="w-4 h-4 text-violet-400 flex-shrink-0" />
+        {editingName ? (
+          <input
+            autoFocus
+            value={nameValue}
+            onChange={e => setNameValue(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setNameValue(mindmapName); setEditingName(false); } }}
+            className="flex-1 text-sm font-semibold bg-transparent border-b border-primary focus:outline-none"
+          />
+        ) : (
+          <span
+            className="flex-1 text-sm font-semibold cursor-pointer hover:text-primary transition-colors"
+            onDoubleClick={() => setEditingName(true)}
+            title="Double-click to rename"
+          >
+            {mindmapName}
+          </span>
+        )}
+        <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          {saving
+            ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving…</>
+            : savedAt
+              ? <><Check className="w-3 h-3 text-green-500" /> Saved</>
+              : null
+          }
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-card/80 flex-shrink-0 flex-wrap">
+        <button onClick={addNode}
+          className="flex items-center gap-1 px-2.5 py-1 rounded text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+          <Plus className="w-3.5 h-3.5" /> Add Node
+        </button>
+        <button
+          onClick={() => { setConnectMode(v => !v); setConnectSource(null); }}
+          className={cn(
+            "flex items-center gap-1 px-2.5 py-1 rounded text-xs border transition-colors",
+            connectMode
+              ? "bg-violet-500/20 border-violet-500/50 text-violet-300"
+              : "bg-secondary border-border text-muted-foreground hover:text-foreground"
+          )}
+          title="Click two nodes to connect them with an edge"
+        >
+          <Link className="w-3.5 h-3.5" />
+          {connectMode
+            ? connectSource ? "Click target node…" : "Click source node…"
+            : "Connect"}
+        </button>
+        <div className="w-px h-4 bg-border mx-0.5" />
+        <button onClick={() => setTransform(t => ({ ...t, scale: Math.min(3, t.scale * 1.2) }))}
+          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom in">
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={() => setTransform(t => ({ ...t, scale: Math.max(0.15, t.scale * 0.8) }))}
+          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom out">
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+        <button onClick={() => fitView()}
+          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Fit all nodes">
+          <Maximize2 className="w-3.5 h-3.5" />
+        </button>
+        <div className="text-[10px] text-muted-foreground ml-1">{Math.round(transform.scale * 100)}%</div>
+        <div className="flex-1" />
+        {(selectedNodeId || selectedEdgeId) && (
+          <button onClick={deleteSelected}
+            className="flex items-center gap-1 px-2.5 py-1 rounded text-xs bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
+            <Trash2 className="w-3.5 h-3.5" /> Delete
+          </button>
+        )}
+      </div>
+
+      {/* Canvas + Panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* SVG Canvas */}
+        <div className="flex-1 relative overflow-hidden bg-[#0a0f1a]"
+          style={{ backgroundImage: 'radial-gradient(circle, #1e293b 1px, transparent 1px)', backgroundSize: '24px 24px' }}>
+          <svg
+            ref={svgRef}
+            className="w-full h-full"
+            onPointerDown={handleSvgPointerDown}
+            onPointerMove={handleSvgPointerMove}
+            onPointerUp={handleSvgPointerUp}
+            onWheel={handleWheel}
+            style={{ cursor: connectMode ? 'crosshair' : 'default' }}
+          >
+            <defs>
+              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+                <polygon points="0 0, 8 3, 0 6" fill="#475569" />
+              </marker>
+            </defs>
+            <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+              {/* Edges */}
+              {mapData.edges.map(edge => {
+                const src = mapData.nodes.find(n => n.id === edge.sourceId);
+                const dst = mapData.nodes.find(n => n.id === edge.targetId);
+                if (!src || !dst) return null;
+                const isSelected = selectedEdgeId === edge.id;
+                return (
+                  <path
+                    key={edge.id}
+                    className="mm-edge"
+                    d={edgePath(src, dst)}
+                    fill="none"
+                    stroke={isSelected ? '#6366f1' : '#334155'}
+                    strokeWidth={isSelected ? 2 : 1.5}
+                    strokeDasharray={isSelected ? '6 3' : undefined}
+                    markerEnd="url(#arrowhead)"
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => handleEdgeClick(e, edge.id)}
+                  />
+                );
+              })}
+
+              {/* Nodes */}
+              {mapData.nodes.map(node => {
+                const isSelected = selectedNodeId === node.id;
+                const isTaskNode = node.type === 'task';
+                const isConnectSrc = connectSource === node.id;
+                const h = nodeHeight(node);
+
+                return (
+                  <g
+                    key={node.id}
+                    className="mm-node"
+                    transform={`translate(${node.x}, ${node.y})`}
+                    style={{ cursor: connectMode ? 'pointer' : 'grab' }}
+                    onPointerDown={e => handleNodePointerDown(e, node.id)}
+                    onPointerUp={e => handleNodePointerUp(e, node.id)}
+                    onDoubleClick={e => handleNodeDoubleClick(e, node.id)}
+                  >
+                    {/* Selection ring */}
+                    {(isSelected || isConnectSrc) && (
+                      <rect x={-3} y={-3} width={NODE_W + 6} height={h + 6} rx={NODE_RX + 2}
+                        fill="none" stroke={isConnectSrc ? '#a855f7' : '#6366f1'} strokeWidth={2} opacity={0.7} />
+                    )}
+                    {/* Node body */}
+                    <rect
+                      x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
+                      fill={isTaskNode ? '#0f2a1a' : '#0f172a'}
+                      stroke={isTaskNode ? '#10b981' : node.color}
+                      strokeWidth={isTaskNode ? 2 : 1.5}
+                    />
+                    {/* Left color bar (normal nodes) */}
+                    {!isTaskNode && (
+                      <rect x={0} y={0} width={4} height={h} rx={2}
+                        fill={node.color} />
+                    )}
+                    {/* Task badge */}
+                    {isTaskNode && (
+                      <g transform={`translate(${NODE_W - 20}, 8)`}>
+                        <circle r={8} fill="#10b981" opacity={0.2} />
+                        <CheckSquare width={10} height={10} x={-5} y={-5}
+                          className="text-emerald-400" strokeWidth={1.5} />
+                      </g>
+                    )}
+                    {/* Label */}
+                    {editingLabel?.nodeId === node.id ? (
+                      <foreignObject x={isTaskNode ? 8 : 12} y={12} width={NODE_W - 28} height={h - 20}>
+                        <input
+                          value={editingLabel.value}
+                          onChange={e => setEditingLabel(l => l ? { ...l, value: e.target.value } : null)}
+                          onBlur={commitLabelEdit}
+                          onKeyDown={e => { if (e.key === 'Enter') commitLabelEdit(); if (e.key === 'Escape') setEditingLabel(null); }}
+                          autoFocus
+                          style={{
+                            width: '100%', background: 'transparent', border: 'none',
+                            outline: 'none', color: '#f1f5f9', fontSize: 11, fontWeight: 600,
+                          }}
+                        />
+                      </foreignObject>
+                    ) : (
+                      <>
+                        <text
+                          x={isTaskNode ? 10 : 14} y={isTaskNode ? 22 : 22}
+                          fill={isTaskNode ? '#6ee7b7' : '#f1f5f9'}
+                          fontSize={11} fontWeight={600}
+                          style={{ userSelect: 'none', pointerEvents: 'none' }}
+                        >
+                          {node.label.length > 22 ? node.label.slice(0, 20) + '…' : node.label}
+                        </text>
+                        {isTaskNode && node.taskData && (
+                          <text x={10} y={40} fill="#64748b" fontSize={10} style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                            {node.taskData.priority} · {node.taskData.status.replace('_', ' ')}
+                          </text>
+                        )}
+                        {isTaskNode && node.taskData && node.taskData.endDate && (
+                          <text x={10} y={56} fill="#64748b" fontSize={9} style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                            Due: {node.taskData.endDate}
+                          </text>
+                        )}
+                      </>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+
+          {/* Empty state */}
+          {!mapData.nodes.length && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <GitBranch className="w-12 h-12 text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground/50">Click "Add Node" to start mapping</p>
+              <p className="text-xs text-muted-foreground/30 mt-1">Drag to pan · Scroll to zoom · Double-click node to rename</p>
+            </div>
+          )}
+        </div>
+
+        {/* Right Panel */}
+        {selectedNode && (
+          <div className="w-72 border-l border-border bg-card flex flex-col overflow-y-auto flex-shrink-0">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Node Properties</span>
+              <button onClick={() => setSelectedNodeId(null)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Label */}
+              <div>
+                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Label</label>
+                <input
+                  className="w-full text-sm bg-secondary border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={selectedNode.label}
+                  onChange={e => {
+                    const val = e.target.value;
+                    updateMapData(prev => ({
+                      ...prev,
+                      nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, label: val } : n),
+                    }));
+                  }}
+                  onBlur={e => {
+                    if (selectedNode.type === 'task' && selectedNode.taskId) {
+                      fetch(`${API}/tasks/${selectedNode.taskId}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+                        body: JSON.stringify({ name: e.target.value }),
+                      }).catch(() => {});
+                    }
+                  }}
+                />
+              </div>
+
+              {/* Color (normal nodes only) */}
+              {selectedNode.type === 'normal' && (
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Color</label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {DEFAULT_COLORS.map(c => (
+                      <button key={c}
+                        onClick={() => updateMapData(prev => ({
+                          ...prev, nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, color: c } : n),
+                        }))}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{ background: c, borderColor: selectedNode.color === c ? '#fff' : 'transparent' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Task conversion */}
+              <div>
+                {selectedNode.type === 'normal' ? (
+                  <button
+                    onClick={() => convertToTask(selectedNode.id)}
+                    disabled={taskLoading}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {taskLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                    Convert to Task
+                  </button>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-xs text-emerald-400">
+                      <CheckSquare className="w-3.5 h-3.5" />
+                      <span>Linked to Task #{selectedNode.taskId}</span>
+                    </div>
+                    <button
+                      onClick={() => unlinkTask(selectedNode.id)}
+                      className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded text-xs text-muted-foreground border border-border hover:bg-secondary transition-colors"
+                    >
+                      <Unlink className="w-3 h-3" /> Unlink from task system
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Task fields */}
+              {selectedNode.type === 'task' && selectedNode.taskData && (
+                <>
+                  <div className="border-t border-border pt-3">
+                    <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide mb-3">Task Details</p>
+
+                    <div className="space-y-3">
+                      {/* Name */}
+                      <Field label="Task Name">
+                        <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                          value={selectedNode.taskData.name}
+                          onChange={e => updateTaskField(selectedNode.id, 'name', e.target.value)} />
+                      </Field>
+
+                      {/* Description */}
+                      <Field label="Description">
+                        <textarea
+                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                          rows={3} value={selectedNode.taskData.description}
+                          onChange={e => updateTaskField(selectedNode.id, 'description', e.target.value)} />
+                      </Field>
+
+                      {/* Priority + Status */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Field label="Priority">
+                          <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                            value={selectedNode.taskData.priority}
+                            onChange={e => updateTaskField(selectedNode.id, 'priority', e.target.value)}>
+                            <option value="low">Low</option>
+                            <option value="normal">Normal</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                          </select>
+                        </Field>
+                        <Field label="Status">
+                          <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                            value={selectedNode.taskData.status}
+                            onChange={e => updateTaskField(selectedNode.id, 'status', e.target.value)}>
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="done">Done</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </Field>
+                      </div>
+
+                      {/* Assigned To */}
+                      <Field label="Assigned To">
+                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.assignedTo ?? ''}
+                          onChange={e => updateTaskField(selectedNode.id, 'assignedTo', e.target.value ? Number(e.target.value) : null)}>
+                          <option value="">Unassigned</option>
+                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                        </select>
+                      </Field>
+
+                      {/* Queue */}
+                      <Field label="Queue">
+                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.queueId ?? ''}
+                          onChange={e => updateTaskField(selectedNode.id, 'queueId', e.target.value ? Number(e.target.value) : null)}>
+                          <option value="">No Queue</option>
+                          {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                        </select>
+                      </Field>
+
+                      {/* Due Date */}
+                      <Field label="Due Date">
+                        <input type="date"
+                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.endDate ?? ''}
+                          onChange={e => updateTaskField(selectedNode.id, 'endDate', e.target.value || null)} />
+                      </Field>
+
+                      {/* Approval Status */}
+                      <Field label="Approval Status">
+                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.approvalStatus}
+                          onChange={e => updateTaskField(selectedNode.id, 'approvalStatus', e.target.value)}>
+                          <option value="none">None</option>
+                          <option value="pending">Pending</option>
+                          <option value="approved">Approved</option>
+                          <option value="rejected">Rejected</option>
+                        </select>
+                      </Field>
+
+                      {/* Source */}
+                      <Field label="Source">
+                        <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.source}
+                          onChange={e => updateTaskField(selectedNode.id, 'source', e.target.value)} />
+                      </Field>
+
+                      {/* AI Instructions */}
+                      <Field label="AI Instructions">
+                        <textarea
+                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none resize-none"
+                          rows={2} placeholder="Optional instructions for AI agent…"
+                          value={selectedNode.taskData.aiInstructions}
+                          onChange={e => updateTaskField(selectedNode.id, 'aiInstructions', e.target.value)} />
+                      </Field>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Connect mode hint */}
+      {connectMode && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-violet-900/90 border border-violet-500/50 rounded-full px-4 py-1.5 text-xs text-violet-200 pointer-events-none shadow-lg">
+          {connectSource ? 'Now click the target node to connect' : 'Click a source node to start an edge'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Small helper ──────────────────────────────────────────────────────────────
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">{label}</label>
+      {children}
+    </div>
+  );
+}

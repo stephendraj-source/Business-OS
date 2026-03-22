@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
+import { MindmapEditor } from "@/components/mindmap-editor";
 import { useAuth } from "@/contexts/AuthContext";
 import { PhoneInput } from "@/components/phone-input";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -66,10 +67,19 @@ interface FormFolder {
   createdAt: string;
 }
 
+interface MindmapSummary {
+  id: number;
+  name: string;
+  folderId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface FolderTreeNode extends FormFolder {
   children: FolderTreeNode[];
   forms: FormSummary[];
   knowledgeItems: KnowledgeItem[];
+  mindmaps: MindmapSummary[];
 }
 
 type KnowledgeItemType = "wiki" | "url" | "document";
@@ -155,14 +165,18 @@ function buildFolderTree(
   folders: FormFolder[],
   forms: FormSummary[],
   knowledgeItems: KnowledgeItem[] = [],
-): { roots: FolderTreeNode[]; uncategorized: FormSummary[]; uncategorizedKnowledge: KnowledgeItem[] } {
+  mindmaps: MindmapSummary[] = [],
+): { roots: FolderTreeNode[]; uncategorized: FormSummary[]; uncategorizedKnowledge: KnowledgeItem[]; uncategorizedMindmaps: MindmapSummary[] } {
   const nodeMap = new Map<number, FolderTreeNode>();
-  for (const f of folders) nodeMap.set(f.id, { ...f, children: [], forms: [], knowledgeItems: [] });
+  for (const f of folders) nodeMap.set(f.id, { ...f, children: [], forms: [], knowledgeItems: [], mindmaps: [] });
   for (const form of forms) {
     if (form.folderId && nodeMap.has(form.folderId)) nodeMap.get(form.folderId)!.forms.push(form);
   }
   for (const item of knowledgeItems) {
     if (item.folderId && nodeMap.has(item.folderId)) nodeMap.get(item.folderId)!.knowledgeItems.push(item);
+  }
+  for (const mm of mindmaps) {
+    if (mm.folderId && nodeMap.has(mm.folderId)) nodeMap.get(mm.folderId)!.mindmaps.push(mm);
   }
   const roots: FolderTreeNode[] = [];
   for (const node of nodeMap.values()) {
@@ -171,7 +185,8 @@ function buildFolderTree(
   }
   const uncategorized = forms.filter(f => !f.folderId || !nodeMap.has(f.folderId));
   const uncategorizedKnowledge = knowledgeItems.filter(i => !i.folderId || !nodeMap.has(i.folderId));
-  return { roots, uncategorized, uncategorizedKnowledge };
+  const uncategorizedMindmaps = mindmaps.filter(m => !m.folderId || !nodeMap.has(m.folderId));
+  return { roots, uncategorized, uncategorizedKnowledge, uncategorizedMindmaps };
 }
 
 function formatFileSize(bytes: number): string {
@@ -204,26 +219,31 @@ function flattenFoldersForSelect(nodes: FolderTreeNode[], depth = 0): { id: numb
 // ── Folder Tree Node ──────────────────────────────────────────────────────────
 
 function FolderNode({
-  node, depth, selectedId, selectedKnowledgeId, expanded, onToggle,
+  node, depth, selectedId, selectedKnowledgeId, selectedMindmapId, expanded, onToggle,
   onSelectForm, onDeleteForm, onSelectKnowledge, onDeleteKnowledge,
+  onSelectMindmap, onDeleteMindmap,
   onCreateSubfolder, onRenameFolder, onDeleteFolder,
-  onCreateFormInFolder, onCreateKnowledgeItem,
+  onCreateFormInFolder, onCreateKnowledgeItem, onCreateMindmap,
 }: {
   node: FolderTreeNode;
   depth: number;
   selectedId: number | null;
   selectedKnowledgeId: number | null;
+  selectedMindmapId: number | null;
   expanded: Set<number>;
   onToggle: (id: number) => void;
   onSelectForm: (id: number) => void;
   onDeleteForm: (id: number, e: React.MouseEvent) => void;
   onSelectKnowledge: (id: number) => void;
   onDeleteKnowledge: (id: number, e: React.MouseEvent) => void;
+  onSelectMindmap: (id: number) => void;
+  onDeleteMindmap: (id: number, e: React.MouseEvent) => void;
   onCreateSubfolder: (parentId: number) => void;
   onRenameFolder: (id: number, name: string) => void;
   onDeleteFolder: (id: number) => void;
   onCreateFormInFolder: (folderId: number) => void;
   onCreateKnowledgeItem: (folderId: number, type: KnowledgeItemType) => void;
+  onCreateMindmap: (folderId: number) => void;
 }) {
   const { isFavourite, toggleFavourite } = useFavourites();
   const isExpanded = expanded.has(node.id);
@@ -242,7 +262,7 @@ function FolderNode({
   };
 
   const totalItems = (n: FolderTreeNode): number =>
-    n.forms.length + n.knowledgeItems.length + n.children.reduce((s, c) => s + totalItems(c), 0);
+    n.forms.length + n.knowledgeItems.length + n.mindmaps.length + n.children.reduce((s, c) => s + totalItems(c), 0);
 
   return (
     <div>
@@ -313,6 +333,12 @@ function FolderNode({
               >
                 <ClipboardList className="w-3.5 h-3.5 text-primary" /> Form
               </button>
+              <button
+                onClick={e => { e.stopPropagation(); setShowNewPicker(false); onCreateMindmap(node.id); }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary transition-colors text-left"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-violet-400" /> Mind Map
+              </button>
               {(["wiki", "url", "document"] as KnowledgeItemType[]).map(t => (
                 <button
                   key={t}
@@ -360,17 +386,21 @@ function FolderNode({
               depth={depth + 1}
               selectedId={selectedId}
               selectedKnowledgeId={selectedKnowledgeId}
+              selectedMindmapId={selectedMindmapId}
               expanded={expanded}
               onToggle={onToggle}
               onSelectForm={onSelectForm}
               onDeleteForm={onDeleteForm}
               onSelectKnowledge={onSelectKnowledge}
               onDeleteKnowledge={onDeleteKnowledge}
+              onSelectMindmap={onSelectMindmap}
+              onDeleteMindmap={onDeleteMindmap}
               onCreateSubfolder={onCreateSubfolder}
               onRenameFolder={onRenameFolder}
               onDeleteFolder={onDeleteFolder}
               onCreateFormInFolder={onCreateFormInFolder}
               onCreateKnowledgeItem={onCreateKnowledgeItem}
+              onCreateMindmap={onCreateMindmap}
             />
           ))}
           {/* Forms inside folder */}
@@ -445,8 +475,34 @@ function FolderNode({
               </button>
             </div>
           ))}
+          {/* Mind maps inside folder */}
+          {node.mindmaps.map(mm => (
+            <div
+              key={`mm-${mm.id}`}
+              onClick={() => onSelectMindmap(mm.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={e => e.key === 'Enter' && onSelectMindmap(mm.id)}
+              style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }}
+              className={cn(
+                "w-full flex items-center gap-2 pr-3 py-1.5 text-left transition-colors border-b border-border/30 group cursor-pointer",
+                selectedMindmapId === mm.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+              )}
+            >
+              <div className="w-5 h-5 rounded flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-violet-500/30 to-violet-500/10">
+                <GitBranch className="w-2.5 h-2.5 text-violet-400" />
+              </div>
+              <span className="flex-1 min-w-0 text-xs truncate">{mm.name}</span>
+              <button
+                onClick={e => onDeleteMindmap(mm.id, e)}
+                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
           {/* Empty folder hint */}
-          {node.forms.length === 0 && node.knowledgeItems.length === 0 && node.children.length === 0 && (
+          {node.forms.length === 0 && node.knowledgeItems.length === 0 && node.mindmaps.length === 0 && node.children.length === 0 && (
             <div style={{ paddingLeft: `${24 + (depth + 1) * 12}px` }} className="py-1.5 pr-3 text-[10px] text-muted-foreground italic">
               Empty folder
             </div>
@@ -1628,6 +1684,10 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<number | null>(null);
   const [knowledgeSaving, setKnowledgeSaving] = useState(false);
 
+  // Mind map state
+  const [mindmapList, setMindmapList] = useState<MindmapSummary[]>([]);
+  const [selectedMindmapId, setSelectedMindmapId] = useState<number | null>(null);
+
   useEffect(() => {
     if (!openKnowledgeId) return;
     setSelectedId(null);
@@ -1681,6 +1741,17 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
     } catch {}
   }, [fetchHeaders]);
 
+  const fetchMindmaps = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/mindmaps`, { headers: fetchHeaders() });
+      const data = await r.json();
+      if (Array.isArray(data)) setMindmapList(data.map((m: any) => ({
+        id: m.id, name: m.name, folderId: m.folder_id,
+        createdAt: m.created_at, updatedAt: m.updated_at,
+      })));
+    } catch {}
+  }, [fetchHeaders]);
+
   const doKnowledgeSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setKnowledgeSearchResults(null); return; }
     setKnowledgeSearching(true);
@@ -1711,7 +1782,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
     } finally { setReindexing(false); }
   };
 
-  useEffect(() => { fetchForms(); fetchFolders(); fetchKnowledgeItems(); }, [fetchForms, fetchFolders, fetchKnowledgeItems]);
+  useEffect(() => { fetchForms(); fetchFolders(); fetchKnowledgeItems(); fetchMindmaps(); }, [fetchForms, fetchFolders, fetchKnowledgeItems, fetchMindmaps]);
 
   useEffect(() => {
     function handleOpen(e: Event) {
@@ -1917,6 +1988,40 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
       const updated: KnowledgeItem = await r.json();
       setKnowledgeItems(prev => prev.map(i => i.id === selectedKnowledgeId ? updated : i));
     }
+  };
+
+  // ── Mind map handlers ────────────────────────────────────────────────────
+
+  const createMindmapInFolder = async (folderId: number) => {
+    const r = await fetch(`${API}/mindmaps`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...fetchHeaders() },
+      body: JSON.stringify({ name: "New Mind Map", folderId }),
+    });
+    if (r.ok) {
+      const mm = await r.json();
+      const summary: MindmapSummary = {
+        id: mm.id, name: mm.name, folderId: mm.folder_id,
+        createdAt: mm.created_at, updatedAt: mm.updated_at,
+      };
+      setMindmapList(prev => [...prev, summary]);
+      setSelectedMindmapId(mm.id);
+      setSelectedId(null);
+      setSelectedKnowledgeId(null);
+      setExpandedFolders(prev => new Set([...prev, folderId]));
+    }
+  };
+
+  const deleteMindmap = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Delete this mind map? This cannot be undone.")) return;
+    await fetch(`${API}/mindmaps/${id}`, { method: "DELETE", headers: fetchHeaders() });
+    if (selectedMindmapId === id) setSelectedMindmapId(null);
+    setMindmapList(prev => prev.filter(m => m.id !== id));
+  };
+
+  const renameMindmapInList = (id: number, name: string) => {
+    setMindmapList(prev => prev.map(m => m.id === id ? { ...m, name } : m));
   };
 
   const save = async () => {
@@ -2250,7 +2355,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
 
       {/* Left panel — form list with folder tree */}
       {!showAllForms && (() => {
-        const { roots: folderTree, uncategorized, uncategorizedKnowledge } = buildFolderTree(folders, forms, knowledgeItems);
+        const { roots: folderTree, uncategorized, uncategorizedKnowledge, uncategorizedMindmaps } = buildFolderTree(folders, forms, knowledgeItems, mindmapList);
         const flatFolders = flattenFoldersForSelect(folderTree);
         const toggleFolder = (id: number) => setExpandedFolders(prev => {
           const next = new Set(prev);
@@ -2388,22 +2493,26 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                       depth={0}
                       selectedId={selectedId}
                       selectedKnowledgeId={selectedKnowledgeId}
+                      selectedMindmapId={selectedMindmapId}
                       expanded={expandedFolders}
                       onToggle={toggleFolder}
-                      onSelectForm={(id) => { setSelectedId(id); setSelectedKnowledgeId(null); setMode('entry'); }}
+                      onSelectForm={(id) => { setSelectedId(id); setSelectedKnowledgeId(null); setSelectedMindmapId(null); setMode('entry'); }}
                       onDeleteForm={deleteForm}
-                      onSelectKnowledge={(id) => { setSelectedKnowledgeId(id); setSelectedId(null); }}
+                      onSelectKnowledge={(id) => { setSelectedKnowledgeId(id); setSelectedId(null); setSelectedMindmapId(null); }}
                       onDeleteKnowledge={deleteKnowledgeItem}
+                      onSelectMindmap={(id) => { setSelectedMindmapId(id); setSelectedId(null); setSelectedKnowledgeId(null); }}
+                      onDeleteMindmap={deleteMindmap}
                       onCreateSubfolder={createFolder}
                       onRenameFolder={renameFolder}
                       onDeleteFolder={deleteFolder}
                       onCreateFormInFolder={createFormInFolder}
                       onCreateKnowledgeItem={createKnowledgeItem}
+                      onCreateMindmap={createMindmapInFolder}
                     />
                   ))}
 
                   {/* Uncategorized items */}
-                  {(uncategorized.length > 0 || uncategorizedKnowledge.length > 0) && (
+                  {(uncategorized.length > 0 || uncategorizedKnowledge.length > 0 || uncategorizedMindmaps.length > 0) && (
                     <>
                       {folderTree.length > 0 && (
                         <div className="px-3 pt-3 pb-1 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
@@ -2474,6 +2583,30 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                           </button>
                         </div>
                       ))}
+                      {uncategorizedMindmaps.map(mm => (
+                        <div
+                          key={`mm-${mm.id}`}
+                          onClick={() => { setSelectedMindmapId(mm.id); setSelectedId(null); setSelectedKnowledgeId(null); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={e => e.key === 'Enter' && setSelectedMindmapId(mm.id)}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors border-b border-border/50 group cursor-pointer",
+                            selectedMindmapId === mm.id ? "bg-primary/10 border-l-2 border-l-primary" : "hover:bg-secondary/50"
+                          )}
+                        >
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 bg-gradient-to-br from-violet-500/30 to-violet-500/10">
+                            <GitBranch className="w-3.5 h-3.5 text-violet-400" />
+                          </div>
+                          <span className="flex-1 min-w-0 text-sm font-medium truncate">{mm.name}</span>
+                          <button
+                            onClick={e => deleteMindmap(mm.id, e)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
                     </>
                   )}
                 </>
@@ -2505,7 +2638,15 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
       })()}
 
       {/* Right panel */}
-      {!showAllForms && (selectedKnowledgeItem ? (
+      {!showAllForms && (selectedMindmapId ? (
+        <div className="flex-1 min-w-0 flex flex-col">
+          <MindmapEditor
+            mindmapId={selectedMindmapId}
+            mindmapName={mindmapList.find(m => m.id === selectedMindmapId)?.name ?? "Mind Map"}
+            onRename={(name) => renameMindmapInList(selectedMindmapId, name)}
+          />
+        </div>
+      ) : selectedKnowledgeItem ? (
         <div className="flex-1 min-w-0">
           {selectedKnowledgeItem.type === "wiki" && (
             <WikiEditor
