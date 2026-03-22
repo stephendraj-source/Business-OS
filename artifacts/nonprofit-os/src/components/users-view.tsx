@@ -1302,18 +1302,22 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
 function OrgTab({ userId }: { userId: number }) {
   const [userGroups, setUserGroups] = useState<{ id: number; name: string; color: string; description: string }[]>([]);
   const [allGroups, setAllGroups] = useState<Group[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [allBUs, setAllBUs] = useState<BusinessUnit[]>([]);
   const [allRegions, setAllRegions] = useState<Region[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [groupIds, setGroupIds] = useState<Set<number>>(new Set());
+  const [roleIds, setRoleIds] = useState<Set<number>>(new Set());
   const [buIds, setBuIds] = useState<Set<number>>(new Set());
   const [regionIds, setRegionIds] = useState<Set<number>>(new Set());
 
   const load = useCallback(async () => {
-    const [ug, ag, ubu, abu, ur, ar] = await Promise.all([
+    const [ug, ag, ur_assigned, ar, ubu, abu, ureg, areg] = await Promise.all([
       authedFetch(`${API}/org/users/${userId}/groups`).then(x => x.json()),
       authedFetch(`${API}/org/groups`).then(x => x.json()),
+      authedFetch(`${API}/org/users/${userId}/roles`).then(x => x.json()),
+      authedFetch(`${API}/org/roles`).then(x => x.json()),
       authedFetch(`${API}/org/users/${userId}/business-units`).then(x => x.json()),
       authedFetch(`${API}/org/business-units`).then(x => x.json()),
       authedFetch(`${API}/org/users/${userId}/regions`).then(x => x.json()),
@@ -1321,11 +1325,13 @@ function OrgTab({ userId }: { userId: number }) {
     ]);
     setUserGroups(ug);
     setAllGroups(ag);
+    setAllRoles(Array.isArray(ar) ? ar : []);
     setAllBUs(abu);
-    setAllRegions(ar);
+    setAllRegions(areg);
     setGroupIds(new Set(ug.map((g: any) => g.id)));
+    setRoleIds(new Set(ur_assigned.map((r: any) => r.id)));
     setBuIds(new Set(ubu.map((b: any) => b.id)));
-    setRegionIds(new Set(ur.map((r: any) => r.id)));
+    setRegionIds(new Set(ureg.map((r: any) => r.id)));
   }, [userId]);
 
   useEffect(() => { load(); }, [load]);
@@ -1337,6 +1343,10 @@ function OrgTab({ userId }: { userId: number }) {
         authedFetch(`${API}/org/users/${userId}/groups`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ groupIds: Array.from(groupIds) }),
+        }),
+        authedFetch(`${API}/org/users/${userId}/roles`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleIds: Array.from(roleIds) }),
         }),
         authedFetch(`${API}/org/users/${userId}/business-units`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -1383,6 +1393,33 @@ function OrgTab({ userId }: { userId: number }) {
                 style={{ background: g.color ? `${g.color}20` : 'hsl(var(--secondary))', color: g.color || 'hsl(var(--muted-foreground))', borderColor: g.color ? `${g.color}40` : 'hsl(var(--border))' }}>
                 {g.name}
               </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Roles */}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Roles ({roleIds.size} assigned)</span>
+        </div>
+        {allRoles.length === 0 ? (
+          <div className="text-xs text-muted-foreground pl-5 py-2 italic">No roles defined yet — create roles in the Roles tab</div>
+        ) : (
+          <div className="border border-border rounded-xl overflow-hidden">
+            {allRoles.map(r => (
+              <label key={r.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/40 cursor-pointer transition-colors border-b border-border last:border-0">
+                <input type="checkbox" checked={roleIds.has(r.id)} onChange={() => setRoleIds(s => { const n = new Set(s); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} className="w-3.5 h-3.5 rounded accent-primary" />
+                <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ background: r.color || 'hsl(var(--secondary))' }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium">{r.name}</div>
+                  {r.description && <div className="text-xs text-muted-foreground">{r.description}</div>}
+                </div>
+                {roleIds.has(r.id) && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/15 text-primary">Assigned</span>
+                )}
+              </label>
             ))}
           </div>
         )}

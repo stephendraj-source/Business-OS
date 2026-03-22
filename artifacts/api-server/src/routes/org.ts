@@ -2,7 +2,7 @@ import { Router } from 'express';
 import {
   db, users, tenants,
   groups, userGroups, groupBusinessUnits, groupRegions,
-  roles, groupRoles, roleBusinessUnits, roleRegions,
+  roles, groupRoles, userRoles, roleBusinessUnits, roleRegions,
   roleModuleAccess, roleAllowedCategories, roleAllowedProcesses, roleFieldPermissions,
   projects, userProjects,
   businessUnits, userBusinessUnits,
@@ -279,6 +279,30 @@ orgRouter.put('/org/users/:id/groups', async (req, res) => {
     await db.delete(userGroups).where(eq(userGroups.userId, id));
     if (groupIds.length > 0) {
       await db.insert(userGroups).values(groupIds.map(groupId => ({ userId: id, groupId })));
+    }
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.get('/org/users/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const rows = await db
+      .select({ id: roles.id, name: roles.name, color: roles.color, description: roles.description })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, id));
+    res.json(rows);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/users/:id/roles', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { roleIds = [] } = req.body as { roleIds?: number[] };
+    await db.delete(userRoles).where(eq(userRoles.userId, id));
+    if (roleIds.length > 0) {
+      await db.insert(userRoles).values(roleIds.map(roleId => ({ userId: id, roleId })));
     }
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }

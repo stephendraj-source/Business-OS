@@ -81,6 +81,12 @@ export const groupRoles = pgTable('group_roles', {
   roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
 });
 
+export const userRoles = pgTable('user_roles', {
+  id: serial('id').primaryKey(),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
+});
+
 export const roleBusinessUnits = pgTable('role_business_units', {
   id: serial('id').primaryKey(),
   roleId: integer('role_id').notNull().references(() => roles.id, { onDelete: 'cascade' }),
