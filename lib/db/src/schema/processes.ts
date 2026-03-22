@@ -24,6 +24,8 @@ export const processesTable = pgTable("processes", {
   trafficLight: text("traffic_light").notNull().default(""),
   evaluation: text("evaluation"),
   priority: integer("priority"),
+  aiScore: integer("ai_score"),
+  aiReasoning: text("ai_reasoning"),
 });
 
 export const insertProcessSchema = createInsertSchema(processesTable).omit({ id: true });

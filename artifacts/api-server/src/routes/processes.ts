@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, processAssignees, aiAgentsTable, workflowsTable, users } from "@workspace/db";
+import { db, processesTable, auditLogsTable, processLinkedAgents, processLinkedWorkflows, processAssignees, aiAgentsTable, workflowsTable, users, tenants } from "@workspace/db";
 import { eq, desc, max, and } from "drizzle-orm";
 import * as XLSX from "xlsx";
 import multer from "multer";
@@ -238,6 +238,116 @@ Return ONLY a valid JSON object with exactly these keys:
     res.json(updated);
   } catch (err) {
     req.log.error(err, "Failed to AI-evaluate process");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// --- AI Compliance Score ---
+router.post("/processes/:id/ai-compliance", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const [process] = await db.select().from(processesTable).where(eq(processesTable.id, id));
+    if (!process) { res.status(404).json({ error: "Process not found" }); return; }
+
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
+
+    // Fetch tenant context for compliance evaluation
+    let tenantContext = "";
+    if (tenantId) {
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+      if (tenant) {
+        const parts: string[] = [];
+        if (tenant.name) parts.push(`Organisation: ${tenant.name}`);
+        if (tenant.industryBlueprint) parts.push(`Industry: ${tenant.industryBlueprint}`);
+        if (tenant.systemPrompt) parts.push(`Additional context: ${tenant.systemPrompt}`);
+        tenantContext = parts.join("\n");
+      }
+    }
+
+    const name = process.processName || process.processDescription;
+    const purpose = process.purpose || "Not specified";
+    const inputs = process.inputs || "Not specified";
+    const outputs = process.outputs || "Not specified";
+    const humanInTheLoop = process.humanInTheLoop || "Not specified";
+    const kpi = process.kpi || "Not specified";
+    const target = process.target || "Not specified";
+    const achievement = process.achievement || "Not specified";
+    const benchmark = process.industryBenchmark || "Not specified";
+
+    const prompt = `You are an expert process compliance analyst. Assess how compliant the organisation is with the requirements and best practices defined for the following process.
+
+${tenantContext ? `ORGANISATION CONTEXT:\n${tenantContext}\n` : ""}
+PROCESS DETAILS:
+- Name: ${name}
+- Category: ${process.category}
+- Purpose: ${purpose}
+- Required Inputs: ${inputs}
+- Expected Outputs: ${outputs}
+- Human-in-the-Loop requirements: ${humanInTheLoop}
+- KPI: ${kpi}
+- Target: ${target}
+- Achievement: ${achievement}
+- Industry Benchmark: ${benchmark}
+
+Based on the process requirements above and the organisation's context, assess the compliance level. Consider:
+1. Whether the process is clearly defined and documented
+2. Whether key requirements (inputs, outputs, controls) are in place
+3. Whether KPIs and targets align with industry benchmarks
+4. Whether human oversight requirements are addressed
+5. Overall operational maturity relative to process standards
+
+Provide a compliance score as a percentage (0–100) where:
+- 90–100%: Fully compliant, exceeds requirements
+- 70–89%: Largely compliant, minor gaps
+- 50–69%: Partially compliant, notable gaps
+- 30–49%: Low compliance, significant gaps
+- 0–29%: Non-compliant, major deficiencies
+
+Return ONLY a valid JSON object with exactly these keys:
+{
+  "score": <integer 0-100>,
+  "reasoning": "<3-5 sentences explaining how the score was determined, what is working well, and what gaps exist>"
+}`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 600,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) { res.status(500).json({ error: "AI did not return valid JSON" }); return; }
+
+    const result = JSON.parse(jsonMatch[0]);
+    const score = Math.min(100, Math.max(0, parseInt(result.score, 10) || 0));
+    const reasoning = (result.reasoning as string) || "";
+
+    const [updated] = await db.update(processesTable)
+      .set({ aiScore: score, aiReasoning: reasoning })
+      .where(eq(processesTable.id, id))
+      .returning();
+
+    await writeAuditLog({
+      action: "ai-compliance",
+      entityType: "process",
+      entityId: String(id),
+      entityName: name,
+      description: `AI compliance scored "${name}" — ${score}%`,
+      userId: req.auth?.userId,
+    });
+
+    res.json(updated);
+  } catch (err) {
+    req.log.error(err, "Failed to AI-score process compliance");
     res.status(500).json({ error: "Internal server error" });
   }
 });

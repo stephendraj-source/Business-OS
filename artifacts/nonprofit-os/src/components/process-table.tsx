@@ -153,6 +153,8 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
 
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
+  const [scoring, setScoring] = useState(false);
+  const [scoreError, setScoreError] = useState<string | null>(null);
 
   // ── Attachments ─────────────────────────────────────────────────────────
   interface Attachment { id: number; type: 'url' | 'file'; title: string; url?: string; file_name?: string; file_size?: number; mime_type?: string; created_at: string }
@@ -334,6 +336,27 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
       setEvalError(err.message || 'Something went wrong');
     } finally {
       setEvaluating(false);
+      dispatchCreditsRefresh();
+    }
+  }
+
+  async function handleAICompliance() {
+    setScoring(true);
+    setScoreError(null);
+    try {
+      const r = await fetch(`${API}/processes/${process.id}/ai-compliance`, { method: 'POST', headers: fetchHeaders() });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error || 'Scoring failed');
+      }
+      const updated = await r.json();
+      queryClient.setQueryData(getListProcessesQueryKey(), (old: any[]) =>
+        old?.map(p => p.id === updated.id ? { ...p, aiScore: updated.aiScore, aiReasoning: updated.aiReasoning } : p)
+      );
+    } catch (err: any) {
+      setScoreError(err.message || 'Something went wrong');
+    } finally {
+      setScoring(false);
       dispatchCreditsRefresh();
     }
   }
@@ -567,6 +590,93 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
                         </div>
                       )}
                     </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ── AI Compliance Score ────────────────────────── */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                  <ShieldCheck className="w-3 h-3 text-primary" />AI Compliance Score
+                </div>
+                <button
+                  onClick={handleAICompliance}
+                  disabled={scoring}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium border transition-all",
+                    scoring
+                      ? "border-border text-muted-foreground cursor-not-allowed"
+                      : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                  )}
+                >
+                  {scoring
+                    ? <><Loader2 className="w-3 h-3 animate-spin" />Scoring…</>
+                    : (process as any).aiScore != null
+                      ? <><RefreshCw className="w-3 h-3" />Re-score</>
+                      : <><Sparkles className="w-3 h-3" />Score with AI</>
+                  }
+                </button>
+              </div>
+
+              {scoreError && (
+                <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                  {scoreError}
+                </div>
+              )}
+
+              {(process as any).aiScore == null && !scoring && !scoreError && (
+                <div className="text-xs text-muted-foreground/40 italic text-center py-3 border border-dashed border-border/40 rounded-lg">
+                  No compliance score yet — click "Score with AI" to assess compliance
+                </div>
+              )}
+
+              {(process as any).aiScore != null && (() => {
+                const score: number = (process as any).aiScore;
+                const reasoning: string = (process as any).aiReasoning || '';
+                const scoreColor =
+                  score >= 90 ? 'bg-emerald-500' :
+                  score >= 70 ? 'bg-green-500' :
+                  score >= 50 ? 'bg-amber-400' :
+                  score >= 30 ? 'bg-orange-500' : 'bg-red-500';
+                const scoreLabel =
+                  score >= 90 ? { text: 'Fully Compliant',    color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/30' } :
+                  score >= 70 ? { text: 'Largely Compliant',  color: 'text-green-400',   bg: 'bg-green-500/10 border-green-500/30' } :
+                  score >= 50 ? { text: 'Partially Compliant',color: 'text-amber-400',   bg: 'bg-amber-500/10 border-amber-500/30' } :
+                  score >= 30 ? { text: 'Low Compliance',     color: 'text-orange-400',  bg: 'bg-orange-500/10 border-orange-500/30' } :
+                               { text: 'Non-Compliant',       color: 'text-red-400',     bg: 'bg-red-500/10 border-red-500/30' };
+
+                return (
+                  <div className="rounded-xl border border-border/60 bg-secondary/20 overflow-hidden">
+                    {/* Score strip */}
+                    <div className="flex items-center gap-3 px-4 py-3 border-b border-border/40">
+                      <div className="flex-shrink-0 text-center">
+                        <div className="text-2xl font-bold text-foreground leading-none">{score}</div>
+                        <div className="text-[10px] text-muted-foreground font-medium">%</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className={cn(
+                          "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border mb-1.5",
+                          scoreLabel.bg, scoreLabel.color
+                        )}>
+                          <ShieldCheck className="w-3 h-3" />{scoreLabel.text}
+                        </div>
+                        <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full transition-all", scoreColor)}
+                            style={{ width: `${score}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {reasoning && (
+                      <div className="px-4 py-2.5">
+                        <div className="text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider mb-1">AI Reasoning</div>
+                        <p className="text-xs text-foreground/80 leading-relaxed">{reasoning}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
