@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   ClipboardList, Plus, Trash2, Save, Edit2, Loader2, X, Check,
   GripVertical, Type, Hash, Mail, AlignLeft, ChevronDown, Calendar,
@@ -227,6 +228,8 @@ function FolderNode({
   const [renaming, setRenaming] = useState(false);
   const [renameName, setRenameName] = useState(node.name);
   const [showNewPicker, setShowNewPicker] = useState(false);
+  const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const pickerBtnRef = useRef<HTMLButtonElement>(null);
   const indent = depth * 12;
 
   const commitRename = () => {
@@ -280,17 +283,26 @@ function FolderNode({
           </span>
         )}
         {/* Hover actions */}
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0 relative">
+        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 flex-shrink-0">
           <button
-            onClick={e => { e.stopPropagation(); setShowNewPicker(v => !v); }}
+            ref={pickerBtnRef}
+            onClick={e => {
+              e.stopPropagation();
+              if (!showNewPicker) {
+                const rect = pickerBtnRef.current?.getBoundingClientRect();
+                if (rect) setPickerPos({ top: rect.bottom + 4, left: rect.left });
+              }
+              setShowNewPicker(v => !v);
+            }}
             title="New item"
             className="p-0.5 rounded hover:bg-secondary text-muted-foreground hover:text-primary transition-colors"
           >
             <FilePlus className="w-3 h-3" />
           </button>
-          {showNewPicker && (
+          {showNewPicker && pickerPos && createPortal(
             <div
-              className="absolute top-full left-0 z-50 mt-1 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[150px]"
+              style={{ position: 'fixed', top: pickerPos.top, left: pickerPos.left, zIndex: 9999 }}
+              className="bg-popover border border-border rounded-md shadow-lg py-1 min-w-[160px]"
               onMouseLeave={() => setShowNewPicker(false)}
             >
               <button
@@ -308,7 +320,8 @@ function FolderNode({
                   {knowledgeItemIcon(t)} {t === "wiki" ? "Wiki page" : t === "url" ? "URL / Link" : "Document"}
                 </button>
               ))}
-            </div>
+            </div>,
+            document.body
           )}
           <button
             onClick={e => { e.stopPropagation(); onCreateSubfolder(node.id); }}
