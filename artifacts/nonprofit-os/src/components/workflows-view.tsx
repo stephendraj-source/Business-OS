@@ -2085,14 +2085,23 @@ export function WorkflowsView() {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {dirty && (
-                <button
-                  onClick={save}
-                  disabled={saving}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
-                >
-                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Save
-                </button>
+                <>
+                  <button
+                    onClick={() => selectedId && loadWorkflow(selectedId)}
+                    disabled={saving}
+                    className="px-4 py-2 rounded-xl text-sm font-medium border border-border text-muted-foreground hover:bg-secondary transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={save}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    Save
+                  </button>
+                </>
               )}
             </div>
           </div>

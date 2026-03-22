@@ -387,9 +387,14 @@ export function ActivitiesView() {
             )}
             <div className="flex items-center gap-2 ml-auto">
               {dirty && !creating && (
-                <Button size="sm" onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving…' : 'Save'}
-                </Button>
+                <>
+                  <Button size="sm" variant="outline" onClick={() => selected && openActivity(selected)} disabled={saving}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save'}
+                  </Button>
+                </>
               )}
               <button
                 onClick={() => { setSelected(null); setCreating(false); }}
@@ -440,9 +445,14 @@ export function ActivitiesView() {
                   <Button variant="outline" onClick={() => setCreating(false)}>Cancel</Button>
                 </>
               ) : dirty ? (
-                <Button onClick={handleSave} disabled={saving}>
-                  {saving ? 'Saving…' : 'Save Changes'}
-                </Button>
+                <>
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save Changes'}
+                  </Button>
+                  <Button variant="outline" onClick={() => selected && openActivity(selected)} disabled={saving}>
+                    Cancel
+                  </Button>
+                </>
               ) : null}
             </div>
 

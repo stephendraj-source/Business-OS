@@ -365,6 +365,12 @@ export function SettingsView() {
               className="flex-1 max-w-xs px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
             />
             <button
+              onClick={() => setOrgNameInput(getOrgName())}
+              className="px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 border border-border text-muted-foreground hover:bg-secondary"
+            >
+              Cancel
+            </button>
+            <button
               onClick={handleOrgNameSave}
               className={cn(
                 "px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200",
