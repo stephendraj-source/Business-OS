@@ -583,6 +583,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
       if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
       if (e.key === 'Escape') { setSelectedNodeId(null); setSelectedEdgeId(null); setConnectMode(false); setConnectSource(null); }
+      if (e.key === 'Enter' && selectedNodeId) { e.preventDefault(); addPeerNode(selectedNodeId); }
+      if (e.key === 'Insert' && selectedNodeId) { e.preventDefault(); addChildNode(selectedNodeId); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
