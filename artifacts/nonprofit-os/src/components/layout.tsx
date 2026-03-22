@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity, ListTodo,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity, ListTodo, Compass,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +9,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'strategy';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -38,7 +38,9 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'users':         { label: 'Users',             section: 'Admin' },
   'configuration': { label: 'Configuration',    section: 'Admin' },
   'initiatives':   { label: 'Initiatives',      section: 'Strategy' },
+  'strategy':      { label: 'Mission & Vision',  section: 'Strategy' },
   'activities':    { label: 'Activities',        section: 'Workflows' },
+  'tasks':         { label: 'Tasks',             section: 'Workflows' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -120,6 +122,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
           <div>
             <div className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider mb-3 px-2">Strategy</div>
             <div className="space-y-1">
+              <NavItem icon={<Compass />} label="Mission & Vision" active={activeView === 'strategy'} onClick={() => onViewChange('strategy')} />
               <NavItem icon={<Flag />} label="Initiatives" active={activeView === 'initiatives'} onClick={() => onViewChange('initiatives')} />
             </div>
           </div>

@@ -21,6 +21,7 @@ import activitiesRouter from "./activities";
 import processAttachmentsRouter from "./process-attachments";
 import tasksRouter from "./tasks";
 import connectorConfigsRouter from "./connector-configs";
+import { strategyRouter } from "./strategy";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(activitiesRouter);
 router.use(processAttachmentsRouter);
 router.use(tasksRouter);
 router.use(connectorConfigsRouter);
+router.use(strategyRouter);
 
 export default router;
