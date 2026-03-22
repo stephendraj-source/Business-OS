@@ -272,6 +272,7 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
 
 interface OrgProfile {
   id?: number;
+  displayName: string;
   name: string;
   address: string;
   websiteUrl: string;
@@ -284,7 +285,7 @@ interface OrgProfile {
 }
 
 const EMPTY_PROFILE: OrgProfile = {
-  name: '', address: '', websiteUrl: '',
+  displayName: '', name: '', address: '', websiteUrl: '',
   contact1Name: '', contact1Phone: '', contact1Email: '',
   contact2Name: '', contact2Phone: '', contact2Email: '',
 };
@@ -325,6 +326,10 @@ function OrgProfileSection({ fetchHeaders }: { fetchHeaders: () => Record<string
         setProfile({ ...EMPTY_PROFILE, ...data });
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
+        // Sync sidebar company name from displayName, fall back to name
+        const sidebarName = (data.displayName as string)?.trim() || (data.name as string)?.trim() || 'BusinessOS';
+        localStorage.setItem('nonprofit-os-org-name', sidebarName);
+        window.dispatchEvent(new CustomEvent('orgNameChanged', { detail: sidebarName }));
       }
     } finally { setSaving(false); }
   };
@@ -376,6 +381,19 @@ function OrgProfileSection({ fetchHeaders }: { fetchHeaders: () => Record<string
       ) : (
         <div className="p-5 space-y-5">
           {/* Organisation basics */}
+          <div className="space-y-1">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <Building2 className="w-3 h-3" />Organisation Display Name
+            </label>
+            <input
+              type="text"
+              value={profile.displayName ?? ''}
+              onChange={e => { setProfile(prev => ({ ...prev, displayName: e.target.value })); setSaved(false); }}
+              placeholder="Name shown in the top-left of the app"
+              className="w-full text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50 transition-colors"
+            />
+            <p className="text-[11px] text-muted-foreground">This is the name shown in the top-left corner of the application.</p>
+          </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {field('Organisation Name', <Building2 className="w-3 h-3" />, 'name')}
             {field('Website URL', <Link className="w-3 h-3" />, 'websiteUrl', 'url')}
