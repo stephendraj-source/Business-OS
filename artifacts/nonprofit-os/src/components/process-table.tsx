@@ -41,6 +41,7 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'processDescription',   label: 'Process Description',   defaultWidth: 260, minWidth: 140 },
   { key: 'aiAgent',              label: 'AI Agent',              defaultWidth: 175, minWidth: 110 },
   { key: 'aiAgentActive',        label: 'AI Agent Active',       defaultWidth: 120, minWidth: 100 },
+  { key: 'aiScore',              label: 'AI Score',              defaultWidth: 110, minWidth: 90  },
   { key: 'purpose',              label: 'Purpose',               defaultWidth: 215, minWidth: 130 },
   { key: 'inputs',               label: 'Inputs',                defaultWidth: 200, minWidth: 130 },
   { key: 'outputs',              label: 'Outputs',               defaultWidth: 200, minWidth: 130 },
@@ -993,6 +994,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
 
 export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const { fetchHeaders } = useAuth();
+  const queryClient = useQueryClient();
   const { data: processes, isLoading, error } = useProcessesData();
   const { data: categories } = useCategoriesData();
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
@@ -1030,6 +1032,35 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       updateProcessForUndo({ id: p.id, data: { [field]: oldValue } as any });
     });
   }, [pushUndo, updateProcessForUndo]);
+
+  const [batchScoring, setBatchScoring] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  const handleBatchAIScore = useCallback(async () => {
+    if (!processes || batchScoring) return;
+    setBatchScoring(true);
+    setBatchError(null);
+    const all = processes;
+    setBatchProgress({ current: 0, total: all.length });
+    let errored = 0;
+    for (let i = 0; i < all.length; i++) {
+      setBatchProgress({ current: i + 1, total: all.length });
+      try {
+        const r = await fetch(`/api/processes/${all[i].id}/ai-compliance`, { method: 'POST', headers: fetchHeaders() });
+        if (r.ok) {
+          const updated = await r.json();
+          queryClient.setQueryData(getListProcessesQueryKey(), (old: Process[] | undefined) =>
+            old?.map(p => p.id === updated.id ? { ...p, aiScore: updated.aiScore, aiReasoning: updated.aiReasoning } : p)
+          );
+        } else { errored++; }
+      } catch { errored++; }
+    }
+    dispatchCreditsRefresh();
+    setBatchScoring(false);
+    setBatchProgress(null);
+    if (errored > 0) setBatchError(`${errored} process${errored > 1 ? 'es' : ''} failed to score`);
+  }, [processes, batchScoring, fetchHeaders, queryClient]);
 
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
@@ -1238,6 +1269,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         case 'processDescription':   av = a.processDescription ?? '';        bv = b.processDescription ?? ''; break;
         case 'aiAgent':              av = a.aiAgent ?? '';                   bv = b.aiAgent ?? ''; break;
         case 'aiAgentActive':        av = (a as any).aiAgentActive ? 1 : 0; bv = (b as any).aiAgentActive ? 1 : 0; break;
+        case 'aiScore':              av = (a as any).aiScore ?? -1;          bv = (b as any).aiScore ?? -1; break;
         case 'purpose':              av = a.purpose ?? '';                   bv = b.purpose ?? ''; break;
         case 'inputs':               av = a.inputs ?? '';                    bv = b.inputs ?? ''; break;
         case 'outputs':              av = a.outputs ?? '';                   bv = b.outputs ?? ''; break;
@@ -1404,6 +1436,36 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             </label>
           </td>
         );
+      case 'aiScore': {
+        const score = (process as any).aiScore as number | null;
+        if (score == null) {
+          return (
+            <td key="aiScore" className="align-middle p-0 text-center" style={{ width: widths['aiScore'] }}>
+              <span className="text-[11px] text-muted-foreground/40">—</span>
+            </td>
+          );
+        }
+        const barColor =
+          score >= 90 ? 'bg-emerald-500' :
+          score >= 70 ? 'bg-green-500' :
+          score >= 50 ? 'bg-amber-400' :
+          score >= 30 ? 'bg-orange-500' : 'bg-red-500';
+        const textColor =
+          score >= 90 ? 'text-emerald-400' :
+          score >= 70 ? 'text-green-400' :
+          score >= 50 ? 'text-amber-400' :
+          score >= 30 ? 'text-orange-400' : 'text-red-400';
+        return (
+          <td key="aiScore" className="align-middle p-0" style={{ width: widths['aiScore'] }}>
+            <div className="px-3 py-2 flex flex-col gap-1">
+              <span className={cn('text-[11px] font-bold font-mono leading-none', textColor)}>{score}%</span>
+              <div className="w-full h-1 rounded-full bg-secondary/60">
+                <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${score}%` }} />
+              </div>
+            </div>
+          </td>
+        );
+      }
       case 'purpose':
         return (
           <td key="purpose" className="overflow-hidden p-0" style={{ width: widths['purpose'] }}>
@@ -1677,6 +1739,20 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
                 Add Process
               </button>
             )}
+            <div className="flex flex-col items-end gap-0.5">
+              <button
+                onClick={handleBatchAIScore}
+                disabled={batchScoring}
+                title="Score all processes for AI compliance"
+                className="flex items-center gap-1.5 px-3 py-2 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {batchScoring
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Scoring {batchProgress?.current}/{batchProgress?.total}…</>
+                  : <><ShieldCheck className="w-3.5 h-3.5" />AI Score</>
+                }
+              </button>
+              {batchError && <span className="text-[10px] text-red-400">{batchError}</span>}
+            </div>
             <button
               onClick={handleExport}
               title="Export to Excel"
