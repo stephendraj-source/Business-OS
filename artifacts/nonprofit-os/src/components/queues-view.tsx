@@ -327,15 +327,16 @@ function TaskDetailPanel({
   onClose: () => void;
   onAccept: () => Promise<void>;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [accepting, setAccepting] = useState(false);
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const priorityCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.normal;
   const isOverdue = task.end_date && task.status !== 'completed' && task.status !== 'cancelled'
     && new Date(task.end_date) < new Date();
 
-  const handleAccept = async () => {
+  const handleAcceptConfirmed = async () => {
     setAccepting(true);
-    try { await onAccept(); } finally { setAccepting(false); }
+    try { await onAccept(); } finally { setAccepting(false); setConfirming(false); }
   };
 
   return (
@@ -425,16 +426,40 @@ function TaskDetailPanel({
         </div>
       </div>
 
-      {/* Accept Task button */}
+      {/* Accept Task button / confirmation */}
       <div className="p-4 border-t border-border flex-shrink-0">
-        <button
-          onClick={handleAccept}
-          disabled={accepting}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-sm text-white font-medium transition-colors"
-        >
-          {accepting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
-          Accept Task
-        </button>
+        {confirming ? (
+          <div className="space-y-3">
+            <p className="text-xs text-center text-foreground font-medium leading-snug">
+              Are you sure you want to accept this task? It will be assigned to you and removed from this queue.
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirming(false)}
+                disabled={accepting}
+                className="flex-1 py-2 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAcceptConfirmed}
+                disabled={accepting}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs text-white font-medium transition-colors"
+              >
+                {accepting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                Yes, accept
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirming(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-sm text-white font-medium transition-colors"
+          >
+            <UserCheck className="w-4 h-4" />
+            Accept Task
+          </button>
+        )}
       </div>
     </div>
   );
@@ -729,13 +754,16 @@ export function QueuesView() {
   async function handleAcceptTask(taskId: number) {
     if (!currentUser) return;
     setTasks(prev => prev.map(t =>
-      t.id === taskId ? { ...t, assigned_to_name: currentUser.name } : t,
+      t.id === taskId
+        ? { ...t, assigned_to_name: currentUser.name, queue_id: null, queue_name: null }
+        : t,
     ));
+    setSelectedTaskId(null);
     try {
       await fetch(`${API}/tasks/${taskId}`, {
         method: 'PATCH',
         headers: jsonHeaders(),
-        body: JSON.stringify({ assignedTo: currentUser.id }),
+        body: JSON.stringify({ assignedTo: currentUser.id, queueId: null }),
       });
     } catch {
       await fetchTasks();
