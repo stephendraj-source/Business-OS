@@ -403,9 +403,9 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     const { nodes, edges } = mapDataRef.current;
     if (nodes.length === 0) return;
 
-    const H_GAP = 60;   // horizontal gap between levels
-    const SIBLING_GAP = 8;   // compact gap between sibling node tops
-    const SUBTREE_GAP = 12;  // minimum gap between sibling subtree extents
+    const H_GAP = 60;    // horizontal gap between levels
+    const SIBLING_GAP = 16;  // gap between adjacent node boxes
+    const SUBTREE_GAP = 16;  // clearance between sibling subtree extents
 
     // Build child map
     const childMap = new Map<string, string[]>();
@@ -415,6 +415,26 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       const list = childMap.get(e.sourceId);
       if (list) list.push(e.targetId);
     });
+
+    // Bottom-up: minimum total height occupied by each subtree.
+    // For leaves: just their node height.
+    // For non-leaves: max(nodeH, sum(children subtreeH) + gaps).
+    const subtreeHCache = new Map<string, number>();
+    function getSubtreeH(id: string): number {
+      if (subtreeHCache.has(id)) return subtreeHCache.get(id)!;
+      const children = childMap.get(id) ?? [];
+      const selfH = nodeHeight(nodes.find(n => n.id === id)!);
+      if (children.length === 0) {
+        subtreeHCache.set(id, selfH);
+        return selfH;
+      }
+      const total = children.reduce((s, cid) => s + getSubtreeH(cid), 0)
+        + (children.length - 1) * SIBLING_GAP;
+      const result = Math.max(selfH, total);
+      subtreeHCache.set(id, result);
+      return result;
+    }
+    nodes.forEach(n => getSubtreeH(n.id)); // warm the cache
 
     // Root = node with no incoming edges; fall back to first node
     const rootNode = nodes.find(n => !targetIdSet.has(n.id)) ?? nodes[0];
@@ -458,29 +478,35 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         cursor += childSelfHs[i] + SIBLING_GAP;
       }
 
-      // Step 2 – layout children and resolve subtree overlaps on the fly.
-      // Key insight: a LEAF sibling has no children, so it only occupies its own
-      // X column and can never overlap with a previous sibling's deeper subtree.
-      // Only non-leaf siblings need to clear the full running subtree bottom.
+      // Step 2 – place each child, resolving overlaps.
+      //
+      // Leaves only occupy their own X column so they only need SIBLING_GAP
+      // clearance from the previous node box.
+      //
+      // Non-leaves share ALL deeper X columns with their siblings.  We use the
+      // pre-computed subtreeH to determine where the node must be centred so
+      // that its whole subtree clears the running "used" bottom at those depths.
       const extents: Array<{ top: number; bottom: number }> = [];
-      let runningSubtreeBottom = -Infinity; // max bottom of all subtrees placed so far
+      let runningSubtreeBottom = -Infinity;
       for (let i = 0; i < children.length; i++) {
         if (i > 0) {
-          const currHasChildren = (childMap.get(children[i]) ?? []).length > 0;
-          if (currHasChildren) {
-            // Non-leaf: must clear all previously placed subtrees (they share deeper X columns)
-            const desiredTop = childYMids[i] - childSelfHs[i] / 2;
-            if (desiredTop < runningSubtreeBottom + SUBTREE_GAP) {
-              const shift = runningSubtreeBottom + SUBTREE_GAP - desiredTop;
-              for (let j = i; j < children.length; j++) childYMids[j] += shift;
-            }
-          } else {
-            // Leaf: only needs SIBLING_GAP from the previous sibling's node box
-            // (leaves have no children, so no deeper X-column collision possible)
+          const currIsLeaf = (childMap.get(children[i]) ?? []).length === 0;
+          if (currIsLeaf) {
+            // Leaf: just keep node boxes apart
             const prevNodeBottom = childYMids[i - 1] + childSelfHs[i - 1] / 2;
             const desiredTop = childYMids[i] - childSelfHs[i] / 2;
             if (desiredTop < prevNodeBottom + SIBLING_GAP) {
               const shift = prevNodeBottom + SIBLING_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) childYMids[j] += shift;
+            }
+          } else {
+            // Non-leaf: the whole subtree must clear the running bottom.
+            // Use subtreeH so that the children radiating ABOVE the node centre
+            // are also accounted for (fixes hidden-node overlap bug).
+            const stH = getSubtreeH(children[i]);
+            const effectiveTop = childYMids[i] - stH / 2;
+            if (effectiveTop < runningSubtreeBottom + SUBTREE_GAP) {
+              const shift = runningSubtreeBottom + SUBTREE_GAP - effectiveTop;
               for (let j = i; j < children.length; j++) childYMids[j] += shift;
             }
           }
@@ -528,18 +554,19 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       let runningSubtreeBottomRoot = -Infinity;
       for (let i = 0; i < children.length; i++) {
         if (i > 0) {
-          const currHasChildren = (childMap.get(children[i]) ?? []).length > 0;
-          if (currHasChildren) {
-            const desiredTop = yMids[i] - childSelfHs[i] / 2;
-            if (desiredTop < runningSubtreeBottomRoot + SUBTREE_GAP) {
-              const shift = runningSubtreeBottomRoot + SUBTREE_GAP - desiredTop;
-              for (let j = i; j < children.length; j++) yMids[j] += shift;
-            }
-          } else {
+          const currIsLeaf = (childMap.get(children[i]) ?? []).length === 0;
+          if (currIsLeaf) {
             const prevNodeBottom = yMids[i - 1] + childSelfHs[i - 1] / 2;
             const desiredTop = yMids[i] - childSelfHs[i] / 2;
             if (desiredTop < prevNodeBottom + SIBLING_GAP) {
               const shift = prevNodeBottom + SIBLING_GAP - desiredTop;
+              for (let j = i; j < children.length; j++) yMids[j] += shift;
+            }
+          } else {
+            const stH = getSubtreeH(children[i]);
+            const effectiveTop = yMids[i] - stH / 2;
+            if (effectiveTop < runningSubtreeBottomRoot + SUBTREE_GAP) {
+              const shift = runningSubtreeBottomRoot + SUBTREE_GAP - effectiveTop;
               for (let j = i; j < children.length; j++) yMids[j] += shift;
             }
           }
