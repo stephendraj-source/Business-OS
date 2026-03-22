@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
 import { embed, vecToSql, warmUp } from "../lib/embeddings.js";
+import { extractTextFromFile } from "../lib/extract-text.js";
 
 const router: IRouter = Router();
 
@@ -82,19 +83,40 @@ router.post("/knowledge/reindex", async (req, res) => {
       ? and(eq(knowledgeItemsTable.tenantId, auth.tenantId), isNull(knowledgeItemsTable.embeddedAt))
       : isNull(knowledgeItemsTable.embeddedAt);
 
-    const items = await db
-      .select({ id: knowledgeItemsTable.id, title: knowledgeItemsTable.title, content: knowledgeItemsTable.content })
-      .from(knowledgeItemsTable)
-      .where(tenantCond);
+    // Also grab file-based items with empty content regardless of embeddedAt
+    const allItems = await db
+      .select({
+        id: knowledgeItemsTable.id,
+        title: knowledgeItemsTable.title,
+        content: knowledgeItemsTable.content,
+        filePath: knowledgeItemsTable.filePath,
+        fileName: knowledgeItemsTable.fileName,
+        mimeType: knowledgeItemsTable.mimeType,
+        embeddedAt: knowledgeItemsTable.embeddedAt,
+      })
+      .from(knowledgeItemsTable);
 
-    res.json({ queued: items.length, status: "indexing" });
+    const tenantId = (req as any).auth?.tenantId ?? null;
+    const filtered = allItems.filter(i =>
+      (tenantId ? (i as any).tenantId === tenantId : true) &&
+      (!i.embeddedAt || (i.filePath && !i.content?.trim()))
+    );
+
+    res.json({ queued: filtered.length, status: "indexing" });
 
     setImmediate(async () => {
       let done = 0;
-      for (const item of items) {
-        await embedItem(item.id, item.title, item.content);
+      for (const item of filtered) {
+        let text = item.content || "";
+        if ((!text.trim()) && item.filePath && fs.existsSync(item.filePath)) {
+          text = await extractTextFromFile(item.filePath, item.mimeType || "", item.fileName || "");
+          if (text) {
+            await db.execute(sql`UPDATE knowledge_items SET content = ${text} WHERE id = ${item.id}`);
+          }
+        }
+        await embedItem(item.id, item.title, text);
         done++;
-        if (done % 5 === 0) console.log(`[reindex] ${done}/${items.length}`);
+        if (done % 5 === 0) console.log(`[reindex] ${done}/${filtered.length}`);
       }
       console.log(`[reindex] complete: ${done} items embedded`);
     });
@@ -210,15 +232,19 @@ router.post("/knowledge-items/:id/upload", upload.single("file"), async (req, re
     const cond = auth?.tenantId
       ? and(eq(knowledgeItemsTable.id, id), eq(knowledgeItemsTable.tenantId, auth.tenantId))
       : eq(knowledgeItemsTable.id, id);
+    const [existing] = await db.select({ title: knowledgeItemsTable.title }).from(knowledgeItemsTable).where(cond);
+    if (!existing) return res.status(404).json({ error: "Not found" });
+    const extractedText = await extractTextFromFile(file.path, file.mimetype, file.originalname);
     const [item] = await db.update(knowledgeItemsTable).set({
       fileName: file.originalname,
       filePath: file.path,
       fileSize: file.size,
       mimeType: file.mimetype,
+      content: extractedText || "",
       updatedAt: new Date(),
     }).where(cond).returning();
-    if (!item) return res.status(404).json({ error: "Not found" });
     res.json(item);
+    setImmediate(() => embedItem(item.id, item.title, item.content));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

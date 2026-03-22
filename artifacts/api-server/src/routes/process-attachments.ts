@@ -4,7 +4,9 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { db } from "@workspace/db";
-import { eq, and, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import { embed, vecToSql } from "../lib/embeddings.js";
+import { extractTextFromFile } from "../lib/extract-text.js";
 
 const router: IRouter = Router();
 
@@ -19,6 +21,19 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
+
+async function embedAttachment(id: number, title: string, text: string): Promise<void> {
+  try {
+    const combined = `${title}\n${text}`;
+    if (!combined.trim()) return;
+    const vec = await embed(combined);
+    await db.execute(
+      sql`UPDATE process_attachments SET embedding_vec = ${vecToSql(vec)}::vector WHERE id = ${id}`
+    );
+  } catch (err) {
+    console.error(`[embeddings] failed to embed process attachment ${id}:`, err);
+  }
+}
 
 // ── List attachments for a process ───────────────────────────────────────────
 router.get("/processes/:processId/attachments", async (req, res) => {
@@ -47,7 +62,9 @@ router.post("/processes/:processId/attachments/url", async (req, res) => {
           VALUES (${processId}, ${tenantId}, 'url', ${label}, ${url.trim()})
           RETURNING *`
     );
-    res.status(201).json((rows.rows as any[])[0]);
+    const att = (rows.rows as any[])[0];
+    res.status(201).json(att);
+    setImmediate(() => embedAttachment(att.id, att.title, att.url || ""));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -62,12 +79,52 @@ router.post("/processes/:processId/attachments/upload", upload.single("file"), a
     const file = req.file;
     if (!file) return res.status(400).json({ error: "No file uploaded" });
     const title = (req.body.title as string)?.trim() || file.originalname;
+    const fullPath = path.join(UPLOAD_DIR, file.filename);
+    const extractedText = await extractTextFromFile(fullPath, file.mimetype, file.originalname);
     const rows = await db.execute(
-      sql`INSERT INTO process_attachments (process_id, tenant_id, type, title, file_path, file_name, file_size, mime_type)
-          VALUES (${processId}, ${tenantId}, 'file', ${title}, ${file.filename}, ${file.originalname}, ${file.size}, ${file.mimetype})
+      sql`INSERT INTO process_attachments (process_id, tenant_id, type, title, file_path, file_name, file_size, mime_type, extracted_text)
+          VALUES (${processId}, ${tenantId}, 'file', ${title}, ${file.filename}, ${file.originalname}, ${file.size}, ${file.mimetype}, ${extractedText || ""})
           RETURNING *`
     );
-    res.status(201).json((rows.rows as any[])[0]);
+    const att = (rows.rows as any[])[0];
+    res.status(201).json(att);
+    setImmediate(() => embedAttachment(att.id, att.title, extractedText || ""));
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Re-index all unembedded process attachments ───────────────────────────────
+router.post("/processes/attachments/reindex", async (req, res) => {
+  try {
+    const rows = await db.execute(
+      sql`SELECT id, title, file_path, file_name, mime_type, url, extracted_text
+          FROM process_attachments
+          WHERE embedding_vec IS NULL`
+    );
+    const items = rows.rows as any[];
+    res.json({ queued: items.length, status: "indexing" });
+    setImmediate(async () => {
+      let done = 0;
+      for (const att of items) {
+        let text = att.extracted_text || "";
+        if (!text && att.type === "file" && att.file_path) {
+          const fullPath = path.join(UPLOAD_DIR, att.file_path);
+          if (fs.existsSync(fullPath)) {
+            text = await extractTextFromFile(fullPath, att.mime_type || "", att.file_name || "");
+            if (text) {
+              await db.execute(
+                sql`UPDATE process_attachments SET extracted_text = ${text} WHERE id = ${att.id}`
+              );
+            }
+          }
+        }
+        await embedAttachment(att.id, att.title, text || att.url || "");
+        done++;
+      }
+      console.log(`[reindex] process attachments complete: ${done} embedded`);
+    });
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });

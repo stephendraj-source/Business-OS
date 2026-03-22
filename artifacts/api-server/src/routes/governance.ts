@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { useCredit } from "../lib/credits";
 import { embed, vecToSql } from "../lib/embeddings.js";
-import { PDFParse } from "pdf-parse";
+import { extractTextFromFile } from "../lib/extract-text.js";
 
 const router: IRouter = Router();
 

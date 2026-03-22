@@ -63,7 +63,24 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
     );
     const govVecRows: any[] = govVecResult.rows as any[];
 
-    // 3. Full-text keyword fallback for knowledge_items without embeddings
+    // 3. Vector similarity — process_attachments
+    const procTenantCond = tenantId ? sql`pa.tenant_id = ${tenantId}` : sql`pa.tenant_id IS NULL`;
+    const procVecResult = await db.execute(
+      sql`SELECT pa.id, pa.title,
+               COALESCE(pa.extracted_text, pa.url, '') AS content,
+               pa.type, pa.url, pa.file_name,
+               p.name AS folder_name,
+               1 - (pa.embedding_vec <=> ${embStr}::vector) AS similarity,
+               'process_attachment' AS source
+            FROM process_attachments pa
+            LEFT JOIN processes p ON p.id = pa.process_id
+            WHERE pa.embedding_vec IS NOT NULL AND ${procTenantCond}
+            ORDER BY pa.embedding_vec <=> ${embStr}::vector
+            LIMIT 4`
+    );
+    const procVecRows: any[] = procVecResult.rows as any[];
+
+    // 4. Full-text keyword fallback for knowledge_items without embeddings
     const words = query.split(/\s+/).filter(w => w.length > 2).slice(0, 3);
     const ftRows: any[] = [];
     if (words.length > 0) {
@@ -95,24 +112,47 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
       for (const r of (govFtResult.rows as any[])) {
         if (!govVecRows.find((v: any) => v.id === r.id)) ftRows.push(r);
       }
+      // Full-text fallback for process_attachments
+      const procFtResult = await db.execute(
+        sql`SELECT pa.id, pa.title,
+                   COALESCE(pa.extracted_text, pa.url, '') AS content,
+                   pa.type, pa.url, pa.file_name,
+                   p.name AS folder_name, 0.0 AS similarity, 'process_attachment' AS source
+              FROM process_attachments pa
+              LEFT JOIN processes p ON p.id = pa.process_id
+              WHERE ${procTenantCond}
+                AND (lower(pa.title) LIKE lower(${pattern})
+                  OR lower(COALESCE(pa.extracted_text, '')) LIKE lower(${pattern}))
+              LIMIT 3`
+      );
+      for (const r of (procFtResult.rows as any[])) {
+        if (!procVecRows.find((v: any) => v.id === r.id)) ftRows.push(r);
+      }
     }
 
-    const allRows = [...vecRows, ...govVecRows, ...ftRows];
+    const allRows = [...vecRows, ...govVecRows, ...procVecRows, ...ftRows];
     if (allRows.length === 0) return "";
 
     const snippets = allRows.map((r: any) => {
       const sim = parseFloat(r.similarity);
       const simLabel = sim > 0 ? ` | Match: ${Math.round(sim * 100)}%` : " | keyword match";
       const isGov = r.source === "governance";
+      const isProc = r.source === "process_attachment";
       const location = isGov
         ? `Governance & Compliance > ${r.folder_name}`
-        : r.folder_name ? `Forms & Documents > ${r.folder_name}` : "Forms & Documents (root)";
-      const idRef = isGov ? `governance://doc-${r.id}` : `knowledge://item-${r.id}`;
+        : isProc
+          ? `Process Attachments > ${r.folder_name || "Unknown Process"}`
+          : r.folder_name ? `Forms & Documents > ${r.folder_name}` : "Forms & Documents (root)";
+      const idRef = isGov
+        ? `governance://doc-${r.id}`
+        : isProc
+          ? `process://attachment-${r.id}`
+          : `knowledge://item-${r.id}`;
       let body = strip(r.content ?? "", 5000);
       return `### [${r.title}](${idRef}) (${r.type}${simLabel})\n**Location:** ${location}${r.file_name ? ` | **File:** ${r.file_name}` : ""}\n\n${body || "(no content yet)"}`;
     }).join("\n\n---\n\n");
 
-    return `## Knowledge Base & Governance Documents (${allRows.length} results)\n\nWhen referencing knowledge items, use [Title](knowledge://item-{id}). For governance documents, use [Title](governance://doc-{id}).\n\n${snippets}\n\n---`;
+    return `## Knowledge Base, Governance & Process Documents (${allRows.length} results)\n\nWhen referencing knowledge items, use [Title](knowledge://item-{id}). For governance documents, use [Title](governance://doc-{id}). For process attachments, use [Title](process://attachment-{id}).\n\n${snippets}\n\n---`;
   } catch (err) {
     console.error("[rag] knowledge search failed:", err);
     return "";
