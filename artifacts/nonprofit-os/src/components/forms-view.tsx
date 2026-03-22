@@ -349,7 +349,7 @@ function FolderNode({
                   onClick={e => { e.stopPropagation(); setShowNewPicker(false); onCreateKnowledgeItem(node.id, t); }}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-secondary transition-colors text-left"
                 >
-                  {knowledgeItemIcon(t)} {t === "wiki" ? "Wiki page" : t === "url" ? "URL / Link" : "Document"}
+                  {knowledgeItemIcon(t)} {t === "wiki" ? "Wiki page" : t === "url" ? "URL / Link" : "File"}
                 </button>
               ))}
             </div>,
@@ -2414,13 +2414,15 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
         const visibleFormGroups = [...formGroups.filter(g => g.forms.length > 0), ...(uncatForms.length > 0 ? [{ id: null, name: "Uncategorized", forms: uncatForms }] : [])];
         const totalForms = visibleFormGroups.reduce((s, g) => s + g.forms.length, 0);
 
-        // --- Wiki articles ---
-        const visibleKnowledge = knowledgeItems.filter(k => matchName(k.title, k.content?.slice(0, 200)));
+        // --- Knowledge items split by type ---
+        const visibleWiki  = knowledgeItems.filter(k => k.type === "wiki"     && matchName(k.title, k.content?.slice(0, 200)));
+        const visibleLinks = knowledgeItems.filter(k => k.type === "url"      && matchName(k.title, k.content?.slice(0, 200)));
+        const visibleFiles = knowledgeItems.filter(k => k.type === "document" && matchName(k.title, k.content?.slice(0, 200)));
 
         // --- Mind maps ---
         const visibleMindmaps = mindmapList.filter(m => matchName(m.name));
 
-        const totalAll = totalForms + visibleKnowledge.length + visibleMindmaps.length;
+        const totalAll = totalForms + visibleWiki.length + visibleLinks.length + visibleFiles.length + visibleMindmaps.length;
 
         const catColor = (name: string) => {
           const n = name.toLowerCase();
@@ -2540,7 +2542,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                   )}
 
                   {/* ── Wiki Articles ── */}
-                  {visibleKnowledge.length > 0 && (
+                  {visibleWiki.length > 0 && (
                     <section>
                       <div className="flex items-center gap-2.5 mb-4">
                         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400">
@@ -2548,10 +2550,10 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                           <span className="text-sm font-semibold">Wiki Articles</span>
                         </div>
                         <div className="flex-1 h-px bg-border" />
-                        <span className="text-xs text-muted-foreground">{visibleKnowledge.length} article{visibleKnowledge.length !== 1 ? "s" : ""}</span>
+                        <span className="text-xs text-muted-foreground">{visibleWiki.length} article{visibleWiki.length !== 1 ? "s" : ""}</span>
                       </div>
                       <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-                        {visibleKnowledge.map(item => (
+                        {visibleWiki.map(item => (
                           <button
                             key={item.id}
                             onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setSelectedMindmapId(null); setMode('templates'); setShowAllForms(false); }}
@@ -2566,6 +2568,78 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                             <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-violet-400 transition-colors">{item.title}</p>
                             {item.content && (
                               <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{item.content.replace(/<[^>]+>/g, "").slice(0, 120)}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* ── Links ── */}
+                  {visibleLinks.length > 0 && (
+                    <section>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400">
+                          <Link2 className="w-4 h-4" />
+                          <span className="text-sm font-semibold">Links</span>
+                        </div>
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground">{visibleLinks.length} link{visibleLinks.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                        {visibleLinks.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setSelectedMindmapId(null); setMode('templates'); setShowAllForms(false); }}
+                            className={cn(
+                              "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-blue-400/40 hover:-translate-y-0.5",
+                              selectedKnowledgeId === item.id ? "border-blue-400 bg-blue-500/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
+                            )}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/30 to-blue-500/10 flex items-center justify-center flex-shrink-0">
+                              <Link2 className="w-4 h-4 text-blue-400" />
+                            </div>
+                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-blue-400 transition-colors">{item.title}</p>
+                            {item.url && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                                <ExternalLink className="w-3 h-3 flex-shrink-0" />{item.url}
+                              </p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* ── Files ── */}
+                  {visibleFiles.length > 0 && (
+                    <section>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-orange-500/10 text-orange-400">
+                          <FileText className="w-4 h-4" />
+                          <span className="text-sm font-semibold">Files</span>
+                        </div>
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground">{visibleFiles.length} file{visibleFiles.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                        {visibleFiles.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setSelectedMindmapId(null); setMode('templates'); setShowAllForms(false); }}
+                            className={cn(
+                              "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-orange-400/40 hover:-translate-y-0.5",
+                              selectedKnowledgeId === item.id ? "border-orange-400 bg-orange-500/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
+                            )}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/30 to-orange-500/10 flex items-center justify-center flex-shrink-0">
+                              <FileText className="w-4 h-4 text-orange-400" />
+                            </div>
+                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-orange-400 transition-colors">{item.title}</p>
+                            {item.fileName && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                                <File className="w-3 h-3 flex-shrink-0" />{item.fileName}
+                              </p>
                             )}
                           </button>
                         ))}
