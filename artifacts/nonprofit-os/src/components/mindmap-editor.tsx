@@ -1433,6 +1433,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                       <foreignObject
                         x={isTaskNode ? 8 : 12} y={8} width={NODE_W - 24} height={h - 12}
                         onPointerDown={e => e.stopPropagation()}
+                        onPointerUp={e => e.stopPropagation()}
                       >
                         <input
                           ref={inlineEditRef}
@@ -1475,6 +1476,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                         transform={`translate(${NODE_W + 18}, ${h / 2 - 11})`}
                         style={{ cursor: 'pointer' }}
                         onPointerDown={e => e.stopPropagation()}
+                        onPointerUp={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); addChildNode(node.id); }}
                       >
                         <rect x={0} y={0} width={22} height={22} rx={11} fill="#6366f1" />
@@ -1489,6 +1491,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                         transform={`translate(${NODE_W / 2 - 11}, ${h + 18})`}
                         style={{ cursor: 'pointer' }}
                         onPointerDown={e => e.stopPropagation()}
+                        onPointerUp={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); addPeerNode(node.id); }}
                       >
                         <rect x={0} y={0} width={22} height={22} rx={11} fill="none" stroke="#6366f1" strokeWidth={1.5} />
