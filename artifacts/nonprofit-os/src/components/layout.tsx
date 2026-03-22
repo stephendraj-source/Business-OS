@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +9,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -38,6 +38,7 @@ const VIEW_META: Record<ActiveView, ViewMeta> = {
   'users':         { label: 'Users',             section: 'Admin' },
   'configuration': { label: 'Configuration',    section: 'Admin' },
   'initiatives':   { label: 'Initiatives',      section: 'Strategy' },
+  'activities':    { label: 'Activities',        section: 'Workflows' },
 };
 
 export function Layout({ children, activeView, onViewChange, canGoBack = false, onBack }: LayoutProps) {
@@ -135,6 +136,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
             <div className="space-y-1">
               <NavItem icon={<GitBranch />} label="Workflows" active={activeView === 'workflows'} onClick={() => onViewChange('workflows')} />
               <NavItem icon={<ClipboardList />} label="Forms and Documents" active={activeView === 'forms'} onClick={() => onViewChange('forms')} />
+              <NavItem icon={<Activity />} label="Activities" active={activeView === 'activities'} onClick={() => onViewChange('activities')} />
             </div>
           </div>
 

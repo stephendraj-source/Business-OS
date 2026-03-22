@@ -14,3 +14,4 @@ export * from "./initiatives";
 export * from "./sharing";
 export * from "./forms";
 export * from "./knowledge";
+export * from "./activities";
