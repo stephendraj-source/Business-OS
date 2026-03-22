@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,6 +44,7 @@ const SUGGESTIONS = [
 export function Chatbot() {
   const { fetchHeaders } = useAuth();
   const [open, setOpen] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [pos, setPos] = useState<Position>(() => defaultPosition());
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
@@ -250,9 +251,10 @@ export function Chatbot() {
             left: pos.x,
             top: pos.y,
             width: PANEL_W,
-            height: PANEL_H,
+            height: isMinimized ? 'auto' : PANEL_H,
             zIndex: 50,
             userSelect: isDragging ? 'none' : undefined,
+            transition: 'height 0.2s ease',
           }}
           className="bg-card border border-border rounded-2xl shadow-2xl flex flex-col overflow-hidden"
         >
@@ -290,7 +292,14 @@ export function Chatbot() {
                 <Plus className="w-4 h-4" />
               </button>
               <button
-                onClick={() => setOpen(false)}
+                onClick={() => setIsMinimized(v => !v)}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+                title={isMinimized ? "Restore" : "Minimize"}
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => { setOpen(false); setIsMinimized(false); }}
                 className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                 title="Close"
               >
@@ -298,6 +307,9 @@ export function Chatbot() {
               </button>
             </div>
           </div>
+
+          {/* Body — hidden when minimized */}
+          <div className={cn("flex flex-col flex-1 overflow-hidden", isMinimized && "hidden")}>
 
           {/* Conversation history — always shown by default, collapsible */}
           {showConvList && (
@@ -436,6 +448,8 @@ export function Chatbot() {
             <p className="text-[10px] text-muted-foreground/50 mt-1.5 text-center">
               Salesforce queries are read-only · Enter to send · Shift+Enter for new line
             </p>
+          </div>
+
           </div>
         </div>
       )}

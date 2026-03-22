@@ -67,6 +67,25 @@ router.get("/processes/export", async (req, res) => {
       "Include": p.included ? "Yes" : "No",
     }));
 
+    const format = (req.query.format as string) || "xlsx";
+
+    if (format === "csv") {
+      const headers = Object.keys(rows[0] ?? {});
+      const escape = (v: any) => {
+        const s = v == null ? "" : String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = [
+        headers.join(","),
+        ...rows.map(r => headers.map(h => escape((r as any)[h])).join(",")),
+      ].join("\n");
+      await writeAuditLog({ action: "export", entityType: "process", description: `Exported ${processes.length} processes to CSV`, userId: req.auth?.userId });
+      res.setHeader("Content-Disposition", "attachment; filename=nonprofit-processes.csv");
+      res.setHeader("Content-Type", "text/csv");
+      res.send(csv);
+      return;
+    }
+
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(rows);
     ws["!cols"] = [

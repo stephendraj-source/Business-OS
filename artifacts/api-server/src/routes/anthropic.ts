@@ -1,10 +1,46 @@
 import { Router, type IRouter } from "express";
 import { db, conversations as conversationsTable, messages as messagesTable, processesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { useCredit } from "../lib/credits";
+import { embed, vecToSql } from "../lib/embeddings.js";
 
 const router: IRouter = Router();
+
+// Search knowledge base for context relevant to the user's query
+async function searchKnowledgeBase(query: string, tenantId: number | null, limit = 5): Promise<string> {
+  try {
+    const queryVec = await embed(query);
+    const embStr = vecToSql(queryVec);
+    const tenantCondition = tenantId
+      ? sql`tenant_id = ${tenantId}`
+      : sql`tenant_id IS NULL`;
+
+    const rows = await db.execute(
+      sql`SELECT id, title, content, type,
+             1 - (embedding_vec <=> ${embStr}::vector) AS similarity
+          FROM knowledge_items
+          WHERE embedding_vec IS NOT NULL
+            AND ${tenantCondition}
+          ORDER BY embedding_vec <=> ${embStr}::vector
+          LIMIT ${limit}`
+    ) as any[];
+
+    const relevant = rows.filter((r: any) => parseFloat(r.similarity) >= 0.15);
+    if (relevant.length === 0) return "";
+
+    const snippets = relevant.map((r: any) => {
+      const plainText = (r.content ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 800);
+      const sim = Math.round(parseFloat(r.similarity) * 100);
+      return `### ${r.title} (${r.type}, ${sim}% match)\n${plainText}`;
+    }).join("\n\n");
+
+    return `## Relevant Knowledge Base Documents\n\nThe following documents from the organisation's knowledge base are relevant to the user's question. Use them to answer accurately:\n\n${snippets}\n\n---`;
+  } catch (err) {
+    console.error("[rag] knowledge search failed:", err);
+    return "";
+  }
+}
 
 // Build system prompt with process context
 async function buildSystemPrompt(): Promise<string> {
@@ -128,10 +164,18 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
     const history = await db.select().from(messagesTable).where(eq(messagesTable.conversationId, id)).orderBy(messagesTable.createdAt);
 
     const chatMessages = history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
-    const systemPrompt = await buildSystemPrompt();
+    const tenantId = req.auth?.tenantId ?? null;
+
+    // RAG: search knowledge base for context relevant to the user's message
+    const [systemPromptBase, knowledgeContext] = await Promise.all([
+      buildSystemPrompt(),
+      searchKnowledgeBase(content.trim(), tenantId),
+    ]);
+    const systemPrompt = knowledgeContext
+      ? `${systemPromptBase}\n\n${knowledgeContext}`
+      : systemPromptBase;
 
     // Deduct 1 credit for this AI call
-    const tenantId = req.auth?.tenantId;
     if (tenantId) {
       const credit = await useCredit(tenantId);
       if (!credit.ok) {
