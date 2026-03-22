@@ -3,6 +3,8 @@ import { db, users } from '@workspace/db';
 import { dashboardsTable, dashboardShares } from '@workspace/db';
 import { userGroups, groupRoles } from '@workspace/db';
 import { eq, or, inArray, and } from 'drizzle-orm';
+import { anthropic } from '@workspace/integrations-anthropic-ai';
+import { useCredit } from '../lib/credits';
 
 export const dashboardsRouter = Router();
 
@@ -66,8 +68,8 @@ dashboardsRouter.get('/dashboards', async (req, res) => {
 dashboardsRouter.post('/dashboards', async (req, res) => {
   try {
     const { userId, tenantId } = getAuth(req);
-    const { name = 'My Dashboard', widgets = [] } = req.body;
-    const [row] = await db.insert(dashboardsTable).values({ name, widgets, createdBy: userId, tenantId }).returning();
+    const { name = 'My Dashboard', widgets = [], aiPrompt = '' } = req.body;
+    const [row] = await db.insert(dashboardsTable).values({ name, widgets, aiPrompt, createdBy: userId, tenantId }).returning();
     res.status(201).json({ ...row, isOwner: true, canEdit: true, shares: [] });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -83,10 +85,11 @@ dashboardsRouter.patch('/dashboards/:id', async (req, res) => {
     const shares = await db.select().from(dashboardShares).where(eq(dashboardShares.dashboardId, id));
     const canEdit = isOwner || role === 'admin' || shares.some(s => s.canEdit && s.sharedWithUserId === userId);
     if (!canEdit) return res.status(403).json({ error: 'No edit access' });
-    const { name, widgets } = req.body;
+    const { name, widgets, aiPrompt } = req.body;
     const updates: any = { updatedAt: new Date() };
     if (name !== undefined) updates.name = name;
     if (widgets !== undefined) updates.widgets = widgets;
+    if (aiPrompt !== undefined) updates.aiPrompt = aiPrompt;
     const [updated] = await db.update(dashboardsTable).set(updates).where(eq(dashboardsTable.id, id)).returning();
     res.json(updated);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -131,4 +134,98 @@ dashboardsRouter.put('/dashboards/:id/shares', async (req, res) => {
     const result = await db.select().from(dashboardShares).where(eq(dashboardShares.dashboardId, id));
     res.json(result);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+const PRESET_OPTIONS = [
+  { id: 'summary',         label: 'Process Summary',               description: 'Portfolio totals and category counts' },
+  { id: 'categories',      label: 'Category Breakdown',            description: 'Processes by category (clickable to map)' },
+  { id: 'performance',     label: 'Performance Overview',          description: 'KPI, Target and Actual per process' },
+  { id: 'ai-agents',       label: 'AI Agent Map',                  description: 'AI agents assigned across processes' },
+  { id: 'value-impact',    label: 'Value Impact',                  description: 'Processes with value impact data' },
+  { id: 'recent-activity', label: 'Recent Activity',               description: 'Latest audit log entries' },
+];
+
+const CHART_METRIC_OPTIONS = [
+  { id: 'processes-by-category',  label: 'Processes by Category',             charts: ['bar','horizontal-bar','line','area','pie','donut'] },
+  { id: 'portfolio-status',       label: 'Portfolio Status (in/out)',          charts: ['donut','pie','bar'] },
+  { id: 'ai-agent-distribution',  label: 'AI Agent Distribution',             charts: ['horizontal-bar','bar','pie','donut'] },
+  { id: 'data-completeness',      label: 'Data Completeness by Category',     charts: ['bar','horizontal-bar'] },
+  { id: 'governance-coverage',    label: 'Governance Coverage',               charts: ['donut','pie'] },
+  { id: 'kpi-coverage',           label: 'KPI Coverage',                      charts: ['pie','donut','bar'] },
+  { id: 'target-coverage',        label: 'Target Coverage',                   charts: ['pie','donut','bar'] },
+  { id: 'value-impact-coverage',  label: 'Value Impact Coverage',             charts: ['pie','donut'] },
+  { id: 'category-portfolio',     label: 'Included vs Excluded by Category',  charts: ['bar'] },
+  { id: 'audit-by-action',        label: 'Activity by Action Type',           charts: ['bar','horizontal-bar'] },
+];
+
+dashboardsRouter.post('/dashboards/ai-generate', async (req, res) => {
+  try {
+    const { tenantId } = getAuth(req);
+    const { prompt } = req.body as { prompt: string };
+    if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) return res.status(402).json({ error: 'Insufficient credits.' });
+    }
+
+    const presetList  = PRESET_OPTIONS.map(p => `- ${p.id}: ${p.label} — ${p.description}`).join('\n');
+    const metricList  = CHART_METRIC_OPTIONS.map(m => `- ${m.id}: ${m.label} (charts: ${m.charts.join(', ')})`).join('\n');
+
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 700,
+      messages: [{
+        role: 'user',
+        content: `You are helping a user configure a business process dashboard. Based on their request, select the best combination of preset panels and chart widgets to show.
+
+Available preset panels (use exact id values):
+${presetList}
+
+Available chart metrics (use exact id values, choose first listed chart type as default):
+${metricList}
+
+User request: "${prompt}"
+
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "name": "Dashboard name (concise, max 50 chars)",
+  "description": "One sentence describing what this dashboard shows",
+  "presets": ["preset-id1", "preset-id2"],
+  "charts": [
+    { "metric": "metric-id", "chartType": "bar", "title": "Chart title" }
+  ]
+}
+
+Choose 2-5 total items (presets + charts combined). Always use exact id values from the lists above.`,
+      }],
+    });
+
+    const text = message.content.map((c: any) => c.type === 'text' ? c.text : '').join('').trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: 'AI returned invalid response' });
+
+    const config = JSON.parse(jsonMatch[0]) as {
+      name: string;
+      description: string;
+      presets: string[];
+      charts: { metric: string; chartType: string; title: string }[];
+    };
+
+    const validPresets = new Set(PRESET_OPTIONS.map(p => p.id));
+    const validMetrics = new Set(CHART_METRIC_OPTIONS.map(m => m.id));
+    const validChartTypes = new Set(['bar','horizontal-bar','line','area','pie','donut']);
+
+    const safePresets = (config.presets ?? []).filter(p => validPresets.has(p));
+    const safeCharts  = (config.charts  ?? []).filter(c => validMetrics.has(c.metric) && validChartTypes.has(c.chartType));
+
+    res.json({
+      name:        config.name        ?? '',
+      description: config.description ?? '',
+      presets:     safePresets,
+      charts:      safeCharts,
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message ?? 'AI generation failed' });
+  }
 });

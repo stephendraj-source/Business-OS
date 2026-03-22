@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
-  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2, Copy, Sparkles,
+  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2, Copy, Sparkles, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
@@ -749,6 +749,7 @@ type CustomReportDef = {
   name: string;
   description: string;
   fields: string[];
+  aiPrompt: string;
   createdAt: string;
   isOwner?: boolean;
   canEdit?: boolean;
@@ -909,19 +910,34 @@ function CustomReport({ report, processes, sortKey, sortDir, onSortChange, onRow
   );
 }
 
-function NewReportModal({ onClose, onCreate }: {
+function ReportSemanticDescription({ fields }: { fields: string[] }) {
+  const labels = fields.map(k => CUSTOM_REPORT_ALL_FIELDS.find(f => f.key === k)?.label ?? k);
+  if (labels.length === 0) return null;
+  return (
+    <div className="rounded-xl bg-secondary/40 border border-border px-3 py-2.5 text-xs">
+      <span className="font-semibold text-foreground">Read-only query: </span>
+      <span className="text-muted-foreground">
+        Table showing {labels.length} column{labels.length !== 1 ? 's' : ''}: {labels.join(', ')}.
+      </span>
+    </div>
+  );
+}
+
+function NewReportModal({ onClose, onCreate, initialValues, isEdit }: {
   onClose: () => void;
-  onCreate: (name: string, description: string, fields: string[]) => void;
+  onCreate: (name: string, description: string, fields: string[], aiPrompt: string) => void;
+  initialValues?: { name: string; description: string; fields: string[]; aiPrompt: string };
+  isEdit?: boolean;
 }) {
   const { fetchHeaders } = useUser();
-  const [mode, setMode] = useState<'ai' | 'manual'>('ai');
-  const [prompt, setPrompt] = useState('');
+  const [mode, setMode] = useState<'ai' | 'manual'>(initialValues?.aiPrompt ? 'ai' : (isEdit ? 'manual' : 'ai'));
+  const [prompt, setPrompt] = useState(initialValues?.aiPrompt ?? '');
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedFields, setSelectedFields] = useState<string[]>(['processId', 'category', 'processName', 'description']);
-  const [aiConfigured, setAiConfigured] = useState(false);
+  const [name, setName] = useState(initialValues?.name ?? '');
+  const [description, setDescription] = useState(initialValues?.description ?? '');
+  const [selectedFields, setSelectedFields] = useState<string[]>(initialValues?.fields ?? ['processId', 'category', 'processName', 'description']);
+  const [aiConfigured, setAiConfigured] = useState(isEdit && !!initialValues?.name);
 
   function toggleField(key: string) {
     setSelectedFields(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
@@ -929,7 +945,7 @@ function NewReportModal({ onClose, onCreate }: {
 
   function handleCreate() {
     if (!name.trim() || selectedFields.length === 0) return;
-    onCreate(name.trim(), description.trim(), selectedFields);
+    onCreate(name.trim(), description.trim(), selectedFields, mode === 'ai' ? prompt.trim() : '');
   }
 
   async function handleGenerate() {
@@ -962,8 +978,8 @@ function NewReportModal({ onClose, onCreate }: {
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border flex-none">
           <div>
-            <h3 className="font-display font-bold text-lg">New Custom Report</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Describe what you want or configure manually</p>
+            <h3 className="font-display font-bold text-lg">{isEdit ? 'Edit Report' : 'New Custom Report'}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{isEdit ? 'Update the report name, columns or AI prompt' : 'Describe what you want or configure manually'}</p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded-lg hover:bg-secondary">
             <X className="w-5 h-5" />
@@ -1096,6 +1112,11 @@ function NewReportModal({ onClose, onCreate }: {
           )}
         </div>
 
+        {(mode === 'manual' || aiConfigured) && selectedFields.length > 0 && (
+          <div className="px-5 pb-1 flex-none">
+            <ReportSemanticDescription fields={selectedFields} />
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2 p-4 border-t border-border flex-none">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
           {(mode === 'manual' || aiConfigured) && (
@@ -1104,7 +1125,7 @@ function NewReportModal({ onClose, onCreate }: {
               disabled={!name.trim() || selectedFields.length === 0}
               className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
             >
-              Create Report
+              {isEdit ? 'Update Report' : 'Create Report'}
             </button>
           )}
         </div>
@@ -1122,6 +1143,7 @@ export function ReportsView() {
   const [customReports, setCustomReports] = useState<CustomReportDef[]>([]);
   const [customReportsLoading, setCustomReportsLoading] = useState(true);
   const [showNewReport, setShowNewReport] = useState(false);
+  const [editingReport, setEditingReport] = useState<CustomReportDef | null>(null);
   const [sharingReportId, setSharingReportId] = useState<number | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1142,6 +1164,7 @@ export function ReportsView() {
           name: r.title,
           description: r.description ?? '',
           fields: r.fields ?? [],
+          aiPrompt: r.aiPrompt ?? '',
           createdAt: r.createdAt ?? new Date().toISOString(),
           isOwner: r.isOwner,
           canEdit: r.canEdit,
@@ -1231,12 +1254,12 @@ export function ReportsView() {
     updateFields([...DEFAULT_ACTIVE[activeReport as ReportId]]);
   }
 
-  async function createCustomReport(name: string, description: string, fields: string[]) {
+  async function createCustomReport(name: string, description: string, fields: string[], aiPrompt: string) {
     try {
       const res = await fetch(`${API}/reports`, {
         method: 'POST',
         headers: fetchHeaders(),
-        body: JSON.stringify({ title: name, description, fields }),
+        body: JSON.stringify({ title: name, description, fields, aiPrompt }),
       });
       if (!res.ok) return;
       const r = await res.json();
@@ -1245,6 +1268,7 @@ export function ReportsView() {
         name: r.title,
         description: r.description ?? '',
         fields: r.fields ?? [],
+        aiPrompt: r.aiPrompt ?? '',
         createdAt: r.createdAt ?? new Date().toISOString(),
         isOwner: true,
         canEdit: true,
@@ -1253,7 +1277,29 @@ export function ReportsView() {
       setCustomReports(prev => [...prev, newReport]);
       setActiveReport(String(r.id));
       setShowNewReport(false);
+      setEditingReport(null);
       setShowFieldPanel(false);
+    } catch { /* ignore */ }
+  }
+
+  async function updateCustomReport(id: number, name: string, description: string, fields: string[], aiPrompt: string) {
+    try {
+      const res = await fetch(`${API}/reports/${id}`, {
+        method: 'PATCH',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ title: name, description, fields, aiPrompt }),
+      });
+      if (!res.ok) return;
+      const r = await res.json();
+      setCustomReports(prev => prev.map(rep => rep.id === id ? {
+        ...rep,
+        name: r.title ?? name,
+        description: r.description ?? description,
+        fields: r.fields ?? fields,
+        aiPrompt: r.aiPrompt ?? aiPrompt,
+      } : rep));
+      setEditingReport(null);
+      setShowNewReport(false);
     } catch { /* ignore */ }
   }
 
@@ -1270,7 +1316,7 @@ export function ReportsView() {
       const res = await fetch(`${API}/reports`, {
         method: 'POST',
         headers: fetchHeaders(),
-        body: JSON.stringify({ title: `Copy of ${r.name}`, description: r.description, fields: r.fields }),
+        body: JSON.stringify({ title: `Copy of ${r.name}`, description: r.description, fields: r.fields, aiPrompt: r.aiPrompt }),
       });
       if (!res.ok) return;
       const data = await res.json();
@@ -1279,6 +1325,7 @@ export function ReportsView() {
         name: data.title,
         description: data.description ?? '',
         fields: data.fields ?? [],
+        aiPrompt: data.aiPrompt ?? '',
         createdAt: data.createdAt ?? new Date().toISOString(),
         isOwner: true,
         canEdit: true,
@@ -1503,6 +1550,15 @@ export function ReportsView() {
                     </div>
                   </button>
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex opacity-0 group-hover:opacity-100 transition-all">
+                    {r.canEdit && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditingReport(r); }}
+                        title="Edit report"
+                        className="text-muted-foreground/40 hover:text-primary transition-colors p-1 rounded"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     <button
                       onClick={e => { e.stopPropagation(); setSharingReportId(r.id); }}
                       title="Share report"
@@ -1789,8 +1845,20 @@ export function ReportsView() {
           onClose={() => setDetailGroup(null)}
         />
       )}
-      {showNewReport && (
-        <NewReportModal onClose={() => setShowNewReport(false)} onCreate={createCustomReport} />
+      {(showNewReport || editingReport) && (
+        <NewReportModal
+          onClose={() => { setShowNewReport(false); setEditingReport(null); }}
+          onCreate={editingReport
+            ? (name, desc, fields, aiPrompt) => updateCustomReport(editingReport.id, name, desc, fields, aiPrompt)
+            : createCustomReport}
+          initialValues={editingReport ? {
+            name: editingReport.name,
+            description: editingReport.description,
+            fields: editingReport.fields,
+            aiPrompt: editingReport.aiPrompt,
+          } : undefined}
+          isEdit={!!editingReport}
+        />
       )}
       {sharingReport && (
         <ShareModal

@@ -5,6 +5,7 @@ import {
   Cpu, TrendingUp, Loader2, FileText, PieChart as PieChartIcon,
   LineChart as LineChartIcon, AreaChart as AreaChartIcon, Settings2,
   AlignLeft, Layers, GripVertical, ExternalLink, Search, ChevronDown, Clock, Share2, ChevronRight,
+  Sparkles, RotateCcw, Pencil, SlidersHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -1026,12 +1027,198 @@ function DashboardDrillPanel({ title, processes, onClose, onOpenProcess }: {
   );
 }
 
+// ─── Dashboard semantic description ─────────────────────────────────────────
+
+function DashboardSemanticDescription({ widgets }: { widgets: WidgetConfig[] }) {
+  const active = widgets.filter(w => w.active);
+  if (active.length === 0) return null;
+  const labels = active.map(w => {
+    if (w.kind === 'preset') return PRESET_REGISTRY.find(r => r.id === w.id)?.title ?? w.id;
+    return w.title;
+  });
+  return (
+    <div className="rounded-xl bg-secondary/40 border border-border px-3 py-2.5 text-xs">
+      <span className="font-semibold text-foreground">Read-only layout: </span>
+      <span className="text-muted-foreground">
+        {labels.length} widget{labels.length !== 1 ? 's' : ''}: {labels.join(', ')}.
+      </span>
+    </div>
+  );
+}
+
+// ─── New / Edit Dashboard Modal ──────────────────────────────────────────────
+
+function DashboardModal({
+  onClose,
+  onSave,
+  fetchHeaders,
+  initialValues,
+  isEdit,
+}: {
+  onClose: () => void;
+  onSave: (name: string, widgets?: WidgetConfig[], aiPrompt?: string) => void;
+  fetchHeaders: () => Record<string, string>;
+  initialValues?: { name: string; aiPrompt: string; widgets: WidgetConfig[] };
+  isEdit?: boolean;
+}) {
+  const [mode, setMode] = useState<'ai' | 'manual'>(initialValues?.aiPrompt ? 'ai' : (isEdit ? 'manual' : 'ai'));
+  const [prompt, setPrompt] = useState(initialValues?.aiPrompt ?? '');
+  const [name, setName] = useState(initialValues?.name ?? '');
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<{ presets: string[]; charts: { metric: string; chartType: string; title: string }[]; description: string } | null>(null);
+  const [previewWidgets, setPreviewWidgets] = useState<WidgetConfig[]>(initialValues?.widgets ?? []);
+  const [aiConfigured, setAiConfigured] = useState(isEdit && !!initialValues?.name);
+
+  function buildWidgets(presets: string[], charts: { metric: string; chartType: string; title: string }[]): WidgetConfig[] {
+    const allDefault = buildDefaults();
+    const widgetsOut: WidgetConfig[] = [];
+    for (const preset of presets) {
+      const found = allDefault.find(w => w.kind === 'preset' && w.id === preset);
+      widgetsOut.push(found ? { ...found, active: true } : { kind: 'preset', uid: uid(), id: preset, active: true });
+    }
+    for (const chart of charts) {
+      widgetsOut.push({ kind: 'chart', uid: uid(), metric: chart.metric, chartType: chart.chartType as any, title: chart.title, active: true });
+    }
+    const remainingDefaults = allDefault.filter(w =>
+      w.kind === 'preset' && !presets.includes((w as any).id)
+    ).map(w => ({ ...w, active: false }));
+    return [...widgetsOut, ...remainingDefaults];
+  }
+
+  async function handleGenerate() {
+    if (!prompt.trim()) return;
+    setGenerating(true);
+    setGenError(null);
+    try {
+      const r = await fetch('/api/dashboards/ai-generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ prompt: prompt.trim() }),
+      });
+      const data = await r.json();
+      if (!r.ok) { setGenError(data.error ?? 'Generation failed'); return; }
+      if (!name.trim() && data.name) setName(data.name);
+      setAiResult(data);
+      const built = buildWidgets(data.presets ?? [], data.charts ?? []);
+      setPreviewWidgets(built);
+      setAiConfigured(true);
+    } catch {
+      setGenError('Network error — please try again');
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  function handleSave() {
+    if (!name.trim()) return;
+    if (isEdit) {
+      onSave(name.trim(), undefined, mode === 'ai' ? prompt.trim() : '');
+    } else if (aiConfigured && mode === 'ai') {
+      onSave(name.trim(), previewWidgets, prompt.trim());
+    } else {
+      onSave(name.trim());
+    }
+  }
+
+  const showDetails = mode === 'manual' || aiConfigured;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-border flex-none">
+          <div>
+            <h3 className="font-display font-bold text-lg">{isEdit ? 'Edit Dashboard' : 'New Dashboard'}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{isEdit ? 'Rename or update the AI prompt for this dashboard' : 'Describe what you want or start from defaults'}</p>
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-secondary">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex gap-1 p-3 border-b border-border flex-none bg-secondary/20">
+          <button onClick={() => setMode('ai')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all", mode === 'ai' ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
+            <Sparkles className="w-3.5 h-3.5" />Ask AI
+          </button>
+          <button onClick={() => setMode('manual')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all", mode === 'manual' ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
+            <SlidersHorizontal className="w-3.5 h-3.5" />Manual
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {mode === 'ai' && (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Describe your dashboard</label>
+                <p className="text-xs text-muted-foreground mt-0.5 mb-2">Tell the AI what you want to visualize. It will pick the right charts and panels.</p>
+                <textarea
+                  autoFocus={!isEdit}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  placeholder={`e.g. "Show KPI coverage and AI agent distribution"\n"A board-level view with value impact and portfolio status"\n"Operations overview with recent activity and data completeness"`}
+                  rows={4}
+                  className="w-full px-3 py-2.5 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 resize-none"
+                />
+              </div>
+              {genError && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">{genError}</p>}
+              <button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || generating}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+              >
+                {generating ? <><RotateCcw className="w-4 h-4 animate-spin" />{isEdit ? 'Regenerating…' : 'Generating…'}</> : <><Sparkles className="w-4 h-4" />{isEdit ? 'Regenerate Layout' : 'Generate Dashboard Layout'}</>}
+              </button>
+              {aiResult && !generating && (
+                <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
+                  <span className="font-semibold text-primary">AI suggestion: </span>{aiResult.description}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dashboard Name *</label>
+            <input
+              autoFocus={mode === 'manual'}
+              value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSave(); if (e.key === 'Escape') onClose(); }}
+              placeholder="e.g. Operations Overview"
+              className="mt-1.5 w-full px-3 py-2 rounded-xl border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          {showDetails && previewWidgets.length > 0 && !isEdit && (
+            <DashboardSemanticDescription widgets={previewWidgets} />
+          )}
+
+          {isEdit && initialValues && (
+            <DashboardSemanticDescription widgets={initialValues.widgets} />
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-border flex-none">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-xl text-muted-foreground hover:bg-secondary transition-colors">Cancel</button>
+          <button
+            onClick={handleSave}
+            disabled={!name.trim() || (!isEdit && mode === 'ai' && !aiConfigured)}
+            className="px-4 py-2 text-sm rounded-xl bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            {isEdit ? 'Save Changes' : (mode === 'manual' ? 'Create Dashboard' : 'Create Dashboard')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 type DashboardRecord = {
   id: number;
   name: string;
   widgets: WidgetConfig[];
+  aiPrompt?: string;
   isOwner?: boolean;
   canEdit?: boolean;
   shares?: unknown[];
@@ -1052,8 +1239,8 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
   const [dragOver, setDragOver] = useState(false);
   const [showDashboardSelector, setShowDashboardSelector] = useState(false);
   const [showSharingModal, setShowSharingModal] = useState(false);
-  const [newDashboardName, setNewDashboardName] = useState('');
-  const [creatingDashboard, setCreatingDashboard] = useState(false);
+  const [showNewDashboardModal, setShowNewDashboardModal] = useState(false);
+  const [editingDashboard, setEditingDashboard] = useState<DashboardRecord | null>(null);
   const dragUid = useRef<string | null>(null);
   const [drillDown, setDrillDown] = useState<{ title: string; processes: Process[] } | null>(null);
   const [drillProcess, setDrillProcess] = useState<Process | null>(null);
@@ -1074,6 +1261,7 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
           id: d.id,
           name: d.name,
           widgets: Array.isArray(d.widgets) && d.widgets.length > 0 ? d.widgets as WidgetConfig[] : buildDefaults(),
+          aiPrompt: d.aiPrompt ?? '',
           isOwner: d.isOwner,
           canEdit: d.canEdit,
           shares: d.shares ?? [],
@@ -1124,24 +1312,35 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
     }, 1000);
   }, [activeDashboardId, fetchHeaders]);
 
-  async function createDashboard(name: string) {
+  async function createDashboard(name: string, initialWidgets?: WidgetConfig[], aiPrompt?: string) {
     if (!name.trim()) return;
-    setCreatingDashboard(true);
     try {
+      const widgets = initialWidgets ?? buildDefaults();
       const res = await fetch(`${API}/dashboards`, {
         method: 'POST',
         headers: fetchHeaders(),
-        body: JSON.stringify({ name: name.trim(), widgets: buildDefaults() }),
+        body: JSON.stringify({ name: name.trim(), widgets, aiPrompt: aiPrompt ?? '' }),
       });
       const created = await res.json();
-      const newDB: DashboardRecord = { id: created.id, name: created.name, widgets: buildDefaults(), isOwner: true, canEdit: true, shares: [] };
+      const newDB: DashboardRecord = { id: created.id, name: created.name, widgets, aiPrompt: created.aiPrompt ?? '', isOwner: true, canEdit: true, shares: [] };
       setDashboards(prev => [...prev, newDB]);
       setActiveDashboardId(newDB.id);
-      setNewDashboardName('');
+      setWidgets(widgets);
       setShowDashboardSelector(false);
-    } catch { /* ignore */ } finally {
-      setCreatingDashboard(false);
-    }
+      setShowNewDashboardModal(false);
+    } catch { /* ignore */ }
+  }
+
+  async function updateDashboardMeta(id: number, name: string, aiPrompt: string) {
+    try {
+      await fetch(`${API}/dashboards/${id}`, {
+        method: 'PATCH',
+        headers: fetchHeaders(),
+        body: JSON.stringify({ name, aiPrompt }),
+      });
+      setDashboards(prev => prev.map(d => d.id === id ? { ...d, name, aiPrompt } : d));
+      setEditingDashboard(null);
+    } catch { /* ignore */ }
   }
 
   async function deleteDashboard(id: number) {
@@ -1248,23 +1447,23 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
                     {d.id === activeDashboardId && <ChevronRight className="w-3.5 h-3.5" />}
                   </button>
                 ))}
-                <div className="border-t border-border p-2">
-                  <div className="flex gap-1.5">
-                    <input
-                      value={newDashboardName}
-                      onChange={e => setNewDashboardName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') createDashboard(newDashboardName); }}
-                      placeholder="New dashboard name…"
-                      className="flex-1 min-w-0 px-2 py-1.5 text-xs border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-primary/40"
-                    />
+                <div className="border-t border-border p-2 space-y-1">
+                  <button
+                    onClick={() => { setShowDashboardSelector(false); setShowNewDashboardModal(true); }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors border border-dashed border-border hover:border-primary/40"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    New Dashboard…
+                  </button>
+                  {activeDashboard?.canEdit && (
                     <button
-                      onClick={() => createDashboard(newDashboardName)}
-                      disabled={!newDashboardName.trim() || creatingDashboard}
-                      className="px-2.5 py-1.5 bg-primary text-primary-foreground text-xs rounded-lg hover:bg-primary/90 disabled:opacity-40 transition-all"
+                      onClick={() => { setShowDashboardSelector(false); setEditingDashboard(activeDashboard); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Pencil className="w-3.5 h-3.5" />
+                      Edit "{activeDashboard.name}"
                     </button>
-                  </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1462,6 +1661,26 @@ export function DashboardsView({ onNavigateToProcessMap }: DashboardsViewProps) 
 
       {showAdd && <div className="fixed inset-0 z-20" onClick={() => { setShowAdd(false); setAddMode('picker'); }} />}
       {showDashboardSelector && <div className="fixed inset-0 z-30" onClick={() => setShowDashboardSelector(false)} />}
+
+      {/* New Dashboard Modal */}
+      {showNewDashboardModal && (
+        <DashboardModal
+          onClose={() => setShowNewDashboardModal(false)}
+          onSave={(name, widgets, aiPrompt) => createDashboard(name, widgets, aiPrompt)}
+          fetchHeaders={fetchHeaders}
+        />
+      )}
+
+      {/* Edit Dashboard Modal */}
+      {editingDashboard && (
+        <DashboardModal
+          onClose={() => setEditingDashboard(null)}
+          onSave={(name, _widgets, aiPrompt) => updateDashboardMeta(editingDashboard.id, name, aiPrompt ?? '')}
+          fetchHeaders={fetchHeaders}
+          initialValues={{ name: editingDashboard.name, aiPrompt: editingDashboard.aiPrompt ?? '', widgets: editingDashboard.widgets }}
+          isEdit
+        />
+      )}
 
       {/* Share Dashboard Modal */}
       {showSharingModal && activeDashboard && (

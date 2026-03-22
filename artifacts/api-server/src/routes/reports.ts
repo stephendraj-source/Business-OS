@@ -68,9 +68,9 @@ reportsRouter.get('/reports', async (req, res) => {
 reportsRouter.post('/reports', async (req, res) => {
   try {
     const { userId, tenantId } = getAuth(req);
-    const { title, description = '', type = 'table', fields = [] } = req.body;
+    const { title, description = '', type = 'table', fields = [], aiPrompt = '' } = req.body;
     if (!title) return res.status(400).json({ error: 'title is required' });
-    const [row] = await db.insert(customReportsTable).values({ title, description, type, fields, createdBy: userId, tenantId }).returning();
+    const [row] = await db.insert(customReportsTable).values({ title, description, type, fields, aiPrompt, createdBy: userId, tenantId }).returning();
     res.status(201).json({ ...row, isOwner: true, canEdit: true, shares: [] });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -87,12 +87,13 @@ reportsRouter.patch('/reports/:id', async (req, res) => {
     const shares = await db.select().from(reportShares).where(eq(reportShares.reportId, id));
     const canEdit = isOwner || role === 'admin' || shares.some(s => s.canEdit && s.sharedWithUserId === userId);
     if (!canEdit) return res.status(403).json({ error: 'No edit access' });
-    const { title, description, type, fields } = req.body;
+    const { title, description, type, fields, aiPrompt } = req.body;
     const updates: any = { updatedAt: new Date() };
     if (title !== undefined) updates.title = title;
     if (description !== undefined) updates.description = description;
     if (type !== undefined) updates.type = type;
     if (fields !== undefined) updates.fields = fields;
+    if (aiPrompt !== undefined) updates.aiPrompt = aiPrompt;
     const [updated] = await db.update(customReportsTable).set(updates).where(eq(customReportsTable.id, id)).returning();
     res.json(updated);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
