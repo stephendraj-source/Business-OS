@@ -955,3 +955,76 @@ orgRouter.delete('/org/task-queues/:id', async (req, res) => {
     res.json({ ok: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
+
+// ── Activity Modes (configurable) ─────────────────────────────────────────────
+
+const DEFAULT_ACTIVITY_MODES = [
+  { name: 'Phone',        color: '#3b82f6', icon: 'phone',          description: 'Phone calls and voice communications' },
+  { name: 'Email',        color: '#8b5cf6', icon: 'mail',           description: 'Email communications' },
+  { name: 'Social Media', color: '#ec4899', icon: 'share2',         description: 'Social media interactions' },
+  { name: 'SMS',          color: '#eab308', icon: 'message-square', description: 'SMS text messages' },
+  { name: 'WhatsApp',     color: '#22c55e', icon: 'message-circle', description: 'WhatsApp messages' },
+  { name: 'Document',     color: '#f97316', icon: 'file-text',      description: 'Document-based activities' },
+  { name: 'Database',     color: '#06b6d4', icon: 'database',       description: 'Database operations' },
+  { name: 'BusinessOS',   color: '#6366f1', icon: 'box',            description: 'Internal BusinessOS activities' },
+  { name: 'Others',       color: '#94a3b8', icon: 'more-horizontal', description: 'Other activity types' },
+];
+
+orgRouter.get('/org/activity-modes', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const rows = await db.execute(
+      sql`SELECT * FROM activity_modes WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY id`
+    );
+    let items = rows.rows as any[];
+    if (items.length === 0) {
+      for (const m of DEFAULT_ACTIVITY_MODES) {
+        await db.execute(
+          sql`INSERT INTO activity_modes (tenant_id, name, color, icon, description) VALUES (${tenantId}, ${m.name}, ${m.color}, ${m.icon}, ${m.description})`
+        );
+      }
+      const seeded = await db.execute(
+        sql`SELECT * FROM activity_modes WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY id`
+      );
+      items = seeded.rows as any[];
+    }
+    res.json(items);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/activity-modes', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '#94a3b8', icon = 'activity' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const rows = await db.execute(
+      sql`INSERT INTO activity_modes (tenant_id, name, color, icon, description) VALUES (${tenantId}, ${name.trim()}, ${color}, ${icon}, ${description.trim()}) RETURNING *`
+    );
+    res.status(201).json((rows.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/activity-modes/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color, icon } = req.body;
+    const existing = await db.execute(sql`SELECT * FROM activity_modes WHERE id = ${id} LIMIT 1`);
+    const row = (existing.rows as any[])[0];
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const newName  = name        !== undefined ? name.trim()        : row.name;
+    const newDesc  = description !== undefined ? description.trim() : row.description;
+    const newColor = color       !== undefined ? color              : row.color;
+    const newIcon  = icon        !== undefined ? icon               : row.icon;
+    const updated  = await db.execute(
+      sql`UPDATE activity_modes SET name = ${newName}, description = ${newDesc}, color = ${newColor}, icon = ${newIcon} WHERE id = ${id} RETURNING *`
+    );
+    res.json((updated.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/activity-modes/:id', async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM activity_modes WHERE id = ${parseInt(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});

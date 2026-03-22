@@ -1,31 +1,44 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, Pencil, Trash2, Phone, Mail, Share2, MessageSquare, MessageCircle,
+  Plus, Trash2, Phone, Mail, Share2, MessageSquare, MessageCircle,
   FileText, Database, Box, MoreHorizontal, Search, X, ChevronRight, Link2,
-  Unlink, Activity,
+  Unlink, Activity, Loader2,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
 
-const MODES = [
-  { value: 'phone',        label: 'Phone',        icon: Phone,         color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300' },
-  { value: 'email',        label: 'Email',        icon: Mail,          color: 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300' },
-  { value: 'social media', label: 'Social Media', icon: Share2,        color: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300' },
-  { value: 'sms',          label: 'SMS',          icon: MessageSquare, color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300' },
-  { value: 'whatsapp',     label: 'WhatsApp',     icon: MessageCircle, color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300' },
-  { value: 'document',     label: 'Document',     icon: FileText,      color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300' },
-  { value: 'database',     label: 'Database',     icon: Database,      color: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300' },
-  { value: 'businessos',   label: 'BusinessOS',   icon: Box,           color: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300' },
-  { value: 'others',       label: 'Others',       icon: MoreHorizontal,color: 'bg-secondary text-secondary-foreground' },
-] as const;
+// Icon lookup: maps icon slug stored in DB → Lucide component
+const ICON_MAP: Record<string, LucideIcon> = {
+  'phone':          Phone,
+  'mail':           Mail,
+  'share2':         Share2,
+  'message-square': MessageSquare,
+  'message-circle': MessageCircle,
+  'file-text':      FileText,
+  'database':       Database,
+  'box':            Box,
+  'more-horizontal': MoreHorizontal,
+  'activity':       Activity,
+};
 
-type ActivityMode = typeof MODES[number]['value'];
+function getIcon(slug: string): LucideIcon {
+  return ICON_MAP[slug] ?? Activity;
+}
+
+// Dynamic mode type (loaded from API)
+interface ActivityModeConfig {
+  id: number;
+  name: string;
+  description: string;
+  color: string;
+  icon: string;
+}
 
 interface ActivityRow {
   id: number;
@@ -46,26 +59,34 @@ interface Process {
   category: string;
 }
 
-function getModeInfo(value: string) {
-  return MODES.find(m => m.value === value) ?? MODES[MODES.length - 1];
-}
-
 function parseModes(mode: string): string[] {
   return mode ? mode.split(',').map(s => s.trim()).filter(Boolean) : [];
 }
 
-function ModeBadge({ mode }: { mode: string }) {
-  const modes = parseModes(mode);
-  if (modes.length === 0) return null;
+function hexToRgb(hex: string) {
+  const m = hex.replace('#', '').match(/.{2}/g);
+  if (!m) return '148,163,184';
+  return m.map(x => parseInt(x, 16)).join(',');
+}
+
+function ModeBadge({ mode, modes }: { mode: string; modes: ActivityModeConfig[] }) {
+  const modeNames = parseModes(mode);
+  if (modeNames.length === 0) return null;
   return (
     <span className="inline-flex flex-wrap gap-1">
-      {modes.map(mv => {
-        const info = getModeInfo(mv);
-        const Icon = info.icon;
+      {modeNames.map(mv => {
+        const cfg = modes.find(m => m.name.toLowerCase() === mv.toLowerCase()) ?? modes[modes.length - 1];
+        const Icon = cfg ? getIcon(cfg.icon) : Activity;
+        const color = cfg?.color ?? '#94a3b8';
+        const rgb = hexToRgb(color);
         return (
-          <span key={mv} className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', info.color)}>
+          <span
+            key={mv}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium"
+            style={{ backgroundColor: `rgba(${rgb},0.15)`, color, border: `1px solid rgba(${rgb},0.3)` }}
+          >
             <Icon className="w-3 h-3" />
-            {info.label}
+            {cfg?.name ?? mv}
           </span>
         );
       })}
@@ -73,33 +94,42 @@ function ModeBadge({ mode }: { mode: string }) {
   );
 }
 
-function ModeSelector({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  function toggle(mv: string) {
-    if (value.includes(mv)) {
-      onChange(value.filter(v => v !== mv));
+function ModeSelector({ value, onChange, modes }: { value: string[]; onChange: (v: string[]) => void; modes: ActivityModeConfig[] }) {
+  function toggle(name: string) {
+    if (value.includes(name)) {
+      onChange(value.filter(v => v !== name));
     } else {
-      onChange([...value, mv]);
+      onChange([...value, name]);
     }
+  }
+  if (modes.length === 0) {
+    return <div className="flex items-center justify-center py-4 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin mr-2" />Loading modes…</div>;
   }
   return (
     <div className="grid grid-cols-3 gap-2">
-      {MODES.map(m => {
-        const Icon = m.icon;
-        const selected = value.includes(m.value);
+      {modes.map(m => {
+        const Icon = getIcon(m.icon);
+        const selected = value.includes(m.name);
+        const rgb = hexToRgb(m.color);
         return (
           <button
-            key={m.value}
+            key={m.id}
             type="button"
-            onClick={() => toggle(m.value)}
+            onClick={() => toggle(m.name)}
             className={cn(
               'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all',
               selected
-                ? 'border-primary bg-primary/10 text-primary font-medium'
+                ? 'font-medium'
                 : 'border-border hover:border-primary/40 hover:bg-secondary/50 text-muted-foreground',
             )}
+            style={selected ? {
+              borderColor: `rgba(${rgb},0.6)`,
+              backgroundColor: `rgba(${rgb},0.1)`,
+              color: m.color,
+            } : {}}
           >
             <Icon className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">{m.label}</span>
+            <span className="truncate">{m.name}</span>
           </button>
         );
       })}
@@ -114,9 +144,10 @@ export function ActivitiesView() {
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<ActivityRow | null>(null);
   const [creating, setCreating] = useState(false);
+  const [activityModes, setActivityModes] = useState<ActivityModeConfig[]>([]);
 
   const [editName, setEditName] = useState('');
-  const [editMode, setEditMode] = useState<string[]>(['others']);
+  const [editMode, setEditMode] = useState<string[]>([]);
   const [editDesc, setEditDesc] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -138,7 +169,14 @@ export function ActivitiesView() {
     }
   }, [fetchHeaders]);
 
-  useEffect(() => { loadActivities(); }, [loadActivities]);
+  const loadModes = useCallback(async () => {
+    try {
+      const r = await fetch(`${API}/org/activity-modes`, { headers: fetchHeaders() });
+      if (r.ok) setActivityModes(await r.json());
+    } catch {}
+  }, [fetchHeaders]);
+
+  useEffect(() => { loadActivities(); loadModes(); }, [loadActivities, loadModes]);
 
   function openActivity(a: ActivityRow) {
     setSelected(a);
@@ -313,7 +351,7 @@ export function ActivitiesView() {
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <ModeBadge mode={a.mode} />
+                      <ModeBadge mode={a.mode} modes={activityModes} />
                     </td>
                     <td className="px-2 py-3">
                       <button
@@ -344,7 +382,7 @@ export function ActivitiesView() {
                 <span className="text-xs text-muted-foreground font-mono">#{selected?.activityNumber}</span>
                 <ChevronRight className="w-3 h-3 text-muted-foreground" />
                 <span className="text-sm font-medium truncate flex-1">{selected?.name}</span>
-                <ModeBadge mode={selected?.mode ?? 'others'} />
+                <ModeBadge mode={selected?.mode ?? ''} modes={activityModes} />
               </>
             )}
             <div className="flex items-center gap-2 ml-auto">
@@ -377,7 +415,7 @@ export function ActivitiesView() {
             {/* Mode */}
             <div className="space-y-2">
               <label className="text-sm font-medium">Activity Mode</label>
-              <ModeSelector value={editMode} onChange={v => { setEditMode(v); setDirty(true); }} />
+              <ModeSelector value={editMode} onChange={v => { setEditMode(v); setDirty(true); }} modes={activityModes} />
             </div>
 
             {/* Description */}

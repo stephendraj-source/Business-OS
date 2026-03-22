@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -509,6 +509,12 @@ export function ConfigurationView() {
       icon: <Layers className="w-4 h-4" />,
       description: 'Define task queues for organising and routing tasks (e.g. General, Board Meetings)',
       endpoint: '/org/task-queues',
+    },
+    {
+      title: 'Activity Modes',
+      icon: <Activity className="w-4 h-4" />,
+      description: 'Define the communication modes available when logging activities (e.g. Phone, Email, WhatsApp)',
+      endpoint: '/org/activity-modes',
     },
   ];
 
