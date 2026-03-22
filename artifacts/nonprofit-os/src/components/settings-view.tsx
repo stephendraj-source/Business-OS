@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Settings, Palette, Check, Building2, Moon, Sun, Waves, Leaf, Flame } from 'lucide-react';
+import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getOrgName, saveOrgName } from '@/hooks/use-org-name';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface Theme {
@@ -220,8 +219,6 @@ const INDUSTRY_BLUEPRINTS = [
 export function SettingsView() {
   const { currentUser } = useAuth();
   const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('nonprofit-os-theme') ?? 'dark');
-  const [orgNameInput, setOrgNameInput] = useState(getOrgName);
-  const [orgNameSaved, setOrgNameSaved] = useState(false);
 
   useEffect(() => {
     loadSavedTheme();
@@ -230,12 +227,6 @@ export function SettingsView() {
   const handleThemeSelect = (themeId: string) => {
     setActiveTheme(themeId);
     applyTheme(themeId);
-  };
-
-  const handleOrgNameSave = () => {
-    saveOrgName(orgNameInput);
-    setOrgNameSaved(true);
-    setTimeout(() => setOrgNameSaved(false), 2000);
   };
 
   return (
@@ -250,48 +241,6 @@ export function SettingsView() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 max-w-3xl">
-
-        {/* Organisation Name */}
-        <section>
-          <div className="flex items-center gap-2 mb-4">
-            <Building2 className="w-5 h-5 text-primary" />
-            <h3 className="text-base font-semibold text-foreground">Organisation Name</h3>
-          </div>
-          <p className="text-sm text-muted-foreground mb-4">
-            This name appears in the sidebar header across your workspace.
-          </p>
-          <div className="flex gap-3 items-center">
-            <input
-              type="text"
-              value={orgNameInput}
-              onChange={e => setOrgNameInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleOrgNameSave()}
-              placeholder="e.g. Acme Foundation"
-              className="flex-1 max-w-xs px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-            <button
-              onClick={() => setOrgNameInput(getOrgName())}
-              className="px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200 border border-border text-muted-foreground hover:bg-secondary"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleOrgNameSave}
-              className={cn(
-                "px-4 py-2 text-sm rounded-lg font-medium transition-all duration-200",
-                orgNameSaved
-                  ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                  : "bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20"
-              )}
-            >
-              {orgNameSaved ? <span className="flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Saved</span> : 'Save'}
-            </button>
-          </div>
-          <p className="text-xs text-muted-foreground mt-3">Saved to this browser automatically.</p>
-        </section>
-
-        {/* Divider */}
-        <div className="border-t border-border" />
 
         {/* Colour Theme */}
         <section>
