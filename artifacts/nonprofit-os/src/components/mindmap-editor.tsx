@@ -120,6 +120,108 @@ function edgePath(src: MapNode, dst: MapNode): string {
   return `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`;
 }
 
+// ── Context Menu Component ────────────────────────────────────────────────────
+
+interface CtxMenuProps {
+  node: MapNode;
+  x: number;
+  y: number;
+  colorOpen: boolean;
+  onToggleColor: () => void;
+  onClose: () => void;
+  onRename: () => void;
+  onAddChild: () => void;
+  onAddSibling: () => void;
+  onDuplicate: () => void;
+  onChangeColor: (c: string) => void;
+  onCreateTask: () => void;
+  onUnlinkTask: () => void;
+  onDelete: () => void;
+}
+
+function CtxMenu({
+  node, x, y, colorOpen,
+  onToggleColor, onClose, onRename, onAddChild, onAddSibling,
+  onDuplicate, onChangeColor, onCreateTask, onUnlinkTask, onDelete,
+}: CtxMenuProps) {
+  const isTask = node.type === 'task';
+
+  const Item = ({
+    onClick, icon, label, cls = 'text-foreground hover:bg-secondary/70',
+  }: { onClick: () => void; icon: React.ReactNode; label: string; cls?: string }) => (
+    <button
+      onPointerDown={e => e.nativeEvent.stopImmediatePropagation()}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors text-left ${cls}`}
+    >
+      <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">{icon}</span>
+      {label}
+    </button>
+  );
+
+  const Sep = () => <div className="my-1 border-t border-border/60" />;
+
+  return (
+    <div
+      className="fixed z-[200] bg-popover border border-border rounded-xl shadow-2xl py-1.5 min-w-[200px] text-sm"
+      style={{ left: x, top: y }}
+      onPointerDown={e => e.nativeEvent.stopImmediatePropagation()}
+    >
+      <Item onClick={onRename} icon={<Pencil className="w-3.5 h-3.5" />} label="Rename" />
+
+      <Sep />
+
+      <Item onClick={onAddChild}   icon={<GitFork className="w-3.5 h-3.5" />} label="Add child node"   cls="text-primary hover:bg-primary/10" />
+      <Item onClick={onAddSibling} icon={<Plus    className="w-3.5 h-3.5" />} label="Add sibling node" cls="text-primary hover:bg-primary/10" />
+      <Item onClick={onDuplicate}  icon={<Copy    className="w-3.5 h-3.5" />} label="Duplicate" />
+
+      <Sep />
+
+      {/* Change colour row */}
+      <button
+        onPointerDown={e => e.nativeEvent.stopImmediatePropagation()}
+        onClick={onToggleColor}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-foreground hover:bg-secondary/70 transition-colors text-left"
+      >
+        <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+          <Palette className="w-3.5 h-3.5" />
+        </span>
+        Change colour
+        <span
+          className="ml-auto w-3.5 h-3.5 rounded-full border border-white/30 flex-shrink-0"
+          style={{ background: node.color }}
+        />
+      </button>
+      {colorOpen && (
+        <div className="px-3 pb-2 pt-1 grid grid-cols-5 gap-1.5">
+          {DEFAULT_COLORS.map(c => (
+            <button
+              key={c}
+              onPointerDown={e => e.nativeEvent.stopImmediatePropagation()}
+              onClick={() => onChangeColor(c)}
+              className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
+              style={{ background: c, borderColor: node.color === c ? '#fff' : 'transparent' }}
+            />
+          ))}
+        </div>
+      )}
+
+      <Sep />
+
+      {!isTask && (
+        <Item onClick={onCreateTask} icon={<CheckSquare className="w-3.5 h-3.5" />} label="Create task" cls="text-emerald-400 hover:bg-emerald-500/10" />
+      )}
+      {isTask && (
+        <Item onClick={onUnlinkTask} icon={<Unlink className="w-3.5 h-3.5" />} label="Unlink task" cls="text-amber-400 hover:bg-amber-500/10" />
+      )}
+
+      <Sep />
+
+      <Item onClick={onDelete} icon={<Trash2 className="w-3.5 h-3.5" />} label="Delete" cls="text-red-400 hover:bg-red-500/10" />
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 interface MindmapEditorProps {
@@ -773,6 +875,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   };
 
   const handleNodePointerDown = (e: React.PointerEvent, nodeId: string) => {
+    if (e.button === 2) return; // let right-click pass through to onContextMenu
     e.stopPropagation();
     // In connect mode: handle the click here (before pointer capture is set) and bail out
     if (connectMode) {
@@ -1414,93 +1517,34 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       )}
 
       {/* Right-click context menu */}
-      {contextMenu && (() => {
-        const ctxNode = mapData.nodes.find(n => n.id === contextMenu.nodeId);
-        if (!ctxNode) return null;
-        const isTask = ctxNode.type === 'task';
-        const sep = <div className="my-1 border-t border-border/60" />;
-        const item = (onClick: () => void, icon: React.ReactNode, label: string, cls = "text-foreground hover:bg-secondary/70") => (
-          <button onClick={onClick}
-            className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors text-left ${cls}`}>
-            <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">{icon}</span>
-            {label}
-          </button>
-        );
-        return (
-          <div
-            className="fixed z-50 bg-card border border-border rounded-xl shadow-2xl py-1.5 min-w-[190px] text-sm"
-            style={{ left: contextMenu.x, top: contextMenu.y }}
-            onPointerDown={e => e.stopPropagation()}
-          >
-            {/* Edit / Rename */}
-            {item(() => {
-              setEditingLabel({ nodeId: ctxNode.id, value: ctxNode.label });
-              setContextMenu(null);
-            }, <Pencil className="w-3.5 h-3.5" />, 'Rename')}
-
-            {sep}
-
-            {/* Add child */}
-            {item(() => { addChildNode(ctxNode.id); setContextMenu(null); },
-              <GitFork className="w-3.5 h-3.5" />, 'Add child node', 'text-primary hover:bg-primary/10')}
-
-            {/* Add sibling */}
-            {item(() => { addPeerNode(ctxNode.id); setContextMenu(null); },
-              <Plus className="w-3.5 h-3.5" />, 'Add sibling node', 'text-primary hover:bg-primary/10')}
-
-            {/* Duplicate */}
-            {item(() => { duplicateNode(ctxNode.id); setContextMenu(null); },
-              <Copy className="w-3.5 h-3.5" />, 'Duplicate')}
-
-            {sep}
-
-            {/* Change colour */}
-            <button
-              onClick={() => setContextMenuColorOpen(v => !v)}
-              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors text-left text-foreground hover:bg-secondary/70"
-            >
-              <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
-                <Palette className="w-3.5 h-3.5" />
-              </span>
-              Change colour
-              <span className="ml-auto w-3.5 h-3.5 rounded-full border border-white/30 flex-shrink-0" style={{ background: ctxNode.color }} />
-            </button>
-            {contextMenuColorOpen && (
-              <div className="px-3 pb-2 pt-1 grid grid-cols-5 gap-1.5">
-                {DEFAULT_COLORS.map(c => (
-                  <button
-                    key={c}
-                    onClick={() => {
-                      updateMapData(prev => ({
-                        ...prev,
-                        nodes: prev.nodes.map(n => n.id === ctxNode.id ? { ...n, color: c } : n),
-                      }));
-                      setContextMenu(null);
-                    }}
-                    className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
-                    style={{ background: c, borderColor: ctxNode.color === c ? '#fff' : 'transparent' }}
-                    title={c}
-                  />
-                ))}
-              </div>
-            )}
-
-            {sep}
-
-            {/* Task actions */}
-            {!isTask && item(() => { openTaskModal(ctxNode.id); setContextMenu(null); },
-              <CheckSquare className="w-3.5 h-3.5" />, 'Create task', 'text-emerald-400 hover:bg-emerald-500/10')}
-            {isTask && item(() => { unlinkTask(ctxNode.id); setContextMenu(null); },
-              <Unlink className="w-3.5 h-3.5" />, 'Unlink task', 'text-amber-400 hover:bg-amber-500/10')}
-
-            {sep}
-
-            {/* Delete */}
-            {item(() => { deleteNode(ctxNode.id); setContextMenu(null); },
-              <Trash2 className="w-3.5 h-3.5" />, 'Delete', 'text-red-400 hover:bg-red-500/10')}
-          </div>
-        );
-      })()}
+      {contextMenu && mapData.nodes.find(n => n.id === contextMenu.nodeId) && (
+        <CtxMenu
+          node={mapData.nodes.find(n => n.id === contextMenu.nodeId)!}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          colorOpen={contextMenuColorOpen}
+          onToggleColor={() => setContextMenuColorOpen(v => !v)}
+          onClose={() => setContextMenu(null)}
+          onRename={() => {
+            const n = mapData.nodes.find(nd => nd.id === contextMenu.nodeId)!;
+            setEditingLabel({ nodeId: n.id, value: n.label });
+            setContextMenu(null);
+          }}
+          onAddChild={() => { addChildNode(contextMenu.nodeId); setContextMenu(null); }}
+          onAddSibling={() => { addPeerNode(contextMenu.nodeId); setContextMenu(null); }}
+          onDuplicate={() => { duplicateNode(contextMenu.nodeId); setContextMenu(null); }}
+          onChangeColor={(c) => {
+            updateMapData(prev => ({
+              ...prev,
+              nodes: prev.nodes.map(n => n.id === contextMenu.nodeId ? { ...n, color: c } : n),
+            }));
+            setContextMenu(null);
+          }}
+          onCreateTask={() => { openTaskModal(contextMenu.nodeId); setContextMenu(null); }}
+          onUnlinkTask={() => { unlinkTask(contextMenu.nodeId); setContextMenu(null); }}
+          onDelete={() => { deleteNode(contextMenu.nodeId); setContextMenu(null); }}
+        />
+      )}
 
       {/* Create Task modal */}
       {taskModal && (
