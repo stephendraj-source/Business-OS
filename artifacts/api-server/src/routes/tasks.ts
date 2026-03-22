@@ -12,7 +12,10 @@ const TASK_COLS = sql`
   c.name  AS created_by_name,
   a.name  AS ai_agent_name,
   q.name  AS queue_name,
-  ap.name AS approved_by_name
+  ap.name AS approved_by_name,
+  (SELECT string_agg(p.process_name, ', ' ORDER BY p.number)
+   FROM task_processes tp JOIN processes p ON p.id = tp.process_id
+   WHERE tp.task_id = t.id) AS process_names
 `;
 
 const TASK_JOINS = sql`
@@ -437,5 +440,43 @@ async function runWriteTool(name: string, input: Record<string, any>, tenantId: 
     return { success: false, message: `Tool error: ${err.message}` };
   }
 }
+
+// ── Affected processes ────────────────────────────────────────────────────────
+router.get("/tasks/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const result = await db.execute(sql`
+      SELECT p.id, p.number, p.process_name, p.category
+      FROM task_processes tp
+      JOIN processes p ON p.id = tp.process_id
+      WHERE tp.task_id = ${id}
+      ORDER BY p.number ASC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/tasks/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { process_ids } = req.body as { process_ids: number[] };
+    await db.execute(sql`DELETE FROM task_processes WHERE task_id = ${id}`);
+    if (Array.isArray(process_ids) && process_ids.length > 0) {
+      for (const pid of process_ids) {
+        await db.execute(sql`
+          INSERT INTO task_processes (task_id, process_id) VALUES (${id}, ${pid})
+          ON CONFLICT DO NOTHING
+        `);
+      }
+    }
+    res.json({ task_id: id, process_ids: process_ids ?? [] });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

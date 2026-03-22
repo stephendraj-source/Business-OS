@@ -4,7 +4,7 @@ import {
   Clock, AlertTriangle, ChevronRight, Bot, Sparkles,
   User, Flag, RotateCcw, ClipboardCheck, ThumbsUp, ThumbsDown,
   Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2, Star,
-  LayoutGrid, List, PlayCircle, ChevronDown, Inbox,
+  LayoutGrid, List, PlayCircle, ChevronDown, Inbox, Network,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { Button } from '@/components/ui/button';
@@ -43,12 +43,14 @@ interface TaskRow {
   approved_by_name: string | null;
   approved_at: string | null;
   ai_instructions: string;
+  process_names: string | null;
 }
 
 interface UserItem { id: number; name: string; email: string; role: string }
 interface AiAgent { id: number; agent_number: number; name: string }
 interface Queue { id: number; name: string; color: string }
 interface TaskSource { id: number; name: string; color: string }
+interface ProcessItem { id: number; number: number; process_name: string; category: string }
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PRIORITIES = [
@@ -164,6 +166,11 @@ export function TasksView() {
   const [agents, setAgents] = useState<AiAgent[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
   const [sources, setSources] = useState<TaskSource[]>([]);
+  const [allProcesses, setAllProcesses] = useState<ProcessItem[]>([]);
+
+  // Affected processes for the open task
+  const [linkedProcessIds, setLinkedProcessIds] = useState<number[]>([]);
+  const [processSearch, setProcessSearch] = useState('');
 
   const isManagerOrAbove = user?.role === 'admin' || user?.role === 'superuser';
 
@@ -177,16 +184,21 @@ export function TasksView() {
   }, [fetchHeaders]);
 
   const loadOptions = useCallback(async () => {
-    const [ur, ar, qr, sr] = await Promise.all([
+    const [ur, ar, qr, sr, pr] = await Promise.all([
       fetch(`${API}/users`, { headers: fetchHeaders() }),
       fetch(`${API}/ai-agents`, { headers: fetchHeaders() }),
       fetch(`${API}/org/task-queues`, { headers: fetchHeaders() }),
       fetch(`${API}/org/task-sources`, { headers: fetchHeaders() }),
+      fetch(`${API}/processes`, { headers: fetchHeaders() }),
     ]);
     if (ur.ok) setUsers(await ur.json());
     if (ar.ok) setAgents(await ar.json());
     if (qr.ok) setQueues(await qr.json());
     if (sr.ok) setSources(await sr.json());
+    if (pr.ok) {
+      const prData = await pr.json();
+      setAllProcesses(Array.isArray(prData) ? prData : []);
+    }
   }, [fetchHeaders]);
 
   useEffect(() => { loadTasks(); loadOptions(); }, [loadTasks, loadOptions]);
@@ -222,7 +234,17 @@ export function TasksView() {
     setApprovalResult(null);
   }
 
-  function openTask(t: TaskRow) { setSelected(t); setCreating(false); populateEdit(t); }
+  function openTask(t: TaskRow) {
+    setSelected(t);
+    setCreating(false);
+    populateEdit(t);
+    setLinkedProcessIds([]);
+    setProcessSearch('');
+    fetch(`${API}/tasks/${t.id}/processes`, { headers: fetchHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: ProcessItem[]) => setLinkedProcessIds(data.map(p => p.id)))
+      .catch(() => {});
+  }
 
   function startCreate() {
     setSelected(null); setCreating(true);
@@ -235,6 +257,26 @@ export function TasksView() {
   }
 
   function markDirty() { setDirty(true); }
+
+  async function toggleProcess(processId: number) {
+    if (!selected) return;
+    const next = linkedProcessIds.includes(processId)
+      ? linkedProcessIds.filter(id => id !== processId)
+      : [...linkedProcessIds, processId];
+    setLinkedProcessIds(next);
+    // Also update process_names in the task list for the card view
+    const linkedNames = allProcesses
+      .filter(p => next.includes(p.id))
+      .sort((a, b) => a.number - b.number)
+      .map(p => p.process_name)
+      .join(', ');
+    setTasks(prev => prev.map(t => t.id === selected.id ? { ...t, process_names: linkedNames || null } : t));
+    await fetch(`${API}/tasks/${selected.id}/processes`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+      body: JSON.stringify({ process_ids: next }),
+    }).catch(() => {});
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -529,6 +571,12 @@ export function TasksView() {
                                     </span>
                                   )}
                                 </div>
+                                {t.process_names && (
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    <Network className="w-3 h-3 text-muted-foreground/50 flex-shrink-0" />
+                                    <span className="text-[11px] text-muted-foreground/70 truncate">{t.process_names}</span>
+                                  </div>
+                                )}
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
                                 {canPickUp && (
@@ -600,6 +648,7 @@ export function TasksView() {
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Queue</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Assigned To</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Created By</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Processes</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -643,6 +692,11 @@ export function TasksView() {
                     <td className="px-4 py-2.5">
                       {t.created_by_name
                         ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">{t.created_by_name}</span>
+                        : <span className="text-xs text-muted-foreground/40">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 max-w-[150px]" title={t.process_names ?? ''}>
+                      {t.process_names
+                        ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground truncate"><Network className="w-3 h-3 flex-shrink-0 text-muted-foreground/50" /><span className="truncate">{t.process_names}</span></span>
                         : <span className="text-xs text-muted-foreground/40">—</span>}
                     </td>
                     <td className="px-2 py-2.5">
@@ -836,7 +890,75 @@ export function TasksView() {
               </select>
             </div>
 
-            {/* AI Agent */}
+            {/* ── Affected Processes ──────────────────────────────────── */}
+            {!creating && selected && (
+              <div className="space-y-2 border-t border-border/40 pt-4">
+                <label className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                  <Network className="w-3.5 h-3.5" />Affected Processes
+                  {linkedProcessIds.length > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{linkedProcessIds.length}</span>
+                  )}
+                </label>
+
+                {/* Linked process chips */}
+                {linkedProcessIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {allProcesses
+                      .filter(p => linkedProcessIds.includes(p.id))
+                      .sort((a, b) => a.number - b.number)
+                      .map(p => (
+                        <span key={p.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium border border-primary/20">
+                          <span className="font-mono text-[10px] opacity-70">#{String(p.number).padStart(3, '0')}</span>
+                          {p.process_name}
+                          <button onClick={() => toggleProcess(p.id)} className="ml-0.5 hover:text-red-400 transition-colors" title="Unlink">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                  </div>
+                )}
+
+                {/* Search + add */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50 pointer-events-none" />
+                  <input
+                    value={processSearch}
+                    onChange={e => setProcessSearch(e.target.value)}
+                    placeholder="Search processes to link…"
+                    className="w-full pl-7 pr-3 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-xs focus:outline-none focus:ring-1 focus:ring-primary/40"
+                  />
+                </div>
+                {processSearch.trim() && (
+                  <div className="max-h-40 overflow-y-auto space-y-0.5 rounded-lg border border-border/40 bg-background/80 p-1">
+                    {allProcesses
+                      .filter(p =>
+                        (p.process_name.toLowerCase().includes(processSearch.toLowerCase()) ||
+                         String(p.number).includes(processSearch)) &&
+                        !linkedProcessIds.includes(p.id)
+                      )
+                      .slice(0, 12)
+                      .map(p => (
+                        <button
+                          key={p.id}
+                          onClick={() => { toggleProcess(p.id); setProcessSearch(''); }}
+                          className="w-full flex items-center gap-2 px-2 py-1.5 rounded hover:bg-primary/10 text-left transition-colors"
+                        >
+                          <span className="font-mono text-[10px] text-muted-foreground">#{String(p.number).padStart(3, '0')}</span>
+                          <span className="text-xs flex-1 truncate">{p.process_name}</span>
+                          <span className="text-[10px] text-muted-foreground/50 flex-shrink-0">{p.category}</span>
+                        </button>
+                      ))}
+                    {allProcesses.filter(p =>
+                      (p.process_name.toLowerCase().includes(processSearch.toLowerCase()) || String(p.number).includes(processSearch)) &&
+                      !linkedProcessIds.includes(p.id)
+                    ).length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">No matches</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="space-y-2 border-t border-border/40 pt-4">
               <label className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
                 <Bot className="w-3.5 h-3.5" />AI Agent
