@@ -4,7 +4,7 @@ import {
   Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, ChevronDown, Home, Bot,
   GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
-  Star, Calendar, Inbox,
+  Star, Calendar, CalendarDays, Inbox,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { cn } from '@/lib/utils';
@@ -57,6 +57,7 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'workflows',         label: 'Workflows',          sectionId: 'workflows'    },
   { id: 'forms',             label: 'Documents',sectionId: 'workflows'    },
   { id: 'meetings',          label: 'Meetings',           sectionId: 'workflows'    },
+  { id: 'calendar',          label: 'Calendar',           sectionId: 'workflows'    },
   { id: 'activities',        label: 'Activities',         sectionId: 'workflows'    },
   { id: 'tasks',             label: 'Tasks',              sectionId: 'workflows'    },
   { id: 'queues',            label: 'Task Queues',        sectionId: 'workflows'    },
@@ -93,6 +94,7 @@ const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
   tasks:               { label: 'Tasks',                section: 'Productivity' },
   queues:              { label: 'Task Queues',          section: 'Productivity' },
   meetings:            { label: 'Meetings',             section: 'Productivity' },
+  calendar:            { label: 'Calendar',             section: 'Productivity' },
 };
 
 function getIcon(id: ActiveView) {
@@ -108,6 +110,7 @@ function getIcon(id: ActiveView) {
     case 'workflows':          return <GitBranch className={cls} />;
     case 'forms':              return <ClipboardList className={cls} />;
     case 'meetings':           return <Calendar className={cls} />;
+    case 'calendar':           return <CalendarDays className={cls} />;
     case 'activities':         return <Activity className={cls} />;
     case 'tasks':              return <ListTodo className={cls} />;
     case 'queues':             return <Inbox className={cls} />;

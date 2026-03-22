@@ -22,9 +22,10 @@ import { ActivitiesView } from '@/components/activities-view';
 import { TasksView } from '@/components/tasks-view';
 import { QueuesView } from '@/components/queues-view';
 import { MeetingsView } from '@/components/meetings-view';
+import { CalendarView } from '@/components/calendar-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning' | 'meetings';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning' | 'meetings' | 'calendar';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -187,6 +188,11 @@ export default function Dashboard() {
         {activeView === 'meetings' && (
           <motion.div key="meetings" {...fadeSlide} className="w-full h-full">
             <MeetingsView />
+          </motion.div>
+        )}
+        {activeView === 'calendar' && (
+          <motion.div key="calendar" {...fadeSlide} className="w-full h-full">
+            <CalendarView />
           </motion.div>
         )}
       </AnimatePresence>
