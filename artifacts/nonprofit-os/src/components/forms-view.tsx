@@ -1566,7 +1566,12 @@ function DocumentItemEditor({ item, onSave, onUpload, saving }: {
 
 // ── Main Forms View ───────────────────────────────────────────────────────────
 
-export function FormsView() {
+interface FormsViewProps {
+  openKnowledgeId?: number | null;
+  onKnowledgeOpened?: () => void;
+}
+
+export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps = {}) {
   const { fetchHeaders, currentUser } = useAuth();
   const currentUserName = (currentUser as any)?.name || (currentUser as any)?.email || "User";
   const [mode, setMode] = useState<'templates' | 'entry'>('templates');
@@ -1598,6 +1603,13 @@ export function FormsView() {
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([]);
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<number | null>(null);
   const [knowledgeSaving, setKnowledgeSaving] = useState(false);
+
+  useEffect(() => {
+    if (!openKnowledgeId) return;
+    setSelectedId(null);
+    setSelectedKnowledgeId(openKnowledgeId);
+    onKnowledgeOpened?.();
+  }, [openKnowledgeId]);
 
   const [knowledgeSearchQ, setKnowledgeSearchQ] = useState("");
   const [knowledgeSearchResults, setKnowledgeSearchResults] = useState<KnowledgeSearchResult[] | null>(null);

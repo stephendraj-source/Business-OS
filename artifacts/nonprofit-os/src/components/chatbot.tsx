@@ -1,10 +1,36 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
+
+export const NAVIGATE_KNOWLEDGE_EVENT = 'navigate-knowledge-item';
+
+function dispatchNavigateKnowledge(itemId: number) {
+  window.dispatchEvent(new CustomEvent(NAVIGATE_KNOWLEDGE_EVENT, { detail: { itemId } }));
+}
+
+const mdComponents = {
+  a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { children?: React.ReactNode }) => {
+    if (href?.startsWith('knowledge://item-')) {
+      const itemId = parseInt(href.replace('knowledge://item-', ''), 10);
+      if (!isNaN(itemId)) {
+        return (
+          <button
+            onClick={() => dispatchNavigateKnowledge(itemId)}
+            className="inline-flex items-center gap-1 text-primary underline underline-offset-2 hover:text-primary/80 transition-colors cursor-pointer font-medium"
+          >
+            {children}
+            <ExternalLink className="w-3 h-3 inline flex-shrink-0" />
+          </button>
+        );
+      }
+    }
+    return <a href={href} target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+  },
+};
 
 interface Message {
   id: number;
@@ -400,11 +426,11 @@ export function Chatbot() {
                         <div className="bg-secondary text-foreground rounded-xl px-3 py-2.5 text-sm">
                           {assistant ? (
                             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-pre:my-1 prose-blockquote:my-1">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{assistant.content}</ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{assistant.content}</ReactMarkdown>
                             </div>
                           ) : streamingContent ? (
                             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0.5">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                              <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{streamingContent}</ReactMarkdown>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1 py-1">

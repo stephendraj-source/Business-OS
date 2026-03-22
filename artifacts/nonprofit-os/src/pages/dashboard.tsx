@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '@/components/layout';
 import { ProcessTable } from '@/components/process-table';
 import { HorizontalTree } from '@/components/horizontal-tree';
 import { ProcessMap } from '@/components/process-map';
 import { Connectors } from '@/components/connectors';
-import { Chatbot } from '@/components/chatbot';
+import { Chatbot, NAVIGATE_KNOWLEDGE_EVENT } from '@/components/chatbot';
 import { AuditLogsView } from '@/components/audit-logs-view';
 import { DashboardsView } from '@/components/dashboards-view';
 import { ReportsView } from '@/components/reports-view';
@@ -31,6 +31,18 @@ export default function Dashboard() {
   const [activeView, setActiveView] = useState<ActiveView>('table');
   const [treeInitialCategory, setTreeInitialCategory] = useState<string | null>(null);
   const [navHistory, setNavHistory] = useState<ActiveView[]>([]);
+  const [openKnowledgeId, setOpenKnowledgeId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { itemId } = (e as CustomEvent<{ itemId: number }>).detail;
+      setNavHistory(prev => [...prev, activeView]);
+      setActiveView('forms');
+      setOpenKnowledgeId(itemId);
+    };
+    window.addEventListener(NAVIGATE_KNOWLEDGE_EVENT, handler);
+    return () => window.removeEventListener(NAVIGATE_KNOWLEDGE_EVENT, handler);
+  }, [activeView]);
 
   function navigateTo(view: ActiveView) {
     if (view === activeView) return;
@@ -123,7 +135,7 @@ export default function Dashboard() {
         )}
         {activeView === 'forms' && (
           <motion.div key="forms" {...fadeSlide} className="w-full h-full">
-            <FormsView />
+            <FormsView openKnowledgeId={openKnowledgeId} onKnowledgeOpened={() => setOpenKnowledgeId(null)} />
           </motion.div>
         )}
         {activeView === 'users' && (

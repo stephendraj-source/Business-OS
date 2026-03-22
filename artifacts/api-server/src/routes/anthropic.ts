@@ -13,16 +13,18 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
     const queryVec = await embed(query);
     const embStr = vecToSql(queryVec);
     const tenantCondition = tenantId
-      ? sql`tenant_id = ${tenantId}`
-      : sql`tenant_id IS NULL`;
+      ? sql`ki.tenant_id = ${tenantId}`
+      : sql`ki.tenant_id IS NULL`;
 
     const rows = await db.execute(
-      sql`SELECT id, title, content, type,
-             1 - (embedding_vec <=> ${embStr}::vector) AS similarity
-          FROM knowledge_items
-          WHERE embedding_vec IS NOT NULL
+      sql`SELECT ki.id, ki.title, ki.content, ki.type, ki.folder_id,
+             ff.name AS folder_name,
+             1 - (ki.embedding_vec <=> ${embStr}::vector) AS similarity
+          FROM knowledge_items ki
+          LEFT JOIN form_folders ff ON ff.id = ki.folder_id
+          WHERE ki.embedding_vec IS NOT NULL
             AND ${tenantCondition}
-          ORDER BY embedding_vec <=> ${embStr}::vector
+          ORDER BY ki.embedding_vec <=> ${embStr}::vector
           LIMIT ${limit}`
     ) as any[];
 
@@ -32,10 +34,11 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
     const snippets = relevant.map((r: any) => {
       const plainText = (r.content ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 800);
       const sim = Math.round(parseFloat(r.similarity) * 100);
-      return `### ${r.title} (${r.type}, ${sim}% match)\n${plainText}`;
+      const location = r.folder_name ? `Forms & Documents > ${r.folder_name}` : "Forms & Documents (root)";
+      return `### ${r.title} (${r.type}, ${sim}% match)\n**ID:** ${r.id} | **Location:** ${location}\n${plainText}`;
     }).join("\n\n");
 
-    return `## Relevant Knowledge Base Documents\n\nThe following documents from the organisation's knowledge base are relevant to the user's question. Use them to answer accurately:\n\n${snippets}\n\n---`;
+    return `## Relevant Knowledge Base Documents\n\nThe following documents are relevant. When mentioning a document, link to it using the format [Document Title](knowledge://item-{id}) so the user can navigate directly to it:\n\n${snippets}\n\n---`;
   } catch (err) {
     console.error("[rag] knowledge search failed:", err);
     return "";
@@ -61,6 +64,16 @@ async function buildSystemPrompt(): Promise<string> {
 5. Analyse trends and patterns across categories
 6. Help users construct and interpret Salesforce SOQL queries to retrieve data (Contacts, Accounts, Opportunities, Campaigns, Donations, Cases, etc.)
 7. Explain Salesforce object relationships, field names, and data structures relevant to nonprofits (NPSP / Salesforce for Nonprofits)
+8. Tell users where specific documents are stored in the knowledge base and provide clickable links to navigate directly to them
+
+## IMPORTANT: Knowledge base document links
+
+When you reference or mention a knowledge base document, always include a clickable link using this exact format:
+[Document Title](knowledge://item-{id})
+
+Replace {id} with the document's actual numeric ID from the context provided. This allows the user to click the link and navigate directly to the document in the system. Example: [Employee Handbook](knowledge://item-42)
+
+If a user asks "where is [document]?" or "where can I find [document]?", tell them the location (e.g. "Forms & Documents > Folder Name") AND provide the clickable link.
 
 ## CRITICAL: Salesforce data access rules
 
