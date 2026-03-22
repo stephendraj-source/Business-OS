@@ -66,7 +66,7 @@ const PRIORITIES = [
 const STATUSES = [
   { value: 'open',        label: 'Open',        color: 'bg-secondary text-secondary-foreground',                                  icon: Clock },
   { value: 'in_progress', label: 'In Progress', color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300', icon: RotateCcw },
-  { value: 'done',        label: 'Done',        color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',    icon: CheckCircle2 },
+  { value: 'done',        label: 'Completed',   color: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',    icon: CheckCircle2 },
   { value: 'cancelled',   label: 'Cancelled',   color: 'bg-muted text-muted-foreground',                                          icon: X },
 ] as const;
 
