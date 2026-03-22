@@ -4,6 +4,7 @@ import {
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
   Shield, Search, Share2, Globe, Server, Webhook, ArrowRight, Star,
+  FlaskConical,
 } from "lucide-react";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
@@ -710,6 +711,204 @@ function RunPanel({ agentId, runKey }: { agentId: number; runKey: number }) {
   );
 }
 
+// ── Test Panel ────────────────────────────────────────────────────────────────
+
+interface Evaluation {
+  criterion: string;
+  description: string;
+  rating: number;
+  notes: string;
+}
+
+function ratingColor(r: number) {
+  if (r >= 4) return "text-green-400 bg-green-500/10 border-green-500/30";
+  if (r >= 3) return "text-amber-400 bg-amber-500/10 border-amber-500/30";
+  return "text-red-400 bg-red-500/10 border-red-500/30";
+}
+
+function TestPanel({ agentId }: { agentId: number }) {
+  const { fetchHeaders } = useUser();
+  const [testScenario, setTestScenario] = useState("");
+  const [running, setRunning] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
+  const [output, setOutput] = useState("");
+  const [error, setError] = useState("");
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (outputRef.current) outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [output]);
+
+  const runTest = async () => {
+    setRunning(true);
+    setEvaluating(false);
+    setOutput("");
+    setError("");
+    setEvaluations([]);
+    try {
+      const res = await fetch(`${API}/ai-agents/${agentId}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...fetchHeaders() },
+        body: JSON.stringify({ testScenario }),
+      });
+      if (!res.body) throw new Error("No response body");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value);
+        for (const line of text.split("\n").filter(l => l.startsWith("data:"))) {
+          try {
+            const data = JSON.parse(line.slice(5).trim());
+            if (data.content) setOutput(o => o + data.content);
+            if (data.evaluating) { setRunning(false); setEvaluating(true); }
+            if (data.error) setError(data.error);
+            if (data.done) {
+              setEvaluating(false);
+              if (Array.isArray(data.evaluations)) setEvaluations(data.evaluations);
+            }
+          } catch {}
+        }
+      }
+    } catch (err: any) {
+      setError(err?.message ?? "Test failed");
+    } finally {
+      setRunning(false);
+      setEvaluating(false);
+      dispatchCreditsRefresh();
+    }
+  };
+
+  const updateEval = (idx: number, field: keyof Evaluation, value: any) => {
+    setEvaluations(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Test scenario */}
+      <div className="space-y-2">
+        <label className="block text-sm font-medium flex items-center gap-2">
+          <FlaskConical className="w-4 h-4 text-primary" />
+          Test Scenario
+          <span className="text-xs font-normal text-muted-foreground">— optional context or input for this test run</span>
+        </label>
+        <textarea
+          value={testScenario}
+          onChange={e => setTestScenario(e.target.value)}
+          rows={3}
+          placeholder="Describe a specific scenario to test, e.g. 'Quarterly review for Q1 2026' or 'Process #5 has a KPI of 85%…' Leave blank to run with the agent's default instructions."
+          className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+        />
+      </div>
+
+      {/* Run Test button */}
+      <button
+        onClick={runTest}
+        disabled={running || evaluating}
+        className="flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 transition-colors shadow-sm"
+      >
+        {running ? (
+          <><Loader2 className="w-4 h-4 animate-spin" />Running test…</>
+        ) : evaluating ? (
+          <><Loader2 className="w-4 h-4 animate-spin" />Evaluating output…</>
+        ) : (
+          <><FlaskConical className="w-4 h-4" />Run Test</>
+        )}
+      </button>
+
+      {/* Output */}
+      {(output || running) && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Test Output</div>
+            {running && <span className="text-xs text-primary animate-pulse">Streaming…</span>}
+          </div>
+          <div
+            ref={outputRef}
+            className="bg-[#0f1117] border border-border rounded-xl p-4 font-mono text-xs leading-relaxed min-h-[120px] max-h-80 overflow-y-auto whitespace-pre-wrap text-slate-300"
+          >
+            {running && !output && <span className="text-slate-500 animate-pulse">Executing agent…</span>}
+            {output && <span>{output}</span>}
+            {error && <span className="text-red-400">{'\n'}{error}</span>}
+          </div>
+          {evaluating && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              AI is generating evaluation rubric…
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Evaluation rubric */}
+      {evaluations.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">AI Evaluation</div>
+            <span className="text-xs text-muted-foreground/60">— suggested by AI, edit as needed</span>
+          </div>
+          <div className="space-y-3">
+            {evaluations.map((ev, i) => (
+              <div key={i} className={cn("rounded-xl border p-4 space-y-3", ratingColor(ev.rating))}>
+                {/* Header: criterion + rating */}
+                <div className="flex items-start gap-3">
+                  <input
+                    value={ev.criterion}
+                    onChange={e => updateEval(i, 'criterion', e.target.value)}
+                    className="flex-1 text-sm font-semibold bg-transparent border-b border-current/20 focus:border-current focus:outline-none pb-0.5 placeholder:text-current/40"
+                    placeholder="Criterion name"
+                  />
+                  {/* Star rating */}
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => updateEval(i, 'rating', s)}
+                        className="transition-transform hover:scale-110"
+                        title={`Rate ${s}/5`}
+                      >
+                        <Star className={cn("w-4 h-4", s <= ev.rating ? "fill-current text-current" : "text-current/25")} />
+                      </button>
+                    ))}
+                    <span className="ml-1.5 text-xs font-bold tabular-nums">{ev.rating}/5</span>
+                  </div>
+                </div>
+                {/* Description */}
+                <p className="text-xs opacity-70">{ev.description}</p>
+                {/* Notes */}
+                <textarea
+                  value={ev.notes}
+                  onChange={e => updateEval(i, 'notes', e.target.value)}
+                  rows={2}
+                  placeholder="Add notes…"
+                  className="w-full bg-white/10 dark:bg-black/10 border border-current/20 rounded-lg px-2.5 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-current/40 placeholder:opacity-40"
+                />
+              </div>
+            ))}
+          </div>
+          {/* Overall score */}
+          {evaluations.length > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/40 border border-border">
+              <div className="text-xs font-medium text-muted-foreground">Overall score</div>
+              <div className="font-bold text-sm">
+                {(evaluations.reduce((s, e) => s + e.rating, 0) / evaluations.length).toFixed(1)} / 5
+              </div>
+              <div className="flex gap-0.5">
+                {[1, 2, 3, 4, 5].map(s => {
+                  const avg = evaluations.reduce((acc, e) => acc + e.rating, 0) / evaluations.length;
+                  return <Star key={s} className={cn("w-3.5 h-3.5", s <= Math.round(avg) ? "fill-amber-400 text-amber-400" : "text-muted-foreground/30")} />;
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Schedule Panel ────────────────────────────────────────────────────────────
 
 function SchedulePanel({ agentId }: { agentId: number }) {
@@ -1260,7 +1459,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
 
 // ── Main AI Agents View ────────────────────────────────────────────────────────
 
-type Tab = "overview" | "knowledge" | "schedule" | "run" | "permissions" | "shares";
+type Tab = "overview" | "knowledge" | "schedule" | "run" | "test" | "permissions" | "shares";
 
 export function AiAgentsView() {
   const { fetchHeaders, currentUser } = useUser();
@@ -1399,6 +1598,7 @@ export function AiAgentsView() {
     { id: "knowledge", label: "Knowledge", icon: <FileText className="w-3.5 h-3.5" /> },
     { id: "schedule", label: "Schedule", icon: <Calendar className="w-3.5 h-3.5" /> },
     { id: "run", label: "Run", icon: <Play className="w-3.5 h-3.5" /> },
+    { id: "test", label: "Test", icon: <FlaskConical className="w-3.5 h-3.5" /> },
     { id: "permissions", label: "Permissions", icon: <Shield className="w-3.5 h-3.5" /> },
     { id: "shares", label: "Share", icon: <Share2 className="w-3.5 h-3.5" /> },
   ];
@@ -1788,6 +1988,11 @@ export function AiAgentsView() {
             {tab === "run" && (
               <div className="max-w-2xl">
                 <RunPanel agentId={selectedAgent.id} runKey={runKey} />
+              </div>
+            )}
+            {tab === "test" && (
+              <div className="max-w-2xl">
+                <TestPanel agentId={selectedAgent.id} />
               </div>
             )}
             {tab === "permissions" && (

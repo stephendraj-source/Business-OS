@@ -514,6 +514,112 @@ Execute your instructions carefully and thoroughly. Provide a detailed, structur
   }
 });
 
+// ── Test Agent (with evaluation) ──────────────────────────────────────────────
+
+router.post("/ai-agents/:id/test", async (req, res) => {
+  try {
+    const agentId = Number(req.params.id);
+    const { testScenario = "" } = req.body as { testScenario?: string };
+
+    const agent = await getAgentFull(agentId);
+    if (!agent) return res.status(404).json({ error: "Not found" });
+
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
+
+    const urlContents = await Promise.all(agent.urls.map(u => fetchUrlContent(u.url)));
+    const fileContents = agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName));
+    const resolvedInstructions = await resolveInstructions(agent.instructions);
+    const toolsList = (() => { try { return JSON.parse(agent.tools); } catch { return []; } })();
+    const knowledgeSection = [...urlContents, ...fileContents].filter(Boolean).join("\n\n---\n\n");
+
+    const systemPrompt = `You are an AI Agent named "${agent.name}".
+
+## Your Instructions
+${resolvedInstructions || "No specific instructions provided."}
+
+## Your Tools
+${toolsList.length > 0 ? toolsList.join(", ") : "No specific tools configured."}
+
+## Knowledge Base
+${knowledgeSection || "No knowledge sources configured."}
+
+Execute your instructions carefully and thoroughly. Provide a detailed, structured output of your work.`;
+
+    const userMessage = testScenario
+      ? `Test scenario: ${testScenario}\n\nPlease execute your instructions for this test scenario and provide your output.`
+      : "Execute your instructions and provide your output.";
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    let fullOutput = "";
+
+    const stream = await anthropic.messages.stream({
+      model: "claude-opus-4-5",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userMessage }],
+    });
+
+    for await (const chunk of stream) {
+      if (chunk.type === "content_block_delta" && chunk.delta.type === "text_delta") {
+        fullOutput += chunk.delta.text;
+        res.write(`data: ${JSON.stringify({ content: chunk.delta.text })}\n\n`);
+      }
+    }
+
+    // Generate evaluation rubric using a fast model
+    res.write(`data: ${JSON.stringify({ evaluating: true })}\n\n`);
+
+    const evalMessage = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      messages: [{
+        role: "user",
+        content: `You are evaluating the output of an AI agent.
+
+Agent name: ${agent.name}
+Agent instructions: ${resolvedInstructions?.slice(0, 800) || "(none)"}
+Test scenario: ${testScenario || "(standard run — no specific scenario)"}
+
+Agent output:
+${fullOutput.slice(0, 3000)}
+
+Create 4–5 evaluation criteria for this specific agent and its output. For each criterion:
+- criterion: concise name (e.g. "Instruction Following", "Output Completeness", "Accuracy")
+- description: one sentence explaining what this criterion measures
+- rating: integer 1–5 (1=very poor, 2=poor, 3=adequate, 4=good, 5=excellent) based on what you observed
+- notes: 1–2 sentences of specific, actionable feedback about this criterion
+
+Return ONLY valid JSON — a JSON array with no surrounding text. Example format:
+[{"criterion":"Instruction Following","description":"How closely the agent adhered to its instructions","rating":4,"notes":"The agent covered the main points but omitted X."}]`,
+      }],
+    });
+
+    const evalText = evalMessage.content.map((c: any) => c.type === "text" ? c.text : "").join("");
+    let evaluations: any[] = [];
+    try {
+      const match = evalText.match(/\[[\s\S]*\]/);
+      if (match) evaluations = JSON.parse(match[0]);
+    } catch {}
+
+    res.write(`data: ${JSON.stringify({ done: true, evaluations })}\n\n`);
+    res.end();
+  } catch (err: any) {
+    req.log.error(err, "Test agent failed");
+    res.write(`data: ${JSON.stringify({ error: err?.message ?? "Test failed" })}\n\n`);
+    res.end();
+  }
+});
+
 // ── Run Logs ──────────────────────────────────────────────────────────────────
 
 router.get("/ai-agents/:id/logs", async (req, res) => {
