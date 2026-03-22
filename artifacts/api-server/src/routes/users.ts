@@ -58,13 +58,13 @@ usersRouter.post('/', async (req, res) => {
   try {
     const auth = (req as any).auth;
     const tenantId = auth?.tenantId ?? null;
-    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', phone = '', isActive = true, dataScope = 'categories', category = '' } = req.body;
+    const { name, firstName = '', lastName = '', preferredName = '', email, role = 'user', designation = '', phone = '', isActive = true, dataScope = 'categories', category = '', jobDescription = '' } = req.body;
     const resolvedName = name || [firstName, lastName].filter(Boolean).join(' ');
     if (!resolvedName || !email) return res.status(400).json({ error: 'name (or first/last name) and email are required' });
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
     const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const [row] = await db.insert(users).values({
-      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, phone, isActive, dataScope, category, mustChangePassword: true,
+      tenantId, name: resolvedName, firstName, lastName, preferredName, email, passwordHash: hashPassword(tempPassword), role, designation, phone, isActive, dataScope, category, jobDescription, mustChangePassword: true,
     }).returning();
     await db.insert(userModuleAccess).values(
       ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: false }))
@@ -115,7 +115,7 @@ usersRouter.get('/:id', async (req, res) => {
 usersRouter.patch('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope, category } = req.body;
+    const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope, category, jobDescription } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (firstName !== undefined) updates.firstName = firstName;
@@ -129,6 +129,7 @@ usersRouter.patch('/:id', async (req, res) => {
     if (isActive !== undefined) updates.isActive = isActive;
     if (dataScope !== undefined) updates.dataScope = dataScope;
     if (category !== undefined) updates.category = category;
+    if (jobDescription !== undefined) updates.jobDescription = jobDescription;
     const [row] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(safeUser(row));

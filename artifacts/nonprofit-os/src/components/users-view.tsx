@@ -466,6 +466,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     email: user.email,
     role: user.role,
     designation: user.designation ?? '',
+    jobDescription: (user as any).jobDescription ?? '',
     phone: (user as any).phone ?? '',
     category: (user as any).category ?? '',
     isActive: user.isActive,
@@ -511,7 +512,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     try {
       const r = await authedFetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, category: form.category, isActive: form.isActive }),
+        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, jobDescription: form.jobDescription, phone: form.phone, category: form.category, isActive: form.isActive }),
       });
       if (!r.ok) { const d = await r.json(); setSaveError(d.error || 'Failed to save changes'); return; }
       await onSaved();
@@ -586,6 +587,17 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
           placeholder="e.g. Program Manager, Finance Director…"
           className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Job Description <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+        <textarea
+          value={form.jobDescription}
+          onChange={e => setForm(f => ({ ...f, jobDescription: e.target.value }))}
+          placeholder="Describe the role's responsibilities, scope, and key duties…"
+          rows={4}
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[80px]"
+        />
       </div>
 
       <div className="space-y-1.5">
@@ -1082,7 +1094,7 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', phone: '', role: 'user', category: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', jobDescription: '', phone: '', role: 'user', category: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [createdUser, setCreatedUser] = useState<{ name: string; email: string; tempPassword: string } | null>(null);
@@ -1246,6 +1258,17 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
             <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
               placeholder="e.g. Program Manager, Finance Director…"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Job Description <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+            <textarea
+              value={form.jobDescription}
+              onChange={e => setForm(f => ({ ...f, jobDescription: e.target.value }))}
+              placeholder="Describe the role's responsibilities, scope, and key duties…"
+              rows={4}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-y min-h-[80px]"
+            />
           </div>
 
           <div className="space-y-1">
