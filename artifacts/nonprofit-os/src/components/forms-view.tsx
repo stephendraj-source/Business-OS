@@ -2181,24 +2181,17 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
 
       {/* Mode toggle bar */}
       <div className="flex-none px-5 py-2 border-b border-border bg-card/60 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
-        {([
-          { key: 'templates', label: 'Documents', icon: <ClipboardList className="w-3.5 h-3.5" /> },
-          { key: 'entry',     label: 'Data Entry',  icon: <PenLine className="w-3.5 h-3.5" /> },
-        ] as const).map(m => (
-          <button
-            key={m.key}
-            onClick={() => { setMode(m.key); setShowAllForms(false); }}
-            className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-              mode === m.key && !showAllForms
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-            )}
-          >
-            {m.icon}{m.label}
-          </button>
-        ))}
+        <button
+          onClick={() => { setMode('templates'); setShowAllForms(false); }}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+            !showAllForms
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+          )}
+        >
+          <ClipboardList className="w-3.5 h-3.5" />Documents
+        </button>
         <div className="w-px h-4 bg-border mx-1" />
         <button
           onClick={() => { setShowAllForms(v => !v); setAllFormsSearch(""); }}
@@ -2209,38 +2202,44 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
               : "text-muted-foreground hover:bg-secondary hover:text-foreground"
           )}
         >
-          <LayoutGrid className="w-3.5 h-3.5" />Show All Forms
+          <LayoutGrid className="w-3.5 h-3.5" />Show All Documents
         </button>
       </div>
 
       {/* Main content — left panel + right panel */}
       <div className="flex-1 min-h-0 flex">
 
-      {/* ── Show All Forms ── */}
+      {/* ── Show All Documents (by type) ── */}
       {showAllForms && (() => {
-        const cats = folders.filter(f => f.parentId === null);
         const q = allFormsSearch.trim().toLowerCase();
-        const matchForms = (arr: FormSummary[]) =>
-          q ? arr.filter(f => f.name.toLowerCase().includes(q) || (f.description ?? "").toLowerCase().includes(q)) : arr;
+        const matchName = (name: string, desc?: string | null) =>
+          !q || name.toLowerCase().includes(q) || (desc ?? "").toLowerCase().includes(q);
 
-        // Build category → forms map
-        type CatGroup = { id: number | null; name: string; forms: FormSummary[] };
-        const groups: CatGroup[] = cats.map(cat => {
-          // All sub-folder ids under this root folder (recursively for 1 level, covers most cases)
+        // --- Forms grouped by folder ---
+        const cats = folders.filter(f => f.parentId === null);
+        type FolderGroup = { id: number | null; name: string; forms: FormSummary[] };
+        const formGroups: FolderGroup[] = cats.map(cat => {
           const subIds = folders.filter(f => f.parentId === cat.id).map(f => f.id);
           const allIds = new Set([cat.id, ...subIds]);
-          const catForms = forms.filter(f => f.folderId != null && allIds.has(f.folderId));
-          return { id: cat.id, name: cat.name, forms: matchForms(catForms) };
+          const catForms = forms.filter(f => f.folderId != null && allIds.has(f.folderId) && matchName(f.name, f.description));
+          return { id: cat.id, name: cat.name, forms: catForms };
         });
-        const assignedIds = new Set(forms.filter(f => f.folderId != null && cats.some(c => {
+        const assignedFormIds = new Set(forms.filter(f => f.folderId != null && cats.some(c => {
           const subIds = folders.filter(s => s.parentId === c.id).map(s => s.id);
           return [c.id, ...subIds].includes(f.folderId!);
         })).map(f => f.id));
-        const uncatForms = matchForms(forms.filter(f => !assignedIds.has(f.id)));
-        const visibleGroups = [...groups.filter(g => g.forms.length > 0), ...(uncatForms.length > 0 ? [{ id: null, name: "Uncategorized", forms: uncatForms }] : [])];
-        const totalVisible = visibleGroups.reduce((s, g) => s + g.forms.length, 0);
+        const uncatForms = forms.filter(f => !assignedFormIds.has(f.id) && matchName(f.name, f.description));
+        const visibleFormGroups = [...formGroups.filter(g => g.forms.length > 0), ...(uncatForms.length > 0 ? [{ id: null, name: "Uncategorized", forms: uncatForms }] : [])];
+        const totalForms = visibleFormGroups.reduce((s, g) => s + g.forms.length, 0);
 
-        // Category accent colours matching getCatColor palette
+        // --- Wiki articles ---
+        const visibleKnowledge = knowledgeItems.filter(k => matchName(k.title, k.content?.slice(0, 200)));
+
+        // --- Mind maps ---
+        const visibleMindmaps = mindmapList.filter(m => matchName(m.name));
+
+        const totalAll = totalForms + visibleKnowledge.length + visibleMindmaps.length;
+
         const catColor = (name: string) => {
           const n = name.toLowerCase();
           if (n.includes("finance") || n.includes("compliance")) return "text-cyan-400 bg-cyan-500/10";
@@ -2263,7 +2262,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                 <input
                   value={allFormsSearch}
                   onChange={e => setAllFormsSearch(e.target.value)}
-                  placeholder="Search forms…"
+                  placeholder="Search documents…"
                   className="w-full pl-9 pr-3 py-1.5 text-sm border border-border rounded-lg bg-background outline-none focus:border-primary transition-colors"
                 />
                 {allFormsSearch && (
@@ -2273,81 +2272,154 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                 )}
               </div>
               <span className="text-xs text-muted-foreground">
-                {totalVisible} form{totalVisible !== 1 ? "s" : ""} across {visibleGroups.length} categor{visibleGroups.length !== 1 ? "ies" : "y"}
+                {totalAll} document{totalAll !== 1 ? "s" : ""}
               </span>
-              <button
-                onClick={createForm}
-                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" />New Form
-              </button>
             </div>
 
-            {/* Scrollable grid */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-8">
-              {visibleGroups.length === 0 ? (
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-y-auto px-5 py-5 space-y-10">
+              {totalAll === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
-                  <ClipboardList className="w-10 h-10 text-muted-foreground/30" />
-                  <p className="text-sm text-muted-foreground">{q ? "No forms match your search." : "No forms yet. Create your first form."}</p>
+                  <LayoutGrid className="w-10 h-10 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">{q ? "No documents match your search." : "No documents yet."}</p>
                 </div>
-              ) : visibleGroups.map(group => (
-                <div key={group.id ?? "uncat"}>
-                  {/* Category header */}
-                  <div className="flex items-center gap-2.5 mb-3">
-                    <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold", catColor(group.name))}>
-                      <Folder className="w-3 h-3" />
-                      {group.name}
-                    </div>
-                    <div className="flex-1 h-px bg-border" />
-                    <span className="text-xs text-muted-foreground">{group.forms.length} form{group.forms.length !== 1 ? "s" : ""}</span>
-                  </div>
+              ) : (
+                <>
+                  {/* ── Forms ── */}
+                  {totalForms > 0 && (
+                    <section>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 text-primary">
+                          <ClipboardList className="w-4 h-4" />
+                          <span className="text-sm font-semibold">Forms</span>
+                        </div>
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground">{totalForms} form{totalForms !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="space-y-6">
+                        {visibleFormGroups.map(group => (
+                          <div key={group.id ?? "uncat"}>
+                            {visibleFormGroups.length > 1 && (
+                              <div className="flex items-center gap-2 mb-2.5">
+                                <div className={cn("inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium", catColor(group.name))}>
+                                  <Folder className="w-3 h-3" />{group.name}
+                                </div>
+                                <div className="flex-1 h-px bg-border/60" />
+                                <span className="text-[11px] text-muted-foreground">{group.forms.length}</span>
+                              </div>
+                            )}
+                            <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                              {group.forms.map(form => {
+                                let fieldCount = 0;
+                                try { fieldCount = JSON.parse(form.fields).length; } catch {}
+                                return (
+                                  <button
+                                    key={form.id}
+                                    onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setMode('templates'); setShowAllForms(false); }}
+                                    className={cn(
+                                      "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5",
+                                      selectedId === form.id ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
+                                    )}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0">
+                                        <ClipboardList className="w-4 h-4 text-primary" />
+                                      </div>
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        {form.isPublished && (
+                                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-medium">
+                                            <Globe className="w-2.5 h-2.5" />Live
+                                          </span>
+                                        )}
+                                        <span className="text-[10px] text-muted-foreground font-mono">#{form.formNumber}</span>
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">{form.name}</p>
+                                      {form.description && (
+                                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{form.description}</p>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-auto pt-1">
+                                      {fieldCount > 0 && (
+                                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                          <List className="w-2.5 h-2.5" />{fieldCount} field{fieldCount !== 1 ? "s" : ""}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  )}
 
-                  {/* Form cards grid */}
-                  <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
-                    {group.forms.map(form => {
-                      let fieldCount = 0;
-                      try { fieldCount = JSON.parse(form.fields).length; } catch {}
-                      return (
-                        <button
-                          key={form.id}
-                          onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setMode('templates'); setShowAllForms(false); }}
-                          className={cn(
-                            "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5",
-                            selectedId === form.id ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
-                          )}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/30 to-primary/10 flex items-center justify-center flex-shrink-0">
-                              <ClipboardList className="w-4 h-4 text-primary" />
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {form.isPublished && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 text-[10px] font-medium">
-                                  <Globe className="w-2.5 h-2.5" />Live
-                                </span>
-                              )}
-                              <span className="text-[10px] text-muted-foreground font-mono">#{form.formNumber}</span>
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">{form.name}</p>
-                            {form.description && (
-                              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">{form.description}</p>
+                  {/* ── Wiki Articles ── */}
+                  {visibleKnowledge.length > 0 && (
+                    <section>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-400">
+                          <BookMarked className="w-4 h-4" />
+                          <span className="text-sm font-semibold">Wiki Articles</span>
+                        </div>
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground">{visibleKnowledge.length} article{visibleKnowledge.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                        {visibleKnowledge.map(item => (
+                          <button
+                            key={item.id}
+                            onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setMode('templates'); setShowAllForms(false); }}
+                            className={cn(
+                              "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-violet-400/40 hover:-translate-y-0.5",
+                              selectedKnowledgeId === item.id ? "border-violet-400 bg-violet-500/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
                             )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-auto pt-1">
-                            {fieldCount > 0 && (
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                <List className="w-2.5 h-2.5" />{fieldCount} field{fieldCount !== 1 ? "s" : ""}
-                              </span>
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500/30 to-violet-500/10 flex items-center justify-center flex-shrink-0">
+                              <BookMarked className="w-4 h-4 text-violet-400" />
+                            </div>
+                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-violet-400 transition-colors">{item.title}</p>
+                            {item.content && (
+                              <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{item.content.replace(/<[^>]+>/g, "").slice(0, 120)}</p>
                             )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* ── Mind Maps ── */}
+                  {visibleMindmaps.length > 0 && (
+                    <section>
+                      <div className="flex items-center gap-2.5 mb-4">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                          <GitBranch className="w-4 h-4" />
+                          <span className="text-sm font-semibold">Mind Maps</span>
+                        </div>
+                        <div className="flex-1 h-px bg-border" />
+                        <span className="text-xs text-muted-foreground">{visibleMindmaps.length} map{visibleMindmaps.length !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="grid grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+                        {visibleMindmaps.map(mm => (
+                          <button
+                            key={mm.id}
+                            onClick={() => { setSelectedMindmapId(mm.id); setSelectedId(null); setSelectedKnowledgeId(null); setMode('templates'); setShowAllForms(false); }}
+                            className="group text-left flex flex-col gap-2 p-4 rounded-xl border border-border bg-card hover:bg-card/80 hover:border-emerald-400/40 hover:shadow-md hover:-translate-y-0.5 transition-all"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500/30 to-emerald-500/10 flex items-center justify-center flex-shrink-0">
+                              <GitBranch className="w-4 h-4 text-emerald-400" />
+                            </div>
+                            <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-emerald-400 transition-colors">{mm.name}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                </>
+              )}
             </div>
           </div>
         );
