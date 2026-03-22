@@ -290,6 +290,35 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     setEditingLabel({ nodeId: childId, value: 'New node' });
   };
 
+  // ── Add peer (sibling) node ───────────────────────────────────────────────
+
+  const addPeerNode = (siblingId: string) => {
+    const sibling = mapDataRef.current.nodes.find(n => n.id === siblingId);
+    if (!sibling) return;
+    // Find this node's parent edge (if any)
+    const parentEdge = mapDataRef.current.edges.find(e => e.targetId === siblingId);
+    const peerId = uid();
+    const peer: MapNode = {
+      id: peerId,
+      label: 'New node',
+      x: sibling.x,
+      y: sibling.y + nodeHeight(sibling) + 36,
+      color: sibling.color,
+      type: 'normal',
+      taskId: null,
+      taskData: null,
+    };
+    const newEdges = parentEdge
+      ? [{ id: uid(), sourceId: parentEdge.sourceId, targetId: peerId }]
+      : [];
+    updateMapData(prev => ({
+      nodes: [...prev.nodes, peer],
+      edges: [...prev.edges, ...newEdges],
+    }));
+    setSelectedNodeId(peerId);
+    setEditingLabel({ nodeId: peerId, value: 'New node' });
+  };
+
   // ── Delete selected ───────────────────────────────────────────────────────
 
   const deleteSelected = () => {
@@ -690,6 +719,15 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     onPointerEnter={() => setHoveredNodeId(node.id)}
                     onPointerLeave={() => setHoveredNodeId(id => id === node.id ? null : id)}
                   >
+                    {/* Transparent hit-area covering node + both button zones to keep hover active */}
+                    <rect
+                      x={-4} y={-4}
+                      width={NODE_W + 38}
+                      height={h + 38}
+                      fill="rgba(0,0,0,0)"
+                      stroke="none"
+                      style={{ pointerEvents: 'fill' }}
+                    />
                     {/* Selection ring */}
                     {(isSelected || isConnectSrc) && (
                       <rect x={-3} y={-3} width={NODE_W + 6} height={h + 6} rx={NODE_RX + 2}
@@ -753,18 +791,34 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                         )}
                       </>
                     )}
-                    {/* + Add Child button */}
+                    {/* + Add Child button (right side → subordinate) */}
                     {showPlus && (
                       <g
-                        transform={`translate(${NODE_W + 6}, ${h / 2 - 10})`}
+                        transform={`translate(${NODE_W + 2}, ${h / 2 - 11})`}
                         style={{ cursor: 'pointer' }}
                         onPointerDown={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); addChildNode(node.id); }}
-                        title="Add child node"
                       >
-                        <rect x={0} y={0} width={20} height={20} rx={10} fill="#6366f1" />
-                        <text x={10} y={14} textAnchor="middle" fill="#ffffff" fontSize={14} fontWeight={700}
-                          style={{ userSelect: 'none', pointerEvents: 'none', lineHeight: 1 }}>+</text>
+                        <rect x={0} y={0} width={22} height={22} rx={11} fill="#6366f1" />
+                        <text x={11} y={15.5} textAnchor="middle" fill="#ffffff" fontSize={15} fontWeight={700}
+                          style={{ userSelect: 'none', pointerEvents: 'none' }}>+</text>
+                        {/* Tooltip */}
+                        <title>Add child node</title>
+                      </g>
+                    )}
+                    {/* + Add Peer button (bottom → sibling at same level) */}
+                    {showPlus && (
+                      <g
+                        transform={`translate(${NODE_W / 2 - 11}, ${h + 4})`}
+                        style={{ cursor: 'pointer' }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => { e.stopPropagation(); addPeerNode(node.id); }}
+                      >
+                        <rect x={0} y={0} width={22} height={22} rx={11} fill="none" stroke="#6366f1" strokeWidth={1.5} />
+                        <rect x={1.5} y={1.5} width={19} height={19} rx={9.5} fill="#eef2ff" />
+                        <text x={11} y={15.5} textAnchor="middle" fill="#6366f1" fontSize={15} fontWeight={700}
+                          style={{ userSelect: 'none', pointerEvents: 'none' }}>+</text>
+                        <title>Add peer node</title>
                       </g>
                     )}
                   </g>
