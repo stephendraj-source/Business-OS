@@ -619,7 +619,7 @@ function TrafficLightBadge({ value }: { value?: string }) {
 
 function TableWrapper({ children }: { children: React.ReactNode }) {
   return (
-    <div className="overflow-auto rounded-xl border border-border">
+    <div className="overflow-x-auto rounded-xl border border-border">
       <table className="w-full text-sm">{children}</table>
     </div>
   );
@@ -628,7 +628,7 @@ function TableWrapper({ children }: { children: React.ReactNode }) {
 function Th({ children, className, title }: { children: React.ReactNode; className?: string; title?: string }) {
   const resolvedTitle = title ?? (typeof children === 'string' ? children : undefined);
   return (
-    <th title={resolvedTitle} className={cn("text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-secondary/50 border-b border-border whitespace-nowrap", className)}>
+    <th title={resolvedTitle} className={cn("sticky top-0 z-10 text-left px-4 py-3 text-xs font-semibold text-muted-foreground bg-card border-b border-border whitespace-nowrap", className)}>
       {children}
     </th>
   );
@@ -687,7 +687,7 @@ function DraggableTh({ fieldKey, children, className, onReorder, isActive, sortD
       }}
       onDragEnd={() => setSide(null)}
       className={cn(
-        "relative text-left px-4 py-3 text-xs font-semibold bg-secondary/50 border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors",
+        "sticky top-0 z-10 relative text-left px-4 py-3 text-xs font-semibold bg-card border-b border-border whitespace-nowrap cursor-grab active:cursor-grabbing select-none transition-colors",
         isActive ? "text-primary" : "text-muted-foreground",
         onSort && "hover:text-foreground",
         className,
