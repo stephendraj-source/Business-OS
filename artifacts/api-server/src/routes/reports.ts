@@ -3,6 +3,8 @@ import { db, users, groups, roles } from '@workspace/db';
 import { customReportsTable, reportShares } from '@workspace/db';
 import { eq, or, inArray, and } from 'drizzle-orm';
 import { userGroups, groupRoles } from '@workspace/db';
+import { anthropic } from '@workspace/integrations-anthropic-ai';
+import { useCredit } from '../lib/credits';
 
 export const reportsRouter = Router();
 
@@ -135,4 +137,76 @@ reportsRouter.put('/reports/:id/shares', async (req, res) => {
     const result = await db.select().from(reportShares).where(eq(reportShares.reportId, id));
     res.json(result);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+const AVAILABLE_FIELDS = [
+  { key: 'processId',            label: 'Process ID' },
+  { key: 'category',             label: 'Category' },
+  { key: 'processName',          label: 'Process Name' },
+  { key: 'description',          label: 'Description' },
+  { key: 'aiAgent',              label: 'AI Agent' },
+  { key: 'purpose',              label: 'Purpose' },
+  { key: 'inputs',               label: 'Inputs' },
+  { key: 'outputs',              label: 'Outputs' },
+  { key: 'humanInTheLoop',       label: 'Human-in-the-Loop' },
+  { key: 'kpi',                  label: 'KPI' },
+  { key: 'target',               label: 'Target' },
+  { key: 'achievement',          label: 'Achievement' },
+  { key: 'trafficLight',         label: 'Traffic Light' },
+  { key: 'estimatedValueImpact', label: 'Value Impact' },
+  { key: 'industryBenchmark',    label: 'Benchmark' },
+  { key: 'included',             label: 'In Portfolio' },
+  { key: 'completeness',         label: 'Completeness' },
+  { key: 'status',               label: 'Status' },
+  { key: 'fieldsFilled',         label: 'Fields Filled' },
+];
+
+reportsRouter.post('/reports/ai-generate', async (req, res) => {
+  try {
+    const { userId, tenantId } = getAuth(req);
+    const { prompt } = req.body as { prompt: string };
+    if (!prompt?.trim()) return res.status(400).json({ error: 'prompt is required' });
+
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) return res.status(402).json({ error: 'Insufficient credits.' });
+    }
+
+    const fieldList = AVAILABLE_FIELDS.map(f => `- ${f.key}: ${f.label}`).join('\n');
+
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
+      messages: [{
+        role: 'user',
+        content: `You are helping a user create a custom process report. Based on their request, generate a report configuration.
+
+Available fields (use the exact key values):
+${fieldList}
+
+User request: "${prompt}"
+
+Return ONLY valid JSON in this exact format (no markdown, no explanation):
+{
+  "name": "Report name (concise, max 50 chars)",
+  "description": "Brief description of what this report shows",
+  "fields": ["key1", "key2", ...]
+}
+
+Always include processId, category, and processName as the first three fields. Choose additional fields that make sense for the request. Ensure all field keys are from the available list above.`,
+      }],
+    });
+
+    const text = message.content.map((c: any) => c.type === 'text' ? c.text : '').join('').trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: 'AI returned invalid response' });
+
+    const config = JSON.parse(jsonMatch[0]) as { name: string; description: string; fields: string[] };
+    const validKeys = new Set(AVAILABLE_FIELDS.map(f => f.key));
+    const safeFields = (config.fields ?? []).filter((k: string) => validKeys.has(k));
+
+    res.json({ name: config.name ?? '', description: config.description ?? '', fields: safeFields });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message ?? 'AI generation failed' });
+  }
 });
