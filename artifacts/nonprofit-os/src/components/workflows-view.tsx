@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
-  Code2, ClipboardList, Bot, ArrowDownToLine, Layers,
+  Code2, ClipboardList, Bot, ArrowDownToLine, Layers, Split, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,14 +17,21 @@ export interface WCondition {
   value: string;
 }
 
+export interface ParallelBranch {
+  id: string;
+  label: string;
+  steps: WStep[];
+}
+
 export interface WStep {
   id: string;
-  type: 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call';
+  type: 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call' | 'parallel';
   label: string;
   description: string;
   condition?: WCondition;
   thenSteps?: WStep[];
   elseSteps?: WStep[];
+  branches?: ParallelBranch[];
   formId?: number | null;
   formName?: string;
   dataSourceType?: 'agent' | 'form' | null;
@@ -86,6 +93,15 @@ function updateStepInTree(steps: WStep[], id: string, fn: (s: WStep) => WStep): 
         elseSteps: updateStepInTree(s.elseSteps ?? [], id, fn),
       };
     }
+    if (s.type === 'parallel' && s.branches) {
+      return {
+        ...s,
+        branches: s.branches.map(b => ({
+          ...b,
+          steps: updateStepInTree(b.steps, id, fn),
+        })),
+      };
+    }
     return s;
   });
 }
@@ -101,11 +117,20 @@ function deleteStepFromTree(steps: WStep[], id: string): WStep[] {
           elseSteps: deleteStepFromTree(s.elseSteps ?? [], id),
         };
       }
+      if (s.type === 'parallel' && s.branches) {
+        return {
+          ...s,
+          branches: s.branches.map(b => ({
+            ...b,
+            steps: deleteStepFromTree(b.steps, id),
+          })),
+        };
+      }
       return s;
     });
 }
 
-// Branch key: "root" | "{stepId}:then" | "{stepId}:else"
+// Branch key: "root" | "{stepId}:then" | "{stepId}:else" | "{stepId}:branch:{idx}"
 function addStepToBranch(
   steps: WStep[],
   branchKey: string,
@@ -147,6 +172,35 @@ function addStepToBranch(
         ...s,
         thenSteps: addStepToBranch(s.thenSteps ?? [], branchKey, afterStepId, newStep),
         elseSteps: addStepToBranch(s.elseSteps ?? [], branchKey, afterStepId, newStep),
+      };
+    }
+    if (s.type === 'parallel' && s.branches) {
+      // Check if branchKey matches one of our parallel branch keys
+      const parallelMatch = branchKey.match(new RegExp(`^${s.id}:branch:(\\d+)$`));
+      if (parallelMatch) {
+        const branchIdx = Number(parallelMatch[1]);
+        return {
+          ...s,
+          branches: s.branches.map((b, i) => {
+            if (i !== branchIdx) return b;
+            const branchSteps = b.steps;
+            if (afterStepId === null) return { ...b, steps: [newStep, ...branchSteps] };
+            const idx = branchSteps.findIndex(x => x.id === afterStepId);
+            if (idx !== -1) {
+              const copy = [...branchSteps];
+              copy.splice(idx + 1, 0, newStep);
+              return { ...b, steps: copy };
+            }
+            return b;
+          }),
+        };
+      }
+      return {
+        ...s,
+        branches: s.branches.map(b => ({
+          ...b,
+          steps: addStepToBranch(b.steps, branchKey, afterStepId, newStep),
+        })),
       };
     }
     return s;
@@ -240,7 +294,7 @@ function FieldPickerTextarea({
 
 // ── Add Step Button ───────────────────────────────────────────────────────────
 
-type StepType = 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call';
+type StepType = 'action' | 'condition' | 'form' | 'workflow-call' | 'agent-call' | 'parallel';
 
 function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
   const [open, setOpen] = useState(false);
@@ -284,6 +338,10 @@ function AddStepButton({ onAdd }: { onAdd: (type: StepType) => void }) {
             <button onClick={() => { setOpen(false); onAdd('agent-call'); }}
               className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
               <Bot className="w-3.5 h-3.5 text-emerald-400" />Run an AI Agent
+            </button>
+            <button onClick={() => { setOpen(false); onAdd('parallel'); }}
+              className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent transition-colors text-left border-t border-border">
+              <Split className="w-3.5 h-3.5 text-fuchsia-400" />Parallel Branches
             </button>
           </div>
         )}
@@ -1037,6 +1095,202 @@ function AgentCallStepCard({ step, onUpdate, onDelete, agents }: {
   );
 }
 
+// ── Parallel Step Card ────────────────────────────────────────────────────────
+
+const PARALLEL_BRANCH_COLORS = [
+  'border-fuchsia-500/50',
+  'border-blue-500/50',
+  'border-amber-500/50',
+  'border-teal-500/50',
+  'border-rose-500/50',
+  'border-lime-500/50',
+];
+const PARALLEL_BRANCH_TEXT = [
+  'text-fuchsia-400',
+  'text-blue-400',
+  'text-amber-400',
+  'text-teal-400',
+  'text-rose-400',
+  'text-lime-400',
+];
+const PARALLEL_BRANCH_BG = [
+  'bg-fuchsia-500/10',
+  'bg-blue-500/10',
+  'bg-amber-500/10',
+  'bg-teal-500/10',
+  'bg-rose-500/10',
+  'bg-lime-500/10',
+];
+
+function ParallelStepCard({ step, onUpdate, onDelete }: {
+  step: WStep;
+  onUpdate: (updates: Partial<WStep>) => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftLabel, setDraftLabel] = useState(step.label);
+  const [editingBranchIdx, setEditingBranchIdx] = useState<number | null>(null);
+  const [draftBranchLabel, setDraftBranchLabel] = useState('');
+
+  useEffect(() => {
+    if (!editing) setDraftLabel(step.label);
+  }, [step.label, editing]);
+
+  const commitLabel = () => {
+    onUpdate({ label: draftLabel });
+    setEditing(false);
+  };
+
+  const addBranch = () => {
+    const existing = step.branches ?? [];
+    onUpdate({
+      branches: [
+        ...existing,
+        { id: uid(), label: `Branch ${existing.length + 1}`, steps: [] },
+      ],
+    });
+  };
+
+  const removeBranch = (branchId: string) => {
+    const existing = step.branches ?? [];
+    if (existing.length <= 2) return;
+    onUpdate({ branches: existing.filter(b => b.id !== branchId) });
+  };
+
+  const startRenameBranch = (idx: number) => {
+    setDraftBranchLabel((step.branches ?? [])[idx]?.label ?? '');
+    setEditingBranchIdx(idx);
+  };
+
+  const commitRenameBranch = () => {
+    if (editingBranchIdx === null) return;
+    onUpdate({
+      branches: (step.branches ?? []).map((b, i) =>
+        i === editingBranchIdx ? { ...b, label: draftBranchLabel } : b
+      ),
+    });
+    setEditingBranchIdx(null);
+  };
+
+  const branches = step.branches ?? [];
+
+  return (
+    <div className="relative mx-auto w-full max-w-sm rounded-xl border-2 border-fuchsia-500/50 bg-fuchsia-500/5 shadow-sm">
+      <div className="px-4 pt-3 pb-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-md bg-fuchsia-500/15 flex items-center justify-center flex-shrink-0">
+              <Split className="w-2.5 h-2.5 text-fuchsia-400" />
+            </div>
+            <span className="text-xs font-semibold text-fuchsia-400 uppercase tracking-wider">Parallel Split</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {editing ? (
+              <>
+                <button
+                  onClick={commitLabel}
+                  className="px-2 py-0.5 rounded-md text-xs bg-primary text-primary-foreground hover:bg-primary/90 transition-colors flex items-center gap-1"
+                >
+                  <Check className="w-3 h-3" />Apply
+                </button>
+                <button
+                  onClick={() => setEditing(false)}
+                  className="px-2 py-0.5 rounded-md text-xs border border-border text-muted-foreground hover:bg-secondary transition-colors"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { setDraftLabel(step.label); setEditing(true); }}
+                  className="p-1 rounded-md text-muted-foreground hover:text-fuchsia-400 hover:bg-fuchsia-500/10 transition-colors opacity-50 hover:opacity-100"
+                  title="Rename step"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={onDelete}
+                  className="p-1 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-50 hover:opacity-100"
+                  title="Delete step"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {editing ? (
+          <input
+            value={draftLabel}
+            onChange={e => setDraftLabel(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commitLabel(); if (e.key === 'Escape') setEditing(false); }}
+            placeholder="Label for this parallel split (optional)…"
+            autoFocus
+            className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-fuchsia-500 mb-2"
+          />
+        ) : step.label ? (
+          <div className="text-sm font-medium mb-2 truncate">{step.label}</div>
+        ) : null}
+
+        {/* Branch labels row */}
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {branches.map((b, idx) => (
+            <div key={b.id} className={cn(
+              "flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border",
+              PARALLEL_BRANCH_COLORS[idx % PARALLEL_BRANCH_COLORS.length],
+              PARALLEL_BRANCH_TEXT[idx % PARALLEL_BRANCH_TEXT.length],
+              PARALLEL_BRANCH_BG[idx % PARALLEL_BRANCH_BG.length],
+            )}>
+              {editingBranchIdx === idx ? (
+                <input
+                  value={draftBranchLabel}
+                  onChange={e => setDraftBranchLabel(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') commitRenameBranch(); if (e.key === 'Escape') setEditingBranchIdx(null); }}
+                  onBlur={commitRenameBranch}
+                  autoFocus
+                  className="bg-transparent border-none outline-none w-20 text-[10px]"
+                />
+              ) : (
+                <>
+                  <span>{b.label || `Branch ${idx + 1}`}</span>
+                  <button
+                    onClick={() => startRenameBranch(idx)}
+                    className="opacity-60 hover:opacity-100 transition-opacity"
+                    title="Rename branch"
+                  >
+                    <Pencil className="w-2.5 h-2.5" />
+                  </button>
+                  {branches.length > 2 && (
+                    <button
+                      onClick={() => removeBranch(b.id)}
+                      className="opacity-60 hover:opacity-100 text-red-400 transition-opacity"
+                      title="Remove this branch"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={addBranch}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-dashed border-border text-muted-foreground hover:border-fuchsia-400 hover:text-fuchsia-400 transition-colors"
+          >
+            <Plus className="w-2.5 h-2.5" />Add Branch
+          </button>
+        </div>
+
+        <div className="text-[10px] text-muted-foreground">
+          All branches run simultaneously — steps within each branch run in sequence.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Recursive Step Branch Renderer ────────────────────────────────────────────
 
 function StepBranch({
@@ -1152,6 +1406,53 @@ function StepBranch({
               <div className="w-px h-4 bg-border" />
             </div>
           )}
+          {step.type === 'parallel' && (
+            <div className="w-full flex flex-col items-center">
+              <div className="w-full px-2">
+                <ParallelStepCard
+                  step={step}
+                  onUpdate={updates => onUpdate(step.id, updates)}
+                  onDelete={() => onDelete(step.id)}
+                />
+              </div>
+              {/* Parallel branches side-by-side */}
+              <div className="w-px h-4 bg-border" />
+              <div className="w-full flex items-start gap-1 overflow-x-auto">
+                {(step.branches ?? []).map((branch, idx) => {
+                  const colorClass = PARALLEL_BRANCH_COLORS[idx % PARALLEL_BRANCH_COLORS.length];
+                  const textClass = PARALLEL_BRANCH_TEXT[idx % PARALLEL_BRANCH_TEXT.length];
+                  return (
+                    <div
+                      key={branch.id}
+                      className={cn(
+                        "flex-1 min-w-0 border-t-2 pt-2 px-1",
+                        colorClass,
+                        idx === 0 ? "border-l-2 rounded-tl-xl pl-2" : "",
+                        idx === (step.branches ?? []).length - 1 ? "border-r-2 rounded-tr-xl pr-2" : "",
+                      )}
+                    >
+                      <div className={cn("text-[10px] font-bold uppercase tracking-wider px-2 pb-1 flex items-center gap-1", textClass)}>
+                        <Split className="w-2.5 h-2.5" />
+                        {branch.label || `Branch ${idx + 1}`}
+                      </div>
+                      <StepBranch
+                        steps={branch.steps}
+                        branchKey={`${step.id}:branch:${idx}`}
+                        onUpdate={onUpdate}
+                        onDelete={onDelete}
+                        onAdd={onAdd}
+                        processFields={processFields}
+                        forms={forms}
+                        agents={agents}
+                        workflows={workflows}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="w-px h-4 bg-border" />
+            </div>
+          )}
           <AddStepButton onAdd={type => onAdd(branchKey, step.id, type)} />
         </div>
       ))}
@@ -1182,6 +1483,12 @@ function WorkflowDesigner({
         condition: { field: '', operator: 'equals', value: '' },
         thenSteps: [],
         elseSteps: [],
+      } : {}),
+      ...(type === 'parallel' ? {
+        branches: [
+          { id: uid(), label: 'Branch 1', steps: [] },
+          { id: uid(), label: 'Branch 2', steps: [] },
+        ],
       } : {}),
     };
     onChange(addStepToBranch(steps, branchKey, afterId, newStep));
