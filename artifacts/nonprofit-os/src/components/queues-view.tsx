@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Pencil, Trash2, Inbox, AlertTriangle, Loader2, X, Check,
   User, Calendar, Flag, Circle, CheckCircle2, Pause, Ban, RefreshCw,
-  ChevronRight, FileText, Clock,
+  ChevronRight, FileText, Clock, Search, ListPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -428,6 +428,187 @@ function TaskDetailPanel({
   );
 }
 
+// ── Add Unqueued Tasks Modal ──────────────────────────────────────────────────
+
+function AddTasksModal({
+  unqueuedTasks,
+  queueName,
+  onConfirm,
+  onClose,
+  saving,
+}: {
+  unqueuedTasks: Task[];
+  queueName: string;
+  onConfirm: (ids: number[]) => Promise<void>;
+  onClose: () => void;
+  saving: boolean;
+}) {
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return unqueuedTasks;
+    return unqueuedTasks.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      String(t.task_number).includes(q),
+    );
+  }, [unqueuedTasks, search]);
+
+  function toggleAll() {
+    if (selected.size === filtered.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(t => t.id)));
+    }
+  }
+
+  function toggle(id: number) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
+  const allChecked = filtered.length > 0 && selected.size === filtered.length;
+  const someChecked = selected.size > 0 && !allChecked;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Add tasks to queue</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Adding to <span className="text-foreground font-medium">{queueName}</span>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-4 py-3 border-b border-border flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <input
+              autoFocus
+              type="text"
+              placeholder="Search unqueued tasks…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-sm bg-secondary border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+          </div>
+        </div>
+
+        {/* Select-all row */}
+        {filtered.length > 0 && (
+          <div
+            onClick={toggleAll}
+            className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-secondary/30 cursor-pointer hover:bg-secondary/60 transition-colors flex-shrink-0"
+          >
+            <div className={cn(
+              'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors',
+              allChecked ? 'bg-indigo-500 border-indigo-500' : someChecked ? 'bg-indigo-500/40 border-indigo-400' : 'border-border',
+            )}>
+              {(allChecked || someChecked) && <Check className="w-2.5 h-2.5 text-white" />}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {allChecked ? 'Deselect all' : `Select all (${filtered.length})`}
+            </span>
+          </div>
+        )}
+
+        {/* Task list */}
+        <div className="flex-1 overflow-y-auto">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-3 text-muted-foreground">
+              <Flag className="w-8 h-8 opacity-20" />
+              <p className="text-sm">{search ? 'No tasks match your search' : 'All tasks are already in a queue'}</p>
+            </div>
+          ) : (
+            filtered.map(t => {
+              const isChecked = selected.has(t.id);
+              const priorityCfg = PRIORITY_CONFIG[t.priority] ?? PRIORITY_CONFIG.normal;
+              const isOverdue = t.end_date && t.status !== 'completed' && t.status !== 'cancelled'
+                && new Date(t.end_date) < new Date();
+              return (
+                <div
+                  key={t.id}
+                  onClick={() => toggle(t.id)}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3 border-b border-border last:border-0 cursor-pointer transition-colors',
+                    isChecked ? 'bg-indigo-500/8' : 'hover:bg-secondary/40',
+                  )}
+                >
+                  <div className={cn(
+                    'w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 transition-colors',
+                    isChecked ? 'bg-indigo-500 border-indigo-500' : 'border-border',
+                  )}>
+                    {isChecked && <Check className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-foreground truncate">{t.name}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">#{t.task_number}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                      <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full border font-medium', priorityCfg.className)}>
+                        {priorityCfg.label}
+                      </span>
+                      {t.assigned_to_name && (
+                        <span className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          <User className="w-3 h-3" />{t.assigned_to_name}
+                        </span>
+                      )}
+                      {t.end_date && (
+                        <span className={cn('text-[11px] flex items-center gap-1', isOverdue ? 'text-red-400' : 'text-muted-foreground')}>
+                          <Calendar className="w-3 h-3" />{formatDate(t.end_date)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border flex-shrink-0 gap-3">
+          <span className="text-xs text-muted-foreground">
+            {selected.size === 0 ? 'No tasks selected' : `${selected.size} task${selected.size !== 1 ? 's' : ''} selected`}
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="px-3 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => onConfirm([...selected])}
+              disabled={saving || selected.size === 0}
+              className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium transition-colors flex items-center gap-1.5"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListPlus className="w-3.5 h-3.5" />}
+              Add {selected.size > 0 ? selected.size : ''} to queue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export function QueuesView() {
@@ -446,6 +627,8 @@ export function QueuesView() {
 
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [showAddTasks, setShowAddTasks] = useState(false);
+  const [addTasksSaving, setAddTasksSaving] = useState(false);
 
   const fetchQueues = useCallback(async () => {
     setLoading(true);
@@ -492,6 +675,30 @@ export function QueuesView() {
   useEffect(() => {
     setSelectedTaskId(null);
   }, [selectedQueueId]);
+
+  async function handleAssignToQueue(taskIds: number[]) {
+    if (!selectedQueueId || selectedQueueId === 'unqueued') return;
+    setAddTasksSaving(true);
+    try {
+      await Promise.all(taskIds.map(id =>
+        fetch(`${API}/tasks/${id}`, {
+          method: 'PATCH',
+          headers: jsonHeaders(),
+          body: JSON.stringify({ queue_id: selectedQueueId }),
+        }),
+      ));
+      setTasks(prev => prev.map(t =>
+        taskIds.includes(t.id)
+          ? { ...t, queue_id: selectedQueueId as number, queue_name: selectedQueue?.name ?? null }
+          : t,
+      ));
+      setShowAddTasks(false);
+    } catch {
+      await fetchTasks();
+    } finally {
+      setAddTasksSaving(false);
+    }
+  }
 
   async function handleStatusChange(taskId: number, newStatus: string) {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
@@ -723,9 +930,22 @@ export function QueuesView() {
                   )}
                 </div>
               </div>
-              <span className="text-xs text-muted-foreground flex-shrink-0">
-                {activeTasks.length} active · {doneTasks.length} done
-              </span>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {selectedQueueId !== 'unqueued' && unqueuedCount > 0 && (
+                  <button
+                    onClick={() => setShowAddTasks(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg bg-indigo-600/15 hover:bg-indigo-600/25 text-indigo-400 border border-indigo-500/20 transition-colors"
+                    title="Add unqueued tasks to this queue"
+                  >
+                    <ListPlus className="w-3.5 h-3.5" />
+                    Add tasks
+                    <span className="bg-indigo-500/20 text-indigo-300 px-1 rounded text-[10px] font-mono">{unqueuedCount}</span>
+                  </button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {activeTasks.length} active · {doneTasks.length} done
+                </span>
+              </div>
             </div>
 
             {/* Task list */}
@@ -784,6 +1004,17 @@ export function QueuesView() {
           task={selectedTask}
           onClose={() => setSelectedTaskId(null)}
           onStatusChange={handleStatusChange}
+        />
+      )}
+
+      {/* Add Tasks Modal */}
+      {showAddTasks && selectedQueue && (
+        <AddTasksModal
+          unqueuedTasks={tasks.filter(t => t.queue_id === null)}
+          queueName={selectedQueue.name}
+          onConfirm={handleAssignToQueue}
+          onClose={() => setShowAddTasks(false)}
+          saving={addTasksSaving}
         />
       )}
 
