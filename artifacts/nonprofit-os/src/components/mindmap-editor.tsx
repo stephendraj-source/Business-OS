@@ -1266,7 +1266,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                 );
               })}
 
-              {/* ── Layer 2: Node fills (cover edges that pass through nodes) ── */}
+              {/* ── Layer 2: Node fills (theme-aware, covers edges that pass through nodes) ── */}
               {mapData.nodes.map(node => {
                 const isTaskNode = node.type === 'task';
                 const h = nodeHeight(node);
@@ -1274,11 +1274,15 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                   <g key={`bg-${node.id}`} transform={`translate(${node.x}, ${node.y})`} style={{ pointerEvents: 'none' }}>
                     <rect
                       x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
-                      fill={isTaskNode ? '#f0fdf4' : '#ffffff'}
+                      style={{ fill: 'hsl(var(--card))' }}
                       stroke="none"
                     />
                     {!isTaskNode && (
                       <rect x={0} y={0} width={5} height={h} rx={NODE_RX} fill={node.color} />
+                    )}
+                    {isTaskNode && (
+                      <rect x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
+                        style={{ fill: 'rgba(16,185,129,0.08)' }} stroke="none" />
                     )}
                   </g>
                 );
