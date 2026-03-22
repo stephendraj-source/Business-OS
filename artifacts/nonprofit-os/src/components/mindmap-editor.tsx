@@ -18,6 +18,8 @@ interface TaskData {
   priority: 'low' | 'normal' | 'high' | 'urgent';
   status: 'open' | 'in_progress' | 'done' | 'cancelled';
   assignedTo: number | null;
+  aiAgentId: number | null;
+  workflowId: number | null;
   queueId: number | null;
   endDate: string | null;
   approvalStatus: 'none' | 'pending' | 'approved' | 'rejected';
@@ -67,8 +69,28 @@ function uid() {
 function defaultTaskData(): TaskData {
   return {
     name: '', description: '', priority: 'normal', status: 'open',
-    assignedTo: null, queueId: null, endDate: null,
+    assignedTo: null, aiAgentId: null, workflowId: null, queueId: null, endDate: null,
     approvalStatus: 'none', source: 'Mind Map', aiInstructions: '',
+  };
+}
+
+function computeAssignedValue(d: TaskData): string {
+  if (d.assignedTo)  return `user:${d.assignedTo}`;
+  if (d.aiAgentId)   return `agent:${d.aiAgentId}`;
+  if (d.workflowId)  return `workflow:${d.workflowId}`;
+  if (d.queueId)     return `queue:${d.queueId}`;
+  return '';
+}
+
+function parseAssignment(val: string): Pick<TaskData, 'assignedTo' | 'aiAgentId' | 'workflowId' | 'queueId'> {
+  if (!val) return { assignedTo: null, aiAgentId: null, workflowId: null, queueId: null };
+  const [type, id] = val.split(':');
+  const n = Number(id);
+  return {
+    assignedTo:  type === 'user'     ? n : null,
+    aiAgentId:   type === 'agent'    ? n : null,
+    workflowId:  type === 'workflow' ? n : null,
+    queueId:     type === 'queue'    ? n : null,
   };
 }
 
@@ -290,6 +312,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const [taskLoading, setTaskLoading] = useState(false);
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [queues, setQueues] = useState<{ id: number; name: string }[]>([]);
+  const [agents, setAgents] = useState<{ id: number; name: string }[]>([]);
+  const [workflows, setWorkflows] = useState<{ id: number; name: string }[]>([]);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
   const [contextMenuColorOpen, setContextMenuColorOpen] = useState(false);
   const [taskModal, setTaskModal] = useState<{ nodeId: string } | null>(null);
@@ -335,6 +359,10 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setUsers(d.map((u: any) => ({ id: u.id, name: u.name || u.email }))); }).catch(() => {});
     fetch(`${API}/org/task-queues`, { headers: fetchHeaders() })
       .then(r => r.json()).then(d => { if (Array.isArray(d)) setQueues(d); }).catch(() => {});
+    fetch(`${API}/ai-agents`, { headers: fetchHeaders() })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setAgents(d.map((a: any) => ({ id: a.id, name: a.name }))); }).catch(() => {});
+    fetch(`${API}/workflows`, { headers: fetchHeaders() })
+      .then(r => r.json()).then(d => { if (Array.isArray(d)) setWorkflows(d.map((w: any) => ({ id: w.id, name: w.name }))); }).catch(() => {});
   }, []);
 
   // ── Sync task nodes ───────────────────────────────────────────────────────
@@ -363,6 +391,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       priority: t.priority ?? 'normal',
       status: t.status ?? 'open',
       assignedTo: t.assigned_to ?? null,
+      aiAgentId: t.ai_agent_id ?? null,
+      workflowId: t.workflow_id ?? null,
       queueId: t.queue_id ?? null,
       endDate: t.end_date ? t.end_date.slice(0, 10) : null,
       approvalStatus: t.approval_status ?? 'none',
@@ -853,6 +883,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           priority: taskDraft.priority,
           status: taskDraft.status,
           assignedTo: taskDraft.assignedTo,
+          aiAgentId: taskDraft.aiAgentId,
+          workflowId: taskDraft.workflowId,
           queueId: taskDraft.queueId,
           endDate: taskDraft.endDate || null,
           approvalStatus: taskDraft.approvalStatus,
@@ -929,7 +961,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
 
     const apiField: Record<string, string> = {
       name: 'name', description: 'description', priority: 'priority',
-      status: 'status', assignedTo: 'assignedTo', queueId: 'queueId',
+      status: 'status', assignedTo: 'assignedTo', aiAgentId: 'aiAgentId',
+      workflowId: 'workflowId', queueId: 'queueId',
       endDate: 'endDate', approvalStatus: 'approvalStatus',
       source: 'source', aiInstructions: 'aiInstructions',
     };
@@ -937,6 +970,22 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
       body: JSON.stringify({ [apiField[field] ?? field]: value }),
+    }).catch(() => {});
+  };
+
+  const updateAssignment = async (nodeId: string, val: string) => {
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    if (!node || !node.taskId) return;
+    const updates = parseAssignment(val);
+    const newTaskData = { ...node.taskData!, ...updates };
+    updateMapData(prev => ({
+      ...prev,
+      nodes: prev.nodes.map(n => n.id === nodeId ? { ...n, taskData: newTaskData } : n),
+    }));
+    await fetch(`${API}/tasks/${node.taskId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+      body: JSON.stringify({ assignedTo: updates.assignedTo, aiAgentId: updates.aiAgentId, workflowId: updates.workflowId, queueId: updates.queueId }),
     }).catch(() => {});
   };
 
@@ -1524,20 +1573,13 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {/* Assigned To */}
                     <Field label="Assigned To">
                       <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                        value={selectedNode.taskData.assignedTo ?? ''}
-                        onChange={e => updateTaskField(selectedNode.id, 'assignedTo', e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">Unassigned</option>
-                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                    </Field>
-
-                    {/* Queue */}
-                    <Field label="Queue">
-                      <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                        value={selectedNode.taskData.queueId ?? ''}
-                        onChange={e => updateTaskField(selectedNode.id, 'queueId', e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">No Queue</option>
-                        {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                        value={computeAssignedValue(selectedNode.taskData)}
+                        onChange={e => updateAssignment(selectedNode.id, e.target.value)}>
+                        <option value="">— Unassigned —</option>
+                        {users.length > 0 && <optgroup label="Users">{users.map(u => <option key={`user:${u.id}`} value={`user:${u.id}`}>{u.name}</option>)}</optgroup>}
+                        {agents.length > 0 && <optgroup label="AI Agents">{agents.map(a => <option key={`agent:${a.id}`} value={`agent:${a.id}`}>{a.name}</option>)}</optgroup>}
+                        {workflows.length > 0 && <optgroup label="Workflows">{workflows.map(w => <option key={`workflow:${w.id}`} value={`workflow:${w.id}`}>{w.name}</option>)}</optgroup>}
+                        {queues.length > 0 && <optgroup label="Queues">{queues.map(q => <option key={`queue:${q.id}`} value={`queue:${q.id}`}>{q.name}</option>)}</optgroup>}
                       </select>
                     </Field>
 
@@ -1767,21 +1809,14 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
               <Field label="Assigned To">
                 <select
                   className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                  value={taskDraft.assignedTo ?? ''}
-                  onChange={e => setTaskDraft(d => ({ ...d, assignedTo: e.target.value ? Number(e.target.value) : null }))}
+                  value={computeAssignedValue(taskDraft)}
+                  onChange={e => setTaskDraft(d => ({ ...d, ...parseAssignment(e.target.value) }))}
                 >
-                  <option value="">Unassigned</option>
-                  {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Queue">
-                <select
-                  className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                  value={taskDraft.queueId ?? ''}
-                  onChange={e => setTaskDraft(d => ({ ...d, queueId: e.target.value ? Number(e.target.value) : null }))}
-                >
-                  <option value="">No Queue</option>
-                  {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                  <option value="">— Unassigned —</option>
+                  {users.length > 0 && <optgroup label="Users">{users.map(u => <option key={`user:${u.id}`} value={`user:${u.id}`}>{u.name}</option>)}</optgroup>}
+                  {agents.length > 0 && <optgroup label="AI Agents">{agents.map(a => <option key={`agent:${a.id}`} value={`agent:${a.id}`}>{a.name}</option>)}</optgroup>}
+                  {workflows.length > 0 && <optgroup label="Workflows">{workflows.map(w => <option key={`workflow:${w.id}`} value={`workflow:${w.id}`}>{w.name}</option>)}</optgroup>}
+                  {queues.length > 0 && <optgroup label="Queues">{queues.map(q => <option key={`queue:${q.id}`} value={`queue:${q.id}`}>{q.name}</option>)}</optgroup>}
                 </select>
               </Field>
               <Field label="Due Date">
