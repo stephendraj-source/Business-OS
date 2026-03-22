@@ -20,7 +20,7 @@ export type ActiveView =
   | 'ai-agents' | 'workflows' | 'forms'
   | 'users' | 'initiatives' | 'configuration'
   | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning'
-  | 'meetings';
+  | 'meetings' | 'calendar';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -53,6 +53,7 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'process-map',       label: 'Process Map',        sectionId: 'core'         },
   { id: 'strategy',          label: 'Mission & Vision',   sectionId: 'strategy'     },
   { id: 'strategic-planning',label: 'Strategic Planning', sectionId: 'strategy'     },
+  { id: 'initiatives',       label: 'Initiatives',        sectionId: 'strategy'     },
   { id: 'governance',        label: 'Governance',         sectionId: 'governance'   },
   { id: 'workflows',         label: 'Workflows',          sectionId: 'workflows'    },
   { id: 'forms',             label: 'Documents',sectionId: 'workflows'    },
@@ -824,9 +825,11 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
               <span className="hidden sm:inline truncate max-w-[120px]">{orgName}</span>
             </button>
             <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
-            <span className="px-1.5 py-0.5 text-muted-foreground whitespace-nowrap hidden md:inline">{meta.section}</span>
-            <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0 hidden md:inline" />
-            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium whitespace-nowrap">{meta.label}</span>
+            {meta?.section && <>
+              <span className="px-1.5 py-0.5 text-muted-foreground whitespace-nowrap hidden md:inline">{meta.section}</span>
+              <ChevronRight className="w-3 h-3 text-muted-foreground/40 flex-shrink-0 hidden md:inline" />
+            </>}
+            <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-medium whitespace-nowrap">{meta?.label ?? activeView}</span>
           </div>
         </div>
 
