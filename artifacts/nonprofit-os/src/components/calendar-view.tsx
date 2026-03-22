@@ -71,8 +71,8 @@ function formatDateRange(days: Date[]): string {
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const VISIBLE_HOURS = HOURS.slice(6, 22); // 6am–10pm
-const ROW_H = 48; // px per hour slot
+const VISIBLE_HOURS = HOURS.slice(6, 22);
+const ROW_H = 48;
 
 function fmtHour(h: number) {
   if (h === 0) return '12 AM';
@@ -205,26 +205,25 @@ export function CalendarView() {
     return (
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* Day header row */}
-        <div className="flex flex-shrink-0 border-b border-white/10">
-          {/* Time gutter label */}
+        <div className="flex flex-shrink-0 border-b border-border">
           <div className="w-14 flex-shrink-0" />
           <div className="flex flex-1">
             {days.map(day => (
               <div
                 key={day.toISOString()}
                 className={cn(
-                  'flex-1 py-2 text-center border-l border-white/8',
+                  'flex-1 py-2 text-center border-l border-border',
                   isToday(day) && 'bg-blue-500/5'
                 )}
               >
-                <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
                   {DAYS_SHORT[day.getDay()]}
                 </p>
                 <div className={cn(
                   'w-8 h-8 mx-auto mt-1 flex items-center justify-center rounded-full text-sm font-semibold',
                   isToday(day)
                     ? 'bg-blue-500 text-white'
-                    : 'text-white/80'
+                    : 'text-foreground'
                 )}>
                   {day.getDate()}
                 </div>
@@ -244,7 +243,7 @@ export function CalendarView() {
                   className="absolute w-full pr-2 text-right"
                   style={{ top: (h - 6) * ROW_H - 7 }}
                 >
-                  <span className="text-[10px] text-white/30 leading-none">{fmtHour(h)}</span>
+                  <span className="text-[10px] text-muted-foreground leading-none">{fmtHour(h)}</span>
                 </div>
               ))}
             </div>
@@ -256,21 +255,20 @@ export function CalendarView() {
                 {VISIBLE_HOURS.map(h => (
                   <div
                     key={h}
-                    className="absolute left-0 right-0 border-t border-white/6"
+                    className="absolute left-0 right-0 border-t border-border/50"
                     style={{ top: (h - 6) * ROW_H }}
                   />
                 ))}
-                {/* Half-hour lines */}
                 {VISIBLE_HOURS.map(h => (
                   <div
                     key={`half-${h}`}
-                    className="absolute left-0 right-0 border-t border-white/3"
+                    className="absolute left-0 right-0 border-t border-border/20"
                     style={{ top: (h - 6) * ROW_H + ROW_H / 2 }}
                   />
                 ))}
               </div>
 
-              {days.map((day, di) => {
+              {days.map((day) => {
                 const dayEvts = eventsOnDay(events, day).filter(
                   e => e.hour !== undefined && e.hour >= 6 && e.hour < 22
                 );
@@ -281,11 +279,10 @@ export function CalendarView() {
                   <div
                     key={day.toISOString()}
                     className={cn(
-                      'flex-1 border-l border-white/8 relative',
+                      'flex-1 border-l border-border relative',
                       isToday(day) && 'bg-blue-500/3'
                     )}
                   >
-                    {/* Current time line */}
                     {isToday(day) && nowTop >= 0 && nowTop <= VISIBLE_HOURS.length * ROW_H && (
                       <div
                         className="absolute left-0 right-0 z-20 flex items-center"
@@ -311,11 +308,11 @@ export function CalendarView() {
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-4 px-5 py-2 border-t border-white/8 flex-shrink-0">
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
+        <div className="flex items-center gap-4 px-5 py-2 border-t border-border flex-shrink-0">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="w-2 h-2 rounded-full bg-blue-500" /> Meetings
           </span>
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="w-2 h-2 rounded-full bg-violet-500" /> Tasks
           </span>
         </div>
@@ -331,16 +328,15 @@ export function CalendarView() {
     const gridStart = startOfWeekMon(firstDay);
     const allDays = datesInRange(gridStart, 42);
     const rows = [0,1,2,3,4,5].map(r => allDays.slice(r * 7, r * 7 + 7));
-    const filteredRows = rows.filter((week, ri) =>
-      week.some(d => d.getMonth() === month) || ri < 5
-    ).filter(week => week.some(d => d.getMonth() === month));
+    const filteredRows = rows
+      .filter(week => week.some(d => d.getMonth() === month));
 
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Day of week header */}
-        <div className="grid grid-cols-7 flex-shrink-0 border-b border-white/10">
+        <div className="grid grid-cols-7 flex-shrink-0 border-b border-border">
           {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-            <div key={d} className="py-2 text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider border-r border-white/6 last:border-r-0">
+            <div key={d} className="py-2 text-center text-[11px] font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0">
               {d}
             </div>
           ))}
@@ -349,7 +345,7 @@ export function CalendarView() {
         {/* Calendar rows */}
         <div className="flex-1 grid overflow-hidden" style={{ gridTemplateRows: `repeat(${filteredRows.length}, 1fr)` }}>
           {filteredRows.map((week, ri) => (
-            <div key={ri} className="grid grid-cols-7 border-b border-white/6 last:border-b-0">
+            <div key={ri} className="grid grid-cols-7 border-b border-border last:border-b-0">
               {week.map(day => {
                 const inMonth = day.getMonth() === month;
                 const today = isToday(day);
@@ -358,26 +354,24 @@ export function CalendarView() {
                   <div
                     key={day.toISOString()}
                     className={cn(
-                      'border-r border-white/6 last:border-r-0 p-1.5 flex flex-col min-h-0',
-                      !inMonth && 'opacity-25',
+                      'border-r border-border last:border-r-0 p-1.5 flex flex-col min-h-0',
+                      !inMonth && 'opacity-30',
                       today && 'bg-blue-500/5'
                     )}
                   >
-                    {/* Date number */}
                     <div className={cn(
                       'w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1 flex-shrink-0',
-                      today ? 'bg-blue-500 text-white' : 'text-white/60'
+                      today ? 'bg-blue-500 text-white' : 'text-foreground'
                     )}>
                       {day.getDate()}
                     </div>
 
-                    {/* Events */}
                     <div className="flex-1 space-y-0.5 overflow-hidden">
                       {dayEvts.slice(0, 3).map(evt => (
                         <EventPill key={evt.id} evt={evt} compact />
                       ))}
                       {dayEvts.length > 3 && (
-                        <p className="text-[9px] text-white/35 pl-1">+{dayEvts.length - 3} more</p>
+                        <p className="text-[9px] text-muted-foreground pl-1">+{dayEvts.length - 3} more</p>
                       )}
                     </div>
                   </div>
@@ -415,19 +409,19 @@ export function CalendarView() {
                   'rounded-xl p-3 border transition-colors',
                   isCurrentMonth
                     ? 'border-blue-500/40 bg-blue-500/5'
-                    : 'border-white/8 bg-white/2 hover:bg-white/4'
+                    : 'border-border bg-card hover:bg-accent/30'
                 )}
               >
                 <h3 className={cn(
                   'text-xs font-semibold text-center mb-2.5 uppercase tracking-widest',
-                  isCurrentMonth ? 'text-blue-400' : 'text-white/50'
+                  isCurrentMonth ? 'text-blue-500' : 'text-muted-foreground'
                 )}>
                   {MONTHS[mi].slice(0, 3)}
                 </h3>
 
                 <div className="grid grid-cols-7 mb-1">
                   {['M','T','W','T','F','S','S'].map((d, i) => (
-                    <div key={i} className="text-[8px] text-center text-white/20 font-medium">{d}</div>
+                    <div key={i} className="text-[8px] text-center text-muted-foreground/50 font-medium">{d}</div>
                   ))}
                 </div>
 
@@ -437,10 +431,10 @@ export function CalendarView() {
                     const dayEvts = eventsOnDay(events, day);
                     const isT = isToday(day);
                     return (
-                      <div key={day.toISOString()} className={cn('flex flex-col items-center py-0.5', !inMonth && 'opacity-15')}>
+                      <div key={day.toISOString()} className={cn('flex flex-col items-center py-0.5', !inMonth && 'opacity-20')}>
                         <span className={cn(
                           'text-[9px] leading-none w-4 h-4 flex items-center justify-center rounded-full',
-                          isT ? 'bg-blue-500 text-white font-bold' : 'text-white/50'
+                          isT ? 'bg-blue-500 text-white font-bold' : 'text-foreground'
                         )}>
                           {day.getDate()}
                         </span>
@@ -467,7 +461,7 @@ export function CalendarView() {
             { color: 'bg-yellow-500', label: 'Tasks (high)' },
             { color: 'bg-red-500', label: 'Tasks (urgent)' },
           ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1.5 text-xs text-white/35">
+            <span key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className={cn('w-2 h-2 rounded-full', color)} /> {label}
             </span>
           ))}
@@ -480,21 +474,21 @@ export function CalendarView() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[hsl(var(--background))]">
-        <Loader2 className="w-6 h-6 animate-spin text-white/40" />
+      <div className="flex-1 flex items-center justify-center bg-background">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-[hsl(var(--background))] text-white overflow-hidden">
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
 
       {/* Top bar */}
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/10 flex-shrink-0">
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border flex-shrink-0">
 
         {/* Left: title */}
         <div className="flex items-center gap-2 w-40 flex-shrink-0">
-          <Calendar className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          <Calendar className="w-4 h-4 text-blue-500 flex-shrink-0" />
           <span className="text-sm font-semibold">Calendar</span>
         </div>
 
@@ -502,34 +496,34 @@ export function CalendarView() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate(-1)}
-            className="p-1.5 rounded-lg hover:bg-white/8 text-white/50 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             onClick={() => setCurrentDate(new Date())}
-            className="px-3 py-1 text-xs rounded-lg border border-white/15 text-white/60 hover:bg-white/5 hover:text-white transition-colors font-medium"
+            className="px-3 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors font-medium"
           >
             Today
           </button>
           <button
             onClick={() => navigate(1)}
-            className="p-1.5 rounded-lg hover:bg-white/8 text-white/50 hover:text-white transition-colors"
+            className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-sm font-semibold text-white ml-1 min-w-52 text-center">
+          <span className="text-sm font-semibold ml-1 min-w-52 text-center">
             {headerLabel()}
           </span>
         </div>
 
         {/* Right: view switcher + stats */}
         <div className="flex items-center gap-3 w-auto flex-shrink-0">
-          <span className="text-[11px] text-white/30 hidden xl:block">
-            <Clock className="w-3 h-3 inline mr-1" />
+          <span className="text-[11px] text-muted-foreground hidden xl:flex items-center gap-1">
+            <Clock className="w-3 h-3" />
             {events.filter(e => e.type === 'meeting').length}m · {events.filter(e => e.type === 'task').length}t
           </span>
-          <div className="flex items-center bg-white/5 rounded-lg p-0.5">
+          <div className="flex items-center bg-secondary rounded-lg p-0.5">
             {([
               { key: 'work-week', label: 'Work Week' },
               { key: 'week',      label: 'Week' },
@@ -542,8 +536,8 @@ export function CalendarView() {
                 className={cn(
                   'px-3 py-1.5 text-xs rounded-md transition-colors font-medium whitespace-nowrap',
                   view === v.key
-                    ? 'bg-white/15 text-white shadow-sm'
-                    : 'text-white/40 hover:text-white/70'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
                 )}
               >
                 {v.label}
