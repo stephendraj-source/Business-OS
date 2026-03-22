@@ -116,6 +116,208 @@ const TRACKABLE_FIELDS: (keyof Process)[] = [
   'industryBenchmark', 'target', 'achievement',
 ];
 
+// ── Filter builder ──────────────────────────────────────────────────────────
+
+type FilterFieldType = 'text' | 'categorical' | 'numeric' | 'boolean';
+
+interface FilterFieldDef {
+  key: string;
+  label: string;
+  type: FilterFieldType;
+  options?: { value: string; label: string }[];
+}
+
+const FILTER_FIELDS: FilterFieldDef[] = [
+  { key: 'category',             label: 'Category',           type: 'text' },
+  { key: 'processName',          label: 'Process Name',       type: 'text' },
+  { key: 'processDescription',   label: 'Description',        type: 'text' },
+  { key: 'aiAgent',              label: 'AI Agent',           type: 'text' },
+  { key: 'purpose',              label: 'Purpose',            type: 'text' },
+  { key: 'inputs',               label: 'Inputs',             type: 'text' },
+  { key: 'outputs',              label: 'Outputs',            type: 'text' },
+  { key: 'humanInTheLoop',       label: 'Human-in-the-Loop', type: 'text' },
+  { key: 'kpi',                  label: 'KPI',                type: 'text' },
+  { key: 'target',               label: 'Target',             type: 'text' },
+  { key: 'achievement',          label: 'Achievement',        type: 'text' },
+  { key: 'estimatedValueImpact', label: 'Value Impact',       type: 'text' },
+  { key: 'industryBenchmark',    label: 'Benchmark',          type: 'text' },
+  { key: 'trafficLight', label: 'Traffic Light', type: 'categorical', options: [
+    { value: 'green',  label: 'On Track'  },
+    { value: 'orange', label: 'At Risk'   },
+    { value: 'red',    label: 'Off Track' },
+  ]},
+  { key: 'included',      label: 'In Portfolio', type: 'boolean' },
+  { key: 'completeness',  label: 'Completeness %', type: 'numeric' },
+];
+
+const OPERATORS_BY_TYPE: Record<FilterFieldType, { value: string; label: string }[]> = {
+  text: [
+    { value: 'contains',     label: 'contains'      },
+    { value: 'not_contains', label: 'does not contain' },
+    { value: 'is',           label: 'is exactly'    },
+    { value: 'is_empty',     label: 'is empty'      },
+    { value: 'is_not_empty', label: 'is not empty'  },
+  ],
+  categorical: [
+    { value: 'is',     label: 'is'     },
+    { value: 'is_not', label: 'is not' },
+  ],
+  numeric: [
+    { value: 'eq',  label: '= equals'     },
+    { value: 'neq', label: '≠ not equals' },
+    { value: 'gt',  label: '> greater'    },
+    { value: 'lt',  label: '< less'       },
+    { value: 'gte', label: '≥ at least'   },
+    { value: 'lte', label: '≤ at most'    },
+  ],
+  boolean: [
+    { value: 'is_true',  label: 'is Yes' },
+    { value: 'is_false', label: 'is No'  },
+  ],
+};
+
+export interface FilterRule {
+  id: string;
+  field: string;
+  operator: string;
+  value: string;
+}
+
+function applyFilterRules(processes: Process[], rules: FilterRule[]): Process[] {
+  if (!rules.length) return processes;
+  return processes.filter(p => rules.every(rule => {
+    const fieldDef = FILTER_FIELDS.find(f => f.key === rule.field);
+    if (!fieldDef) return true;
+    const rawVal: unknown = fieldDef.key === 'completeness'
+      ? Math.round((TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim()).length / TRACKABLE_FIELDS.length) * 100)
+      : (p as any)[rule.field];
+    const strVal = String(rawVal ?? '').toLowerCase();
+    const filterVal = rule.value.toLowerCase();
+    switch (rule.operator) {
+      case 'contains':     return strVal.includes(filterVal);
+      case 'not_contains': return !strVal.includes(filterVal);
+      case 'is':           return strVal === filterVal;
+      case 'is_not':       return strVal !== filterVal;
+      case 'is_empty':     return !strVal.trim();
+      case 'is_not_empty': return !!strVal.trim();
+      case 'is_true':      return rawVal === true || rawVal === 'true' || rawVal === 1;
+      case 'is_false':     return rawVal === false || rawVal === 'false' || rawVal === 0 || rawVal === null || rawVal === undefined;
+      case 'eq':  return Number(rawVal) === Number(rule.value);
+      case 'neq': return Number(rawVal) !== Number(rule.value);
+      case 'gt':  return Number(rawVal) >   Number(rule.value);
+      case 'lt':  return Number(rawVal) <   Number(rule.value);
+      case 'gte': return Number(rawVal) >=  Number(rule.value);
+      case 'lte': return Number(rawVal) <=  Number(rule.value);
+      default:    return true;
+    }
+  }));
+}
+
+function filterRuleLabel(rule: FilterRule): string {
+  const field = FILTER_FIELDS.find(f => f.key === rule.field)?.label ?? rule.field;
+  const op    = OPERATORS_BY_TYPE[FILTER_FIELDS.find(f => f.key === rule.field)?.type ?? 'text']
+    ?.find(o => o.value === rule.operator)?.label ?? rule.operator;
+  if (rule.operator === 'is_empty' || rule.operator === 'is_not_empty' || rule.operator === 'is_true' || rule.operator === 'is_false') {
+    return `${field} ${op}`;
+  }
+  const valLabel = FILTER_FIELDS.find(f => f.key === rule.field)?.options?.find(o => o.value === rule.value)?.label ?? rule.value;
+  return `${field} ${op} "${valLabel}"`;
+}
+
+// Inline filter builder row
+function FilterBuilderRow({ categories, onAdd, onCancel }: {
+  categories: string[];
+  onAdd: (rule: Omit<FilterRule, 'id'>) => void;
+  onCancel: () => void;
+}) {
+  const [field, setField] = useState(FILTER_FIELDS[0].key);
+  const [operator, setOperator] = useState(OPERATORS_BY_TYPE[FILTER_FIELDS[0].type][0].value);
+  const [value, setValue] = useState('');
+
+  const fieldDef = FILTER_FIELDS.find(f => f.key === field) ?? FILTER_FIELDS[0];
+  const operators = OPERATORS_BY_TYPE[fieldDef.type];
+  const needsValue = !['is_empty', 'is_not_empty', 'is_true', 'is_false'].includes(operator);
+
+  function handleFieldChange(newField: string) {
+    const newDef = FILTER_FIELDS.find(f => f.key === newField) ?? FILTER_FIELDS[0];
+    const newOps = OPERATORS_BY_TYPE[newDef.type];
+    setField(newField);
+    setOperator(newOps[0].value);
+    setValue('');
+  }
+
+  function handleAdd() {
+    if (needsValue && !value.trim()) return;
+    onAdd({ field, operator, value: value.trim() });
+    setValue('');
+  }
+
+  // Resolve dropdown options for categorical or category
+  const dropdownOptions: { value: string; label: string }[] | null =
+    field === 'category'
+      ? categories.map(c => ({ value: c, label: c }))
+      : fieldDef.options ?? null;
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {/* Field */}
+      <select
+        value={field}
+        onChange={e => handleFieldChange(e.target.value)}
+        className="text-xs px-2 py-1.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+      >
+        {FILTER_FIELDS.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+      </select>
+
+      {/* Operator */}
+      <select
+        value={operator}
+        onChange={e => setOperator(e.target.value)}
+        className="text-xs px-2 py-1.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+      >
+        {operators.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+
+      {/* Value */}
+      {needsValue && (
+        dropdownOptions ? (
+          <select
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            className="text-xs px-2 py-1.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+          >
+            <option value="">Select…</option>
+            {dropdownOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        ) : (
+          <input
+            type={fieldDef.type === 'numeric' ? 'number' : 'text'}
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') onCancel(); }}
+            placeholder={fieldDef.type === 'numeric' ? '0' : 'value…'}
+            className="text-xs px-2 py-1.5 rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 w-32"
+          />
+        )
+      )}
+
+      <button
+        onClick={handleAdd}
+        disabled={needsValue && !value.trim()}
+        className="px-2.5 py-1.5 text-xs rounded-lg bg-primary text-primary-foreground font-medium hover:bg-primary/90 disabled:opacity-40 transition-colors"
+      >
+        Add
+      </button>
+      <button
+        onClick={onCancel}
+        className="px-2 py-1.5 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground transition-colors"
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
 function completeness(p: Process): number {
   const filled = TRACKABLE_FIELDS.filter(f => p[f] && String(p[f]).trim() !== '').length;
   return Math.round((filled / TRACKABLE_FIELDS.length) * 100);
@@ -819,6 +1021,8 @@ export function ReportsView() {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showFieldPanel, setShowFieldPanel] = useState(false);
+  const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
+  const [showFilterBuilder, setShowFilterBuilder] = useState(false);
   const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
 
   const sharingReport = customReports.find(r => r.id === sharingReportId) ?? null;
@@ -881,8 +1085,9 @@ export function ReportsView() {
         p.category.toLowerCase().includes(q)
       );
     }
+    ps = applyFilterRules(ps, filterRules);
     return ps.sort((a, b) => a.number - b.number);
-  }, [processes, categoryFilter, searchQuery]);
+  }, [processes, categoryFilter, searchQuery, filterRules]);
 
   const reportDef = REPORT_TYPES.find(r => r.id === activeReport) ?? null;
   const allFieldDefs = isBuiltInReport ? FIELD_DEFS[activeReport as ReportId] : CUSTOM_REPORT_ALL_FIELDS;
@@ -1205,55 +1410,113 @@ export function ReportsView() {
         <div className="flex-1 flex min-w-0 min-h-0 relative">
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {/* Filters bar */}
-            <div className="flex-none flex items-center gap-3 px-5 py-3 border-b border-border bg-card/40 flex-wrap">
-              <Filter className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <div className="relative">
-                <select
-                  value={categoryFilter}
-                  onChange={e => setCategoryFilter(e.target.value)}
-                  className="appearance-none pl-3 pr-8 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            <div className="flex-none px-5 py-3 border-b border-border bg-card/40 space-y-2">
+              {/* Row 1: standard controls */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <Filter className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <div className="relative">
+                  <select
+                    value={categoryFilter}
+                    onChange={e => setCategoryFilter(e.target.value)}
+                    className="appearance-none pl-3 pr-8 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="all">All Categories</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                </div>
+                {activeReport !== 'category' && activeReport !== 'ai-agents' && (
+                  <div className="relative flex items-center">
+                    <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search processes..."
+                      value={searchQuery}
+                      onChange={e => setSearchQuery(e.target.value)}
+                      className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-52"
+                    />
+                  </div>
+                )}
+                {/* Add filter button */}
+                <button
+                  onClick={() => setShowFilterBuilder(v => !v)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-lg border font-medium transition-all",
+                    showFilterBuilder || filterRules.length > 0
+                      ? "bg-amber-500/10 border-amber-500/30 text-amber-500"
+                      : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
                 >
-                  <option value="all">All Categories</option>
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                  <Plus className="w-3 h-3" />
+                  {filterRules.length > 0 ? `${filterRules.length} filter${filterRules.length !== 1 ? 's' : ''}` : 'Add Filter'}
+                </button>
+                {filterRules.length > 0 && (
+                  <button
+                    onClick={() => { setFilterRules([]); setShowFilterBuilder(false); }}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Clear all
+                  </button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  {activeReport === 'category'
+                    ? `${categories.length} categories`
+                    : `${filtered.length} processes`}
+                </span>
+                {/* Fields button */}
+                <button
+                  onClick={() => setShowFieldPanel(v => !v)}
+                  className={cn(
+                    "ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border font-medium transition-all",
+                    showFieldPanel
+                      ? "bg-primary/10 border-primary/30 text-primary"
+                      : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  Fields
+                  <span className={cn(
+                    "ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold",
+                    showFieldPanel ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
+                  )}>
+                    {activeFields.length}
+                  </span>
+                </button>
               </div>
-              {activeReport !== 'category' && activeReport !== 'ai-agents' && (
-                <div className="relative flex items-center">
-                  <Search className="absolute left-2.5 w-3.5 h-3.5 text-muted-foreground" />
-                  <input
-                    type="text"
-                    placeholder="Search processes..."
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 w-52"
+
+              {/* Row 2: active filter chips */}
+              {filterRules.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {filterRules.map(rule => (
+                    <span
+                      key={rule.id}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-medium"
+                    >
+                      {filterRuleLabel(rule)}
+                      <button
+                        onClick={() => setFilterRules(prev => prev.filter(r => r.id !== rule.id))}
+                        className="hover:text-red-400 transition-colors ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Row 3: filter builder */}
+              {showFilterBuilder && (
+                <div className="pt-1">
+                  <FilterBuilderRow
+                    categories={categories}
+                    onAdd={rule => {
+                      setFilterRules(prev => [...prev, { ...rule, id: Math.random().toString(36).slice(2) }]);
+                      setShowFilterBuilder(false);
+                    }}
+                    onCancel={() => setShowFilterBuilder(false)}
                   />
                 </div>
               )}
-              <span className="text-xs text-muted-foreground">
-                {activeReport === 'category'
-                  ? `${categories.length} categories`
-                  : `${filtered.length} processes`}
-              </span>
-              {/* Fields button */}
-              <button
-                onClick={() => setShowFieldPanel(v => !v)}
-                className={cn(
-                  "ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border font-medium transition-all",
-                  showFieldPanel
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
-                )}
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                Fields
-                <span className={cn(
-                  "ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold",
-                  showFieldPanel ? "bg-primary/20 text-primary" : "bg-secondary text-muted-foreground"
-                )}>
-                  {activeFields.length}
-                </span>
-              </button>
             </div>
 
             {/* Report content */}
