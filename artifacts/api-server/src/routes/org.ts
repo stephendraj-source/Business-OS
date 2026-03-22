@@ -755,3 +755,73 @@ orgRouter.get('/org/tree', async (req, res) => {
     res.json({ groups: allGroups, roles: allRoles, groupRoles: allGroupRoles, projects: allProjects });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
+
+// ── User Categories (configurable) ───────────────────────────────────────────
+
+const DEFAULT_USER_CATEGORIES = [
+  { name: 'Employee',  color: '#3b82f6', description: 'Internal staff members' },
+  { name: 'Director',  color: '#6366f1', description: 'Board or executive directors' },
+  { name: 'Customer',  color: '#22c55e', description: 'External customers or clients' },
+  { name: 'Partner',   color: '#f97316', description: 'External partners or collaborators' },
+  { name: 'Owner',     color: '#8b5cf6', description: 'Owners or shareholders' },
+  { name: 'Regulator', color: '#ef4444', description: 'Regulatory bodies or compliance contacts' },
+];
+
+orgRouter.get('/org/user-categories', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const rows = await db.execute(
+      sql`SELECT * FROM user_categories WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+    );
+    let items = rows.rows as any[];
+    // Seed defaults if empty
+    if (items.length === 0) {
+      for (const cat of DEFAULT_USER_CATEGORIES) {
+        await db.execute(
+          sql`INSERT INTO user_categories (tenant_id, name, color, description) VALUES (${tenantId}, ${cat.name}, ${cat.color}, ${cat.description})`
+        );
+      }
+      const seeded = await db.execute(
+        sql`SELECT * FROM user_categories WHERE tenant_id ${tenantId ? sql`= ${tenantId}` : sql`IS NULL`} ORDER BY name`
+      );
+      items = seeded.rows as any[];
+    }
+    res.json(items);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.post('/org/user-categories', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { name, description = '', color = '#94a3b8' } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    const rows = await db.execute(
+      sql`INSERT INTO user_categories (tenant_id, name, color, description) VALUES (${tenantId}, ${name.trim()}, ${color}, ${description.trim()}) RETURNING *`
+    );
+    res.status(201).json((rows.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.patch('/org/user-categories/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, description, color } = req.body;
+    const existing = await db.execute(sql`SELECT * FROM user_categories WHERE id = ${id} LIMIT 1`);
+    const row = (existing.rows as any[])[0];
+    if (!row) return res.status(404).json({ error: 'Not found' });
+    const newName = name !== undefined ? name.trim() : row.name;
+    const newDesc = description !== undefined ? description.trim() : row.description;
+    const newColor = color !== undefined ? color : row.color;
+    const updated = await db.execute(
+      sql`UPDATE user_categories SET name = ${newName}, description = ${newDesc}, color = ${newColor} WHERE id = ${id} RETURNING *`
+    );
+    res.json((updated.rows as any[])[0]);
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.delete('/org/user-categories/:id', async (req, res) => {
+  try {
+    await db.execute(sql`DELETE FROM user_categories WHERE id = ${parseInt(req.params.id)}`);
+    res.json({ ok: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});

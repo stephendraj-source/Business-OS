@@ -77,12 +77,15 @@ const CATALOGUE_FIELDS: Record<string, { key: string; label: string }[]> = {
   ],
 };
 
+interface UserCategory { id: number; name: string; color: string; description: string; }
+
 interface UserRow {
   id: number;
   name: string;
   email: string;
   role: string;
   designation: string;
+  category: string;
   isActive: boolean;
   dataScope: string;
   createdAt: string;
@@ -275,6 +278,7 @@ function UsersListView() {
                 <tr className="text-xs text-muted-foreground uppercase tracking-wider">
                   <th className="text-left px-6 py-3 font-semibold">User</th>
                   <th className="text-left px-3 py-3 font-semibold">Role</th>
+                  <th className="text-left px-3 py-3 font-semibold">Category</th>
                   <th className="text-center px-3 py-3 font-semibold">Active</th>
                   <th className="text-center px-3 py-3 font-semibold">Scope</th>
                   <th className="text-right px-6 py-3 font-semibold">Actions</th>
@@ -303,6 +307,13 @@ function UsersListView() {
                       </div>
                     </td>
                     <td className="px-3 py-3"><RoleBadge role={u.role} /></td>
+                    <td className="px-3 py-3">
+                      {u.category ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{u.category}</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/40">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-3 text-center"><ActiveDot active={u.isActive} /></td>
                     <td className="px-3 py-3 text-center">
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-secondary text-muted-foreground font-medium capitalize">{u.dataScope}</span>
@@ -456,6 +467,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     role: user.role,
     designation: user.designation ?? '',
     phone: (user as any).phone ?? '',
+    category: (user as any).category ?? '',
     isActive: user.isActive,
   });
   const [form, setForm] = useState(initForm);
@@ -464,11 +476,18 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
   const [sendingReset, setSendingReset] = useState(false);
   const [resetResult, setResetResult] = useState<{ link: string; message: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
 
   useEffect(() => {
     setForm(initForm());
     setResetResult(null);
   }, [user.id]);
+
+  useEffect(() => {
+    authedFetch(`${API}/org/user-categories`).then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setUserCategories(d);
+    }).catch(() => {});
+  }, []);
 
   const handleFirstName = (value: string) => {
     setForm(f => {
@@ -492,7 +511,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
     try {
       const r = await authedFetch(`${API}/users/${user.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, isActive: form.isActive }),
+        body: JSON.stringify({ name: form.name, firstName: form.firstName, lastName: form.lastName, preferredName: form.preferredName, email: form.email, role: form.role, designation: form.designation, phone: form.phone, category: form.category, isActive: form.isActive }),
       });
       if (!r.ok) { const d = await r.json(); setSaveError(d.error || 'Failed to save changes'); return; }
       await onSaved();
@@ -576,6 +595,15 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
           onChange={val => setForm(f => ({ ...f, phone: val }))}
           placeholder="Mobile number"
         />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+        <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+          <option value="">— None —</option>
+          {userCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+        </select>
       </div>
 
       <div className="flex items-center justify-between py-3 px-4 bg-secondary/40 rounded-xl">
@@ -1054,12 +1082,19 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
 // ── Create User Modal ─────────────────────────────────────────────────────────
 
 function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate: () => Promise<void> }) {
-  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', phone: '', role: 'user' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', preferredName: '', name: '', email: '', designation: '', phone: '', role: 'user', category: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [createdUser, setCreatedUser] = useState<{ name: string; email: string; tempPassword: string } | null>(null);
   const [showTempPassword, setShowTempPassword] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [userCategories, setUserCategories] = useState<UserCategory[]>([]);
+
+  useEffect(() => {
+    authedFetch(`${API}/org/user-categories`).then(r => r.json()).then(d => {
+      if (Array.isArray(d)) setUserCategories(d);
+    }).catch(() => {});
+  }, []);
 
   const handleFirstName = (value: string) => {
     setForm(f => {
@@ -1211,6 +1246,15 @@ function CreateUserModal({ onClose, onCreate }: { onClose: () => void; onCreate:
             <input value={form.designation} onChange={e => setForm(f => ({ ...f, designation: e.target.value }))}
               placeholder="e.g. Program Manager, Finance Director…"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Category <span className="normal-case text-muted-foreground/50 font-normal">(optional)</span></label>
+            <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+              <option value="">— None —</option>
+              {userCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            </select>
           </div>
 
         </div>

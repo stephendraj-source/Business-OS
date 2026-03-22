@@ -492,6 +492,12 @@ export function ConfigurationView() {
       description: 'Define the geographic regions used for categorising users and processes',
       endpoint: '/org/regions',
     },
+    {
+      title: 'User Categories',
+      icon: <User className="w-4 h-4" />,
+      description: 'Configure the category types available when creating or editing users (e.g. Employee, Director, Customer)',
+      endpoint: '/org/user-categories',
+    },
   ];
 
   return (
