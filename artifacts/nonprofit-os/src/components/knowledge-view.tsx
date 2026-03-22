@@ -277,6 +277,9 @@ function TbSep() {
   return <div className="w-px h-5 bg-border/60 mx-0.5 shrink-0" />;
 }
 
+// ── Process type for slash picker ─────────────────────────────────────────────
+interface ProcessMeta { id: number; processName: string; category: string; }
+
 // ── Wiki Editor ───────────────────────────────────────────────────────────────
 
 function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (title: string, content: string) => Promise<void>; saving: boolean }) {
@@ -287,6 +290,49 @@ function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (ti
   const [dirty, setDirty] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
+  // Slash-command process picker state
+  const [showSlashPicker, setShowSlashPicker] = useState(false);
+  const [slashFilter, setSlashFilter] = useState("");
+  const [slashPickerPos, setSlashPickerPos] = useState({ top: 0, left: 0 });
+  const [processList, setProcessList] = useState<ProcessMeta[]>([]);
+  const slashActiveRef = useRef(false);
+  const slashStartPosRef = useRef(0);
+  const slashFilterRef = useRef("");
+  const titleRef2 = useRef(title);
+  const savedContentRef = useRef(savedContent);
+  useEffect(() => { titleRef2.current = title; }, [title]);
+  useEffect(() => { savedContentRef.current = savedContent; }, [savedContent]);
+
+  const loadProcesses = useCallback(async () => {
+    if (processList.length > 0) return;
+    try {
+      const r = await fetch(`${API}/processes`);
+      if (r.ok) setProcessList(await r.json());
+    } catch {}
+  }, [processList.length]);
+
+  const openSlashPicker = useCallback(() => {
+    slashActiveRef.current = true;
+    slashFilterRef.current = "";
+    setSlashFilter("");
+    setShowSlashPicker(true);
+    loadProcesses();
+    // Position after a tick so "/" is inserted and selection updated
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0) {
+        const rect = sel.getRangeAt(0).getBoundingClientRect();
+        setSlashPickerPos({ top: rect.bottom + 6, left: rect.left });
+      }
+    }, 0);
+  }, [loadProcesses]);
+
+  const closeSlashPicker = useCallback(() => {
+    slashActiveRef.current = false;
+    setShowSlashPicker(false);
+    setSlashFilter("");
+  }, []);
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
@@ -294,12 +340,47 @@ function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (ti
       HighlightExtension.configure({ multicolor: false }),
       TextAlignExtension.configure({ types: ["heading", "paragraph"] }),
       LinkExtension.configure({ openOnClick: false, HTMLAttributes: { target: "_blank", rel: "noopener noreferrer" } }),
-      PlaceholderExtension.configure({ placeholder: "Start writing your wiki page…" }),
+      PlaceholderExtension.configure({ placeholder: "Start writing your wiki page… (type / to insert a process)" }),
       TypographyExtension,
     ],
     content: item.content || "",
+    editorProps: {
+      handleKeyDown: (view, event) => {
+        if (slashActiveRef.current && event.key === "Escape") {
+          slashActiveRef.current = false;
+          setShowSlashPicker(false);
+          return true;
+        }
+        if (!slashActiveRef.current && event.key === "/") {
+          // Capture position after "/" is inserted
+          setTimeout(() => {
+            slashStartPosRef.current = view.state.selection.anchor;
+            openSlashPicker();
+          }, 0);
+        }
+        return false;
+      },
+    },
     onUpdate: ({ editor }) => {
-      setDirty(title !== item.title || editor.getHTML() !== savedContent);
+      setDirty(titleRef2.current !== item.title || editor.getHTML() !== savedContentRef.current);
+      if (!slashActiveRef.current) return;
+      const state = editor.state;
+      const anchor = state.selection.anchor;
+      const start = slashStartPosRef.current;
+      if (anchor < start - 1) {
+        // Cursor went before the slash
+        slashActiveRef.current = false;
+        setShowSlashPicker(false);
+        return;
+      }
+      const text = state.doc.textBetween(start, anchor, "");
+      if (text.includes(" ") || text.includes("\n")) {
+        slashActiveRef.current = false;
+        setShowSlashPicker(false);
+        return;
+      }
+      slashFilterRef.current = text.toLowerCase();
+      setSlashFilter(text.toLowerCase());
     },
   });
 
@@ -323,6 +404,18 @@ function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (ti
     setSavedContent(html);
     setDirty(false);
   };
+
+  const insertProcess = useCallback((process: ProcessMeta) => {
+    if (!editor) return;
+    const state = editor.state;
+    const anchor = state.selection.anchor;
+    const slashPos = slashStartPosRef.current - 1; // position of the "/" char
+    editor.chain().focus()
+      .deleteRange({ from: slashPos, to: anchor })
+      .insertContent(`<strong>${process.processName}</strong>`)
+      .run();
+    closeSlashPicker();
+  }, [editor, closeSlashPicker]);
 
   const openLinkDialog = () => {
     if (!editor) return;
@@ -482,13 +575,65 @@ function WikiEditor({ item, onSave, saving }: { item: KnowledgeItem; onSave: (ti
       )}
 
       {/* Editor content */}
-      <div className="flex-1 overflow-auto tiptap-editor">
+      <div className="flex-1 overflow-auto tiptap-editor relative">
         <EditorContent
           editor={editor}
           className="h-full px-8 py-6 cursor-text"
           onClick={() => editor.commands.focus()}
         />
       </div>
+
+      {/* Slash-command process picker */}
+      {showSlashPicker && (() => {
+        const filtered = processList.filter(p =>
+          !slashFilter ||
+          (p.processName || "").toLowerCase().includes(slashFilter) ||
+          (p.category || "").toLowerCase().includes(slashFilter)
+        );
+        const grouped: Record<string, ProcessMeta[]> = {};
+        filtered.forEach(p => {
+          const cat = p.category || "Uncategorised";
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(p);
+        });
+        return (
+          <div
+            className="fixed z-50 bg-popover border border-border rounded-xl shadow-xl w-72 max-h-72 overflow-y-auto py-1"
+            style={{ top: slashPickerPos.top, left: slashPickerPos.left }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-border mb-1">
+              <span className="text-xs font-semibold text-muted-foreground">Processes</span>
+              {slashFilter && (
+                <span className="text-xs text-muted-foreground">"{slashFilter}"</span>
+              )}
+            </div>
+            {filtered.length === 0 ? (
+              <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                No processes found
+              </div>
+            ) : (
+              Object.entries(grouped).map(([cat, items]) => (
+                <div key={cat}>
+                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
+                    {cat}
+                  </div>
+                  {items.map(p => (
+                    <button
+                      key={p.id}
+                      onMouseDown={e => { e.preventDefault(); insertProcess(p); }}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left hover:bg-accent transition-colors"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary/60 shrink-0" />
+                      {p.processName}
+                    </button>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
