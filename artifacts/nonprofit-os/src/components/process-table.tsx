@@ -400,15 +400,13 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed right-0 top-0 h-full z-50 w-[440px] max-w-full bg-card border-l border-border shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 bg-background flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-none">
+        <div className="flex items-center justify-between px-8 py-4 border-b border-border flex-none bg-card shadow-sm">
           <div className="min-w-0 flex-1">
             <div className="text-xs font-mono text-primary mb-0.5">{pid}</div>
-            <h3 className="font-semibold text-foreground text-base leading-tight truncate">{process.processName || 'Unnamed Process'}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5 truncate">{process.category}</p>
+            <h3 className="font-semibold text-foreground text-base leading-tight">{process.processName || 'Unnamed Process'}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">{process.category}</p>
           </div>
           <div className="ml-3 flex items-center gap-1 shrink-0">
             <button
@@ -424,7 +422,12 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+        <div className="flex-1 overflow-y-auto">
+        <div className="max-w-6xl mx-auto px-8 py-6 grid grid-cols-[340px_1fr] gap-8 items-start">
+
+          {/* ── LEFT COLUMN: metadata ─────────────────── */}
+          <div className="space-y-4">
+
           {/* Process ID – editable */}
           <div>
             <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Process ID</div>
@@ -534,7 +537,10 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             </button>
           </div>
 
-          <div className="border-t border-border/50 pt-4 space-y-4">
+          </div>{/* end LEFT COLUMN */}
+
+          {/* ── RIGHT COLUMN: content ─────────────────── */}
+          <div className="space-y-4">
             <PanelTextField label="Process Name"       value={process.processName ?? ''}          onSave={v => save('processName', v)} />
             <PanelTextField label="Description"        value={process.processDescription ?? ''}   onSave={v => save('processDescription', v)} multiline />
             <PanelTextField label="AI Agent"           value={process.aiAgent ?? ''}              onSave={v => save('aiAgent', v)} />
@@ -882,10 +888,9 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
               </button>
             )}
           </div>
-        </div>
 
-        {/* Attachments */}
-        <div className="border-t border-border/50 pt-4 space-y-3">
+          {/* Attachments */}
+          <div className="border-t border-border/50 pt-4 space-y-3">
           <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
             <FolderOpen className="w-3.5 h-3.5" />
             Attachments
@@ -985,10 +990,11 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
                 : <><Upload className="w-3.5 h-3.5" />Click to upload a file</>
               }
             </button>
-          </div>
-        </div>
-      </div>
-    </>
+          </div>{/* end Attachments */}
+          </div>{/* end RIGHT COLUMN */}
+        </div>{/* end grid */}
+        </div>{/* end scrollable */}
+    </div>
   );
 }
 
