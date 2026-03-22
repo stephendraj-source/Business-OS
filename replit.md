@@ -5,6 +5,8 @@
 Nonprofit Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
 
 ## Recent Features Added
+- **AI assistant database writes**: The chat assistant now uses Anthropic tool calling with an agentic loop. It can update process fields (KPI, target, achievement, traffic light, benchmark, included), create/update activities, create/update initiatives, create workflows, mark checklist items as met/not met, and run read-only SQL queries. Tool calls are shown live during streaming with amber/green/red badges. Supports up to 8 tool call iterations per message.
+- **User Categories**: `category` column on `users` table; `user_categories` table with CRUD API at `/org/user-categories`; category dropdown in CreateUserModal and ProfileTab; category badge column in users list; "User Categories" section in Configuration view (auto-seeded defaults: Employee, Director, Customer, Partner, Owner, Regulator).
 - **Forms module restructured**: The Forms section now has two modes — "Report Templates" (the template designer) and "Data Entry" (form fill-in with stored submissions). Submissions stored in `form_submissions` DB table (form_id, tenant_id, submitted_by, submitted_by_name, submission_data jsonb, created_at). Template builder now has a 5th "Submissions" tab to view/delete all responses. Data Entry mode shows a split panel: fill-in form on the left + submission history sidebar on the right.
 - **Phone field in forms**: `phone` field type with country selector (30+ countries, Singapore default) in both form builder and public forms
 - **User phone field**: `phone` column on `users` table, editable via CreateUserModal and ProfileTab

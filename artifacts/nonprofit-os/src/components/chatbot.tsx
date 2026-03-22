@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink, Wrench, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
@@ -83,6 +83,7 @@ export function Chatbot() {
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [streamingPrompt, setStreamingPrompt] = useState('');
+  const [toolEvents, setToolEvents] = useState<Array<{ type: 'call' | 'result'; name: string; success?: boolean; message?: string }>>([]);
   // History panel is always shown by default
   const [showConvList, setShowConvList] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -179,6 +180,7 @@ export function Chatbot() {
     setStreaming(true);
     setStreamingContent('');
     setStreamingPrompt(content);
+    setToolEvents([]);
     setMessages(prev => [...prev, { id: Date.now(), role: 'user', content, createdAt: new Date().toISOString() }]);
 
     try {
@@ -210,6 +212,15 @@ export function Chatbot() {
             const parsed = JSON.parse(line.slice(6));
             if (parsed.done) break;
             if (parsed.content) { fullContent += parsed.content; setStreamingContent(fullContent); }
+            if (parsed.tool_call) {
+              setToolEvents(prev => [...prev, { type: 'call', name: parsed.tool_call.name }]);
+            }
+            if (parsed.tool_result) {
+              setToolEvents(prev => [
+                ...prev.filter(e => !(e.type === 'call' && e.name === parsed.tool_result.name)),
+                { type: 'result', name: parsed.tool_result.name, success: parsed.tool_result.success, message: parsed.tool_result.message },
+              ]);
+            }
           } catch {}
         }
       }
@@ -217,6 +228,7 @@ export function Chatbot() {
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: fullContent, createdAt: new Date().toISOString() }]);
       setStreamingContent('');
       setStreamingPrompt('');
+      setToolEvents([]);
     } catch {
       setMessages(prev => [...prev, { id: Date.now() + 1, role: 'assistant', content: 'Sorry, I encountered an error. Please try again.', createdAt: new Date().toISOString() }]);
       setStreamingPrompt('');
@@ -423,7 +435,32 @@ export function Chatbot() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-[10px] font-semibold text-primary/60 tracking-wider mb-0.5">AI RESPONSE</div>
-                        <div className="bg-secondary text-foreground rounded-xl px-3 py-2.5 text-sm">
+                        <div className="bg-secondary text-foreground rounded-xl px-3 py-2.5 text-sm space-y-2">
+                          {/* Tool events (visible during streaming) */}
+                          {isCurrentlyStreaming && toolEvents.length > 0 && (
+                            <div className="space-y-1 pb-1 border-b border-border/40">
+                              {toolEvents.map((ev, i) => (
+                                <div key={i} className={cn(
+                                  "flex items-center gap-1.5 text-[10px] font-medium rounded-lg px-2 py-1",
+                                  ev.type === 'call' ? "bg-amber-500/10 text-amber-400" :
+                                  ev.success ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"
+                                )}>
+                                  {ev.type === 'call' ? (
+                                    <Wrench className="w-3 h-3 animate-spin flex-shrink-0" />
+                                  ) : ev.success ? (
+                                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                                  ) : (
+                                    <XCircle className="w-3 h-3 flex-shrink-0" />
+                                  )}
+                                  <span className="truncate">
+                                    {ev.type === 'call'
+                                      ? `Calling ${ev.name.replace(/_/g, ' ')}…`
+                                      : ev.message}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {assistant ? (
                             <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-headings:my-2 prose-pre:my-1 prose-blockquote:my-1">
                               <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{assistant.content}</ReactMarkdown>
@@ -458,7 +495,7 @@ export function Chatbot() {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask about processes, KPIs, or Salesforce data..."
+                placeholder="Ask anything or say 'update process #5 KPI to 95%'…"
                 rows={2}
                 disabled={streaming}
                 className="flex-1 resize-none bg-secondary/50 border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition-all"

@@ -12,8 +12,9 @@ import {
   checklistsTable,
   checklistItemsTable,
 } from "@workspace/db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, max } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import type Anthropic from "@anthropic-ai/sdk";
 import { useCredit } from "../lib/credits";
 import { embed, vecToSql } from "../lib/embeddings.js";
 
@@ -273,34 +274,34 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
   const checklistSummary = checklists.length === 0 ? "None created yet." :
     checklists.map(c => {
       const items = checklistItems.filter(ci => ci.checklistId === c.id);
-      const itemLines = items.map(ci => `    • ${ci.title}${ci.required ? " (required)" : ""}`).join("\n");
+      const itemLines = items.map(ci => `    • ${ci.name}${(ci as any).met ? " ✓" : ""}`).join("\n");
       return `[#${c.id}] ${c.name} | ${c.description || "No description"} | Items (${items.length}):\n${itemLines || "    (no items)"}`;
     }).join("\n\n");
 
-  return `You are an expert business operations advisor embedded in BusinessOS — a comprehensive multi-tenant operating system. You have FULL ACCESS to the organisation's entire database and knowledge base.
+  return `You are an expert business operations advisor embedded in BusinessOS — a comprehensive multi-tenant operating system. You have FULL READ AND WRITE ACCESS to the organisation's database.
 
 ## Your capabilities
 
 1. Answer any question about processes, workflows, activities, initiatives, AI agents, forms, checklists, and knowledge base documents
-2. Provide strategic analysis, gap identification, and actionable recommendations
-3. Locate and link to specific knowledge base documents so users can navigate directly to them
-4. Analyse performance data (KPIs, benchmarks, targets, achievements)
-5. Explain relationships between processes, workflows, activities, and initiatives
-6. Assist with Salesforce SOQL queries (READ ONLY — never suggest write operations)
+2. **Make direct database updates** — update process KPIs, targets, achievements, traffic lights; create activities, initiatives, workflows; manage checklist items
+3. Provide strategic analysis, gap identification, and actionable recommendations
+4. Locate and link to specific knowledge base documents so users can navigate directly to them
+5. Analyse performance data (KPIs, benchmarks, targets, achievements)
+6. Explain relationships between processes, workflows, activities, and initiatives
 7. Answer questions about document content for wikis and uploaded files
+
+## Write operations
+
+When the user asks you to update, create, or change data — USE THE TOOLS. Do not just describe what should be done. Confirm the change after making it.
 
 ## Document navigation links
 
 ALWAYS link to knowledge base documents using: [Document Title](knowledge://item-{id})
 This allows users to click and navigate directly. Example: [Employee Handbook](knowledge://item-1)
 
-## Salesforce rules
-
-READ ONLY. Never generate INSERT/UPDATE/DELETE/UPSERT/DML. Provide SOQL query text only; remind users to run it in Query Editor or Workbench.
-
 ## Response format
 
-Use markdown. Bold key terms. Tables for comparisons. Code blocks for SOQL.
+Use markdown. Bold key terms. Tables for comparisons. Always confirm what was changed after tool use.
 
 ---
 
@@ -347,6 +348,239 @@ ${formSummary}
 ${checklistSummary}
 
 ---`;
+}
+
+// ─── Tool definitions ─────────────────────────────────────────────────────────
+
+const DB_TOOLS: Anthropic.Tool[] = [
+  {
+    name: "update_process",
+    description: "Update fields on an existing process (KPI, target, achievement, traffic light, benchmark, included status, process name/description). Use the process number (#N) to identify it.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        process_number: { type: "number", description: "The process number (#N) shown in the system" },
+        kpi: { type: "string", description: "New KPI value" },
+        target: { type: "string", description: "New target value" },
+        achievement: { type: "string", description: "New achievement value" },
+        traffic_light: { type: "string", enum: ["red", "amber", "green"], description: "New traffic light status" },
+        industry_benchmark: { type: "string", description: "New industry benchmark value" },
+        included: { type: "boolean", description: "Whether this process is included/active" },
+        process_name: { type: "string", description: "New process name" },
+        process_description: { type: "string", description: "New process description" },
+        notes: { type: "string", description: "Additional notes" },
+      },
+      required: ["process_number"],
+    },
+  },
+  {
+    name: "create_activity",
+    description: "Create a new activity in the system.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Activity name" },
+        description: { type: "string", description: "Activity description" },
+        mode: { type: "string", enum: ["meeting", "call", "task", "event", "review", "training", "others"], description: "Activity mode/type" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_activity",
+    description: "Update an existing activity by its activity number.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        activity_number: { type: "number", description: "The activity number (#N)" },
+        name: { type: "string", description: "New name" },
+        description: { type: "string", description: "New description" },
+        mode: { type: "string", enum: ["meeting", "call", "task", "event", "review", "training", "others"], description: "New mode" },
+      },
+      required: ["activity_number"],
+    },
+  },
+  {
+    name: "create_initiative",
+    description: "Create a new strategic initiative.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        initiative_id: { type: "string", description: "Short unique identifier, e.g. INIT-001" },
+        name: { type: "string", description: "Initiative name" },
+        goals: { type: "string", description: "Goals and objectives" },
+        achievement: { type: "string", description: "Current achievement/progress" },
+        start_date: { type: "string", description: "Start date (YYYY-MM-DD)" },
+        end_date: { type: "string", description: "End date (YYYY-MM-DD)" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_initiative",
+    description: "Update an existing initiative by name or initiative ID.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        initiative_id: { type: "string", description: "The text initiative ID (e.g. INIT-001) or numeric DB id" },
+        name: { type: "string", description: "New name" },
+        goals: { type: "string", description: "New goals" },
+        achievement: { type: "string", description: "New achievement" },
+        start_date: { type: "string", description: "New start date" },
+        end_date: { type: "string", description: "New end date" },
+      },
+      required: ["initiative_id"],
+    },
+  },
+  {
+    name: "create_workflow",
+    description: "Create a new workflow with a name and description.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string", description: "Workflow name" },
+        description: { type: "string", description: "What this workflow does" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "set_checklist_item",
+    description: "Mark a checklist item as met (completed) or not met.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        checklist_item_id: { type: "number", description: "The numeric ID of the checklist item" },
+        is_completed: { type: "boolean", description: "True to mark as met/complete, false to mark as not met" },
+      },
+      required: ["checklist_item_id", "is_completed"],
+    },
+  },
+  {
+    name: "query_database",
+    description: "Run a read-only SQL SELECT query against the database to answer specific data questions. ONLY SELECT statements are allowed.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sql_query: { type: "string", description: "A valid SQL SELECT query" },
+      },
+      required: ["sql_query"],
+    },
+  },
+];
+
+// ─── Tool executor ─────────────────────────────────────────────────────────────
+
+async function executeTool(name: string, input: Record<string, any>, tenantId: number | null): Promise<{ success: boolean; message: string; data?: any }> {
+  try {
+    switch (name) {
+
+      case "update_process": {
+        const { process_number, kpi, target, achievement, traffic_light, industry_benchmark, included, process_name, process_description, notes } = input;
+        const [proc] = await db.select().from(processesTable).where(eq(processesTable.number, process_number));
+        if (!proc) return { success: false, message: `Process #${process_number} not found` };
+        const updates: Record<string, any> = {};
+        if (kpi !== undefined) updates.kpi = kpi;
+        if (target !== undefined) updates.target = target;
+        if (achievement !== undefined) updates.achievement = achievement;
+        if (traffic_light !== undefined) updates.trafficLight = traffic_light;
+        if (industry_benchmark !== undefined) updates.industryBenchmark = industry_benchmark;
+        if (included !== undefined) updates.included = included;
+        if (process_name !== undefined) updates.processName = process_name;
+        if (process_description !== undefined) updates.processDescription = process_description;
+        if (notes !== undefined) updates.notes = notes;
+        if (Object.keys(updates).length === 0) return { success: false, message: "No fields to update" };
+        await db.update(processesTable).set(updates).where(eq(processesTable.number, process_number));
+        const changed = Object.entries(updates).map(([k, v]) => `${k}: ${v}`).join(", ");
+        return { success: true, message: `Process #${process_number} updated — ${changed}`, data: { process_number, updates } };
+      }
+
+      case "create_activity": {
+        const { name, description = "", mode = "others" } = input;
+        const maxRes = await db.select({ val: max(activitiesTable.activityNumber) }).from(activitiesTable);
+        const nextNum = (maxRes[0]?.val ?? 0) + 1;
+        const [act] = await db.insert(activitiesTable).values({
+          activityNumber: nextNum, name, description, mode,
+          ...(tenantId ? { tenantId } : {}),
+        }).returning();
+        return { success: true, message: `Activity #${nextNum} "${name}" created successfully`, data: act };
+      }
+
+      case "update_activity": {
+        const { activity_number, name, description, mode } = input;
+        const [act] = await db.select().from(activitiesTable).where(eq(activitiesTable.activityNumber, activity_number));
+        if (!act) return { success: false, message: `Activity #${activity_number} not found` };
+        const updates: Record<string, any> = {};
+        if (name !== undefined) updates.name = name;
+        if (description !== undefined) updates.description = description;
+        if (mode !== undefined) updates.mode = mode;
+        await db.update(activitiesTable).set(updates).where(eq(activitiesTable.activityNumber, activity_number));
+        return { success: true, message: `Activity #${activity_number} updated`, data: updates };
+      }
+
+      case "create_initiative": {
+        const { initiative_id, name, goals = "", achievement = "", start_date, end_date } = input;
+        const maxRes = await db.execute(sql`SELECT MAX(id) AS m FROM initiatives`);
+        const nextId = ((maxRes.rows[0] as any)?.m ?? 0) + 1;
+        const initId = initiative_id || `INIT-${String(nextId).padStart(3, "0")}`;
+        const [init] = await db.insert(initiatives).values({
+          initiativeId: initId, name, goals, achievement,
+          startDate: start_date ?? null, endDate: end_date ?? null,
+          ...(tenantId ? { tenantId } : {}),
+        }).returning();
+        return { success: true, message: `Initiative "${name}" (${initId}) created`, data: init };
+      }
+
+      case "update_initiative": {
+        const { initiative_id, name, goals, achievement, start_date, end_date } = input;
+        const rows = await db.execute(sql`SELECT id FROM initiatives WHERE initiative_id = ${initiative_id} OR id::text = ${String(initiative_id)} LIMIT 1`);
+        const row = (rows.rows as any[])[0];
+        if (!row) return { success: false, message: `Initiative "${initiative_id}" not found` };
+        const updates: Record<string, any> = {};
+        if (name !== undefined) updates.name = name;
+        if (goals !== undefined) updates.goals = goals;
+        if (achievement !== undefined) updates.achievement = achievement;
+        if (start_date !== undefined) updates.startDate = start_date;
+        if (end_date !== undefined) updates.endDate = end_date;
+        await db.update(initiatives).set(updates).where(eq(initiatives.id, row.id));
+        return { success: true, message: `Initiative "${initiative_id}" updated`, data: updates };
+      }
+
+      case "create_workflow": {
+        const { name, description = "" } = input;
+        const maxRes = await db.select({ val: max(workflowsTable.workflowNumber) }).from(workflowsTable);
+        const nextNum = (maxRes[0]?.val ?? 0) + 1;
+        const [wf] = await db.insert(workflowsTable).values({
+          workflowNumber: nextNum, name, description,
+          steps: "[]",
+          ...(tenantId ? { tenantId } : {}),
+        }).returning();
+        return { success: true, message: `Workflow #${nextNum} "${name}" created`, data: wf };
+      }
+
+      case "set_checklist_item": {
+        const { checklist_item_id, is_completed } = input;
+        const [item] = await db.select().from(checklistItemsTable).where(eq(checklistItemsTable.id, checklist_item_id));
+        if (!item) return { success: false, message: `Checklist item #${checklist_item_id} not found` };
+        await db.update(checklistItemsTable).set({ met: is_completed }).where(eq(checklistItemsTable.id, checklist_item_id));
+        return { success: true, message: `Checklist item #${checklist_item_id} "${item.name}" marked as ${is_completed ? "complete ✓" : "incomplete"}`, data: { id: checklist_item_id, met: is_completed } };
+      }
+
+      case "query_database": {
+        const { sql_query } = input;
+        const q = (sql_query as string).trim().toLowerCase();
+        if (!q.startsWith("select")) return { success: false, message: "Only SELECT queries are permitted" };
+        const result = await db.execute(sql.raw(sql_query));
+        const rows = result.rows as any[];
+        return { success: true, message: `Query returned ${rows.length} row(s)`, data: rows.slice(0, 50) };
+      }
+
+      default:
+        return { success: false, message: `Unknown tool: ${name}` };
+    }
+  } catch (err: any) {
+    return { success: false, message: `Tool error: ${err.message}` };
+  }
 }
 
 // ─── Conversations CRUD ───────────────────────────────────────────────────────
@@ -412,7 +646,7 @@ router.get("/anthropic/conversations/:id/messages", async (req, res) => {
   }
 });
 
-// ─── Send message (SSE streaming) ─────────────────────────────────────────────
+// ─── Send message (SSE streaming + agentic tool loop) ─────────────────────────
 
 router.post("/anthropic/conversations/:id/messages", async (req, res) => {
   try {
@@ -430,10 +664,9 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
       .where(eq(messagesTable.conversationId, id))
       .orderBy(messagesTable.createdAt);
 
-    const chatMessages = history.map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
     const tenantId = (req as any).auth?.tenantId ?? null;
 
-    // Build system prompt and retrieve knowledge context in parallel
+    // Build system prompt and knowledge context in parallel
     const listing = isListingQuery(content.trim());
     const [systemPromptBase, knowledgeContext, allDocsContext] = await Promise.all([
       buildSystemPrompt(tenantId),
@@ -442,9 +675,7 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
     ]);
 
     const extraContext = [knowledgeContext, allDocsContext].filter(Boolean).join("\n\n");
-    const systemPrompt = extraContext
-      ? `${systemPromptBase}\n\n${extraContext}`
-      : systemPromptBase;
+    const systemPrompt = extraContext ? `${systemPromptBase}\n\n${extraContext}` : systemPromptBase;
 
     // Credit check
     if (tenantId) {
@@ -460,25 +691,99 @@ router.post("/anthropic/conversations/:id/messages", async (req, res) => {
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
 
+    const send = (payload: object) => res.write(`data: ${JSON.stringify(payload)}\n\n`);
+
+    // Build conversation messages array for the agentic loop
+    // We drop the last assistant message (added by the loop below) to avoid duplication
+    const loopMessages: Anthropic.MessageParam[] = history
+      .slice(0, -1) // exclude the user message we just inserted (we add it below)
+      .map(m => ({ role: m.role as "user" | "assistant", content: m.content }));
+    loopMessages.push({ role: "user", content: content.trim() });
+
     let fullResponse = "";
+    let iterations = 0;
+    const MAX_ITERATIONS = 8;
 
-    const stream = anthropic.messages.stream({
-      model: "claude-sonnet-4-6",
-      max_tokens: 8192,
-      system: systemPrompt,
-      messages: chatMessages,
-    });
+    // ── Agentic loop ──────────────────────────────────────────────────────────
+    while (iterations < MAX_ITERATIONS) {
+      iterations++;
 
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        fullResponse += event.delta.text;
-        res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
+      // Stream this turn
+      const stream = anthropic.messages.stream({
+        model: "claude-sonnet-4-6",
+        max_tokens: 8192,
+        system: systemPrompt,
+        tools: DB_TOOLS,
+        messages: loopMessages,
+      });
+
+      // Accumulate content blocks for this turn
+      let turnText = "";
+      const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
+      let currentToolUse: { id: string; name: string; inputJson: string } | null = null;
+
+      for await (const event of stream) {
+        if (event.type === "content_block_start") {
+          if (event.content_block.type === "tool_use") {
+            currentToolUse = { id: event.content_block.id, name: event.content_block.name, inputJson: "" };
+          }
+        } else if (event.type === "content_block_delta") {
+          if (event.delta.type === "text_delta") {
+            turnText += event.delta.text;
+            fullResponse += event.delta.text;
+            send({ content: event.delta.text });
+          } else if (event.delta.type === "input_json_delta" && currentToolUse) {
+            currentToolUse.inputJson += event.delta.partial_json;
+          }
+        } else if (event.type === "content_block_stop" && currentToolUse) {
+          let parsedInput: Record<string, any> = {};
+          try { parsedInput = JSON.parse(currentToolUse.inputJson); } catch {}
+          toolUseBlocks.push({ type: "tool_use", id: currentToolUse.id, name: currentToolUse.name, input: parsedInput });
+          currentToolUse = null;
+        }
       }
+
+      const finalMsg = await stream.finalMessage();
+
+      // Add assistant turn to the loop messages
+      const assistantContent: Anthropic.ContentBlock[] = [];
+      if (turnText) assistantContent.push({ type: "text", text: turnText });
+      for (const tb of toolUseBlocks) assistantContent.push(tb);
+      loopMessages.push({ role: "assistant", content: assistantContent });
+
+      // If no tool calls, we're done
+      if (finalMsg.stop_reason !== "tool_use" || toolUseBlocks.length === 0) break;
+
+      // Execute each tool and collect results
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const tb of toolUseBlocks) {
+        // Notify client a tool is being called
+        send({ tool_call: { id: tb.id, name: tb.name, input: tb.input } });
+
+        const result = await executeTool(tb.name, tb.input as Record<string, any>, tenantId);
+
+        // Notify client of result
+        send({ tool_result: { id: tb.id, name: tb.name, success: result.success, message: result.message } });
+
+        // Add tool result string to fullResponse so it's persisted
+        const resultLine = `\n\n> **Tool: ${tb.name}** — ${result.success ? "✓" : "✗"} ${result.message}`;
+        fullResponse += resultLine;
+
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: tb.id,
+          content: JSON.stringify({ success: result.success, message: result.message, data: result.data }),
+        });
+      }
+
+      // Add tool results as user message and continue loop
+      loopMessages.push({ role: "user", content: toolResults });
     }
 
+    // Persist final assistant message
     await db.insert(messagesTable).values({ conversationId: id, role: "assistant", content: fullResponse });
 
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    send({ done: true });
     res.end();
   } catch (err) {
     req.log.error(err, "Failed to send message");
