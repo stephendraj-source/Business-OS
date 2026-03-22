@@ -913,14 +913,11 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     if (connectMode) return; // already handled in pointerdown
     if (dragRef.current?.moved) { dragRef.current = null; return; }
     dragRef.current = null;
-    if (selectedNodeId === nodeId) {
-      // Second click on already-selected node → start inline editing
-      const node = mapData.nodes.find(n => n.id === nodeId);
-      if (node) setEditingLabel({ nodeId, value: node.label });
-    } else {
-      setSelectedNodeId(nodeId);
-      setSelectedEdgeId(null);
-    }
+    // Single click → select and immediately enter edit mode
+    setSelectedNodeId(nodeId);
+    setSelectedEdgeId(null);
+    const node = mapData.nodes.find(n => n.id === nodeId);
+    if (node) setEditingLabel({ nodeId, value: node.label });
   };
 
   const handleNodeDoubleClick = (e: React.MouseEvent, nodeId: string) => {
