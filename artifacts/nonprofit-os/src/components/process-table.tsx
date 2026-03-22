@@ -4,7 +4,7 @@ import { EditableCell } from './editable-cell';
 import { useProcessesData, useCategoriesData, useOptimisticUpdateProcess, useDeleteProcessRow, useCreateProcessMutation, useAiPopulateProcessMutation } from '@/hooks/use-app-data';
 import { useQueryClient } from '@tanstack/react-query';
 import { getListProcessesQueryKey } from '@workspace/api-client-react';
-import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck, Star, TrendingUp, TrendingDown, Minus, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, FolderOpen, FileSpreadsheet, FileText } from 'lucide-react';
+import { Search, Loader2, Trash2, GripVertical, Download, Upload, CheckCircle2, Plus, X, Cpu, Sparkles, ShieldCheck, Eye, ClipboardList, Bot, GitBranch, Link2, RotateCcw, UserCheck, Star, TrendingUp, TrendingDown, Minus, RefreshCw, ArrowUpDown, ArrowUp, ArrowDown, FolderOpen, FileSpreadsheet, FileText, Pencil } from 'lucide-react';
 import { ChecklistPanel } from './checklist-panel';
 import { cn, getCategoryColorClass } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
@@ -150,6 +150,29 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   const [allUsers, setAllUsers] = useState<AssignedUser[]>([]);
   const [showUserPicker, setShowUserPicker] = useState(false);
   const [assigneesSaving, setAssigneesSaving] = useState(false);
+
+  const [editingId, setEditingId] = useState(false);
+  const [editingIdValue, setEditingIdValue] = useState('');
+  const [editingIdError, setEditingIdError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState(false);
+
+  async function commitIdEdit() {
+    const raw = editingIdValue.trim().replace(/^pro-?/i, '');
+    const num = parseInt(raw, 10);
+    if (isNaN(num) || num < 1) { setEditingIdError('Enter a valid number (e.g. 5 or PRO-005)'); return; }
+    setSavingId(true);
+    setEditingIdError(null);
+    try {
+      const r = await fetch(`/api/processes/${process.id}`, {
+        method: 'PUT',
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: num }),
+      });
+      if (!r.ok) { const e = await r.json().catch(() => ({})); setEditingIdError(e.error || 'Save failed'); return; }
+      updateProcess({ id: process.id, data: { number: num } as any });
+      setEditingId(false);
+    } finally { setSavingId(false); }
+  }
 
   const [evaluating, setEvaluating] = useState(false);
   const [evalError, setEvalError] = useState<string | null>(null);
@@ -401,12 +424,41 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {/* Process ID – read-only */}
+          {/* Process ID – editable */}
           <div>
             <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">Process ID</div>
-            <div className="text-sm rounded-lg bg-secondary/30 px-3 py-2 border border-border/50">
-              <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{pid}</span>
-            </div>
+            {editingId ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-muted-foreground font-mono font-bold shrink-0">PRO-</span>
+                  <input
+                    autoFocus
+                    type="text"
+                    value={editingIdValue}
+                    onChange={e => { setEditingIdValue(e.target.value); setEditingIdError(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') commitIdEdit(); if (e.key === 'Escape') setEditingId(false); }}
+                    onBlur={() => { if (!savingId) commitIdEdit(); }}
+                    className={cn(
+                      "flex-1 px-2 py-1 text-sm font-mono rounded border bg-background text-primary focus:outline-none focus:ring-1 focus:ring-primary/50",
+                      editingIdError ? "border-red-500" : "border-primary/40"
+                    )}
+                    placeholder="001"
+                  />
+                </div>
+                {editingIdError && <p className="text-xs text-red-400">{editingIdError}</p>}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 rounded-lg bg-secondary/30 px-3 py-2 border border-border/50 group">
+                <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{pid}</span>
+                <button
+                  onClick={() => { setEditingIdValue(String(process.number)); setEditingIdError(null); setEditingId(true); }}
+                  className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground"
+                  title="Edit Process ID"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Category – dropdown */}
@@ -987,51 +1039,6 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [govPopoverFor, setGovPopoverFor] = useState<number | null>(null);
   const [govPopoverPos, setGovPopoverPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
-  const [editingNumberFor, setEditingNumberFor] = useState<number | null>(null);
-  const [editingNumberValue, setEditingNumberValue] = useState('');
-  const [editingNumberError, setEditingNumberError] = useState<string | null>(null);
-  const [savingNumber, setSavingNumber] = useState(false);
-
-  function startEditNumber(process: Process) {
-    setEditingNumberFor(process.id);
-    setEditingNumberValue(String(process.number));
-    setEditingNumberError(null);
-  }
-
-  function cancelEditNumber() {
-    setEditingNumberFor(null);
-    setEditingNumberValue('');
-    setEditingNumberError(null);
-  }
-
-  async function commitEditNumber(processId: number) {
-    const raw = editingNumberValue.trim().replace(/^pro-?/i, '');
-    const newNumber = parseInt(raw, 10);
-    if (isNaN(newNumber) || newNumber < 1) {
-      setEditingNumberError('Enter a valid number (e.g. 5 or PRO-005)');
-      return;
-    }
-    setSavingNumber(true);
-    setEditingNumberError(null);
-    try {
-      const res = await fetch(`/api/processes/${processId}`, {
-        method: 'PUT',
-        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ number: newNumber }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setEditingNumberError(data.error ?? 'Failed to update');
-        return;
-      }
-      updateProcess({ id: processId, data: { number: newNumber } as any });
-      setEditingNumberFor(null);
-    } catch {
-      setEditingNumberError('Network error — please try again');
-    } finally {
-      setSavingNumber(false);
-    }
-  }
 
   useEffect(() => {
     fetch('/api/governance', { headers: fetchHeaders() }).then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
@@ -1324,51 +1331,20 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             </label>
           </td>
         );
-      case '#': {
-        const isEditingNum = editingNumberFor === process.id;
+      case '#':
         return (
           <td key="#" className="align-middle p-0 text-center overflow-visible" style={{ width: widths['#'] }}>
-            {isEditingNum ? (
-              <div className="relative flex flex-col items-center px-1 py-1 gap-0.5">
-                <div className="flex items-center gap-0.5">
-                  <span className="text-[9px] text-muted-foreground font-mono font-bold">PRO-</span>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={editingNumberValue}
-                    onChange={e => { setEditingNumberValue(e.target.value); setEditingNumberError(null); }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') { e.preventDefault(); commitEditNumber(process.id); }
-                      if (e.key === 'Escape') cancelEditNumber();
-                    }}
-                    onBlur={() => { if (!savingNumber) commitEditNumber(process.id); }}
-                    className={cn(
-                      "w-10 px-1 py-0.5 text-[10px] font-mono font-semibold rounded border text-center bg-background text-primary focus:outline-none focus:ring-1 focus:ring-primary/50",
-                      editingNumberError ? "border-red-500" : "border-primary/40"
-                    )}
-                    placeholder="001"
-                  />
-                </div>
-                {editingNumberError && (
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 z-50 whitespace-nowrap px-2 py-1 rounded bg-red-500/90 text-white text-[9px] font-medium shadow-lg">
-                    {editingNumberError}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-3 px-2">
-                <button
-                  onClick={() => startEditNumber(process)}
-                  title="Click to edit Process ID"
-                  className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold tracking-wide text-[10px] font-mono hover:bg-primary/20 hover:ring-1 hover:ring-primary/40 transition-all cursor-pointer"
-                >
-                  PRO-{process.number.toString().padStart(3, '0')}
-                </button>
-              </div>
-            )}
+            <div className="flex items-center justify-center py-3 px-2">
+              <button
+                onClick={() => setDetailProcess(process)}
+                title="Click to view process details"
+                className="inline-block px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold tracking-wide text-[10px] font-mono hover:bg-primary/20 hover:ring-1 hover:ring-primary/40 transition-all cursor-pointer"
+              >
+                PRO-{process.number.toString().padStart(3, '0')}
+              </button>
+            </div>
           </td>
         );
-      }
       case 'category':
         return (
           <td key="category" className="align-middle p-3 overflow-hidden" style={{ width: widths['category'] }}>
@@ -1383,7 +1359,15 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'processName':
         return (
           <td key="processName" className="overflow-hidden p-0" style={{ width: widths['processName'] }}>
-            <EditableCell processId={process.id} field="processName" initialValue={process.processName} onSaved={cellSaved(process, 'processName')} />
+            <button
+              className="w-full text-left px-3 py-3 text-sm font-medium text-foreground hover:text-primary truncate block transition-colors group"
+              onClick={() => setDetailProcess(process)}
+              title="Click to view process details"
+            >
+              <span className="group-hover:underline underline-offset-2">
+                {process.processName || <em className="text-muted-foreground/50 not-italic font-normal">Unnamed</em>}
+              </span>
+            </button>
           </td>
         );
       case 'processDescription':
