@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink, Wrench, CheckCircle2, XCircle, Layers, ArrowRight } from 'lucide-react';
+import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizontal, MessageSquare, Minus, ExternalLink, Wrench, CheckCircle2, XCircle, Layers, ArrowRight, Hash, GitBranch, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { dispatchCreditsRefresh } from '@/hooks/use-credits';
 import { useAuth } from '@/contexts/AuthContext';
@@ -50,6 +50,8 @@ interface PendingTask {
 
 interface MentionUser { id: number; name: string; email: string; role?: string }
 interface MentionProcess { id: number; processName: string; category?: string }
+interface MentionField { key: string; label: string; hasSublist?: boolean }
+interface MentionWorkflow { id: number; workflowNumber: number; name: string; description: string }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PANEL_W = 440;
@@ -183,6 +185,8 @@ export function Chatbot() {
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionUsers, setMentionUsers] = useState<MentionUser[]>([]);
   const [mentionProcesses, setMentionProcesses] = useState<MentionProcess[]>([]);
+  const [mentionFields, setMentionFields] = useState<MentionField[]>([]);
+  const [mentionWorkflows, setMentionWorkflows] = useState<MentionWorkflow[]>([]);
   const [mentionLoaded, setMentionLoaded] = useState(false);
   const [mentionHighlight, setMentionHighlight] = useState(0);
   const slashIdxRef = useRef<number>(-1);
@@ -242,12 +246,16 @@ export function Chatbot() {
   const loadMentionData = async () => {
     if (mentionLoaded) return;
     try {
-      const [ur, pr] = await Promise.all([
+      const [ur, pr, fr, wr] = await Promise.all([
         fetch(`${API}/users`, { headers: fetchHeaders() }),
         fetch(`${API}/processes`, { headers: fetchHeaders() }),
+        fetch(`${API}/ai-agents/meta/process-fields`, { headers: fetchHeaders() }),
+        fetch(`${API}/workflows`, { headers: fetchHeaders() }),
       ]);
       if (ur.ok) setMentionUsers(await ur.json());
       if (pr.ok) setMentionProcesses(await pr.json());
+      if (fr.ok) setMentionFields(await fr.json());
+      if (wr.ok) setMentionWorkflows(await wr.json());
       setMentionLoaded(true);
     } catch {}
   };
@@ -273,6 +281,12 @@ export function Chatbot() {
   };
 
   const mentionQ = mentionQuery.toLowerCase();
+  const filteredMentionFields = mentionFields.filter(f =>
+    f.key.toLowerCase().includes(mentionQ) || f.label.toLowerCase().includes(mentionQ)
+  );
+  const filteredMentionWorkflows = mentionWorkflows.filter(w =>
+    w.name.toLowerCase().includes(mentionQ)
+  );
   const filteredMentionUsers = mentionUsers.filter(u =>
     u.name.toLowerCase().includes(mentionQ) || u.email.toLowerCase().includes(mentionQ)
   );
@@ -281,6 +295,8 @@ export function Chatbot() {
     (p.category || '').toLowerCase().includes(mentionQ)
   );
   const allMentionItems: Array<{ label: string; sub: string; text: string }> = [
+    ...filteredMentionFields.map(f => ({ label: f.label, sub: `{{${f.key}}}`, text: `{{${f.key}}}` })),
+    ...filteredMentionWorkflows.map(w => ({ label: w.name, sub: `{{workflow:${w.name}}}`, text: `{{workflow:${w.name}}}` })),
     ...filteredMentionUsers.map(u => ({ label: u.name, sub: u.role ?? u.email, text: `@${u.name}` })),
     ...filteredMentionProcesses.map(p => ({ label: p.processName, sub: p.category ?? 'Process', text: `[${p.processName}]` })),
   ];
@@ -721,25 +737,66 @@ export function Chatbot() {
               {showMention && (
                 <div className="mb-2 bg-popover border border-border rounded-xl shadow-2xl overflow-hidden max-h-64 overflow-y-auto">
                   <div className="px-3 py-1.5 border-b border-border flex items-center gap-2">
-                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Mention a user or process</span>
+                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Insert reference</span>
                     {mentionQuery && <span className="text-[10px] text-primary font-mono bg-primary/10 px-1.5 py-0.5 rounded">/{mentionQuery}</span>}
                   </div>
                   {allMentionItems.length === 0 ? (
                     <div className="px-3 py-3 text-xs text-muted-foreground italic">{mentionLoaded ? 'No matches' : 'Loading…'}</div>
                   ) : (
                     <>
+                      {filteredMentionFields.length > 0 && (
+                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Fields</div>
+                      )}
+                      {filteredMentionFields.map((f, i) => (
+                        <button
+                          key={`f-${f.key}`}
+                          onMouseDown={e => { e.preventDefault(); insertMention(`{{${f.key}}}`); }}
+                          className={cn("w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary/60 transition-colors", mentionHighlight === i && "bg-secondary/60")}
+                        >
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <Hash className="w-3 h-3 text-primary" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-foreground truncate">{f.label}</div>
+                            <div className="text-[10px] text-muted-foreground font-mono truncate">{`{{${f.key}}}`}</div>
+                          </div>
+                        </button>
+                      ))}
+                      {filteredMentionWorkflows.length > 0 && (
+                        <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Workflows</div>
+                      )}
+                      {filteredMentionWorkflows.map((w, i) => {
+                        const globalIdx = filteredMentionFields.length + i;
+                        return (
+                          <button
+                            key={`w-${w.id}`}
+                            onMouseDown={e => { e.preventDefault(); insertMention(`{{workflow:${w.name}}}`); }}
+                            className={cn("w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary/60 transition-colors", mentionHighlight === globalIdx && "bg-secondary/60")}
+                          >
+                            <div className="w-6 h-6 rounded-full bg-orange-500/15 flex items-center justify-center flex-shrink-0">
+                              <GitBranch className="w-3 h-3 text-orange-400" />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-medium text-foreground truncate">{w.name}</div>
+                              <div className="text-[10px] text-muted-foreground font-mono truncate">{`{{workflow:${w.name}}}`}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
                       {filteredMentionUsers.length > 0 && (
                         <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Users</div>
                       )}
                       {filteredMentionUsers.map((u, i) => {
-                        const globalIdx = i;
+                        const globalIdx = filteredMentionFields.length + filteredMentionWorkflows.length + i;
                         return (
                           <button
                             key={`u-${u.id}`}
                             onMouseDown={e => { e.preventDefault(); insertMention(`@${u.name}`); }}
                             className={cn("w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-secondary/60 transition-colors", mentionHighlight === globalIdx && "bg-secondary/60")}
                           >
-                            <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">{u.name[0]?.toUpperCase()}</div>
+                            <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center text-[10px] font-bold text-primary flex-shrink-0">
+                              <User className="w-3 h-3" />
+                            </div>
                             <div className="min-w-0">
                               <div className="text-xs font-medium text-foreground truncate">{u.name}</div>
                               <div className="text-[10px] text-muted-foreground truncate">{u.role ?? u.email}</div>
@@ -752,7 +809,7 @@ export function Chatbot() {
                         <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/20">Processes</div>
                       )}
                       {filteredMentionProcesses.map((p, i) => {
-                        const globalIdx = filteredMentionUsers.length + i;
+                        const globalIdx = filteredMentionFields.length + filteredMentionWorkflows.length + filteredMentionUsers.length + i;
                         return (
                           <button
                             key={`p-${p.id}`}
@@ -780,7 +837,7 @@ export function Chatbot() {
                   value={input}
                   onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask anything… type / to mention a user or process"
+                  placeholder="Ask anything… type / to insert a field, workflow, user, or process reference"
                   rows={2}
                   disabled={streaming}
                   className="flex-1 resize-none bg-secondary/50 border border-border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50 transition-all"

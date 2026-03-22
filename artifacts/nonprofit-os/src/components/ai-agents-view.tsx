@@ -4,7 +4,7 @@ import {
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
   Shield, Search, Share2, Globe, Server, Webhook, ArrowRight, Star,
-  FlaskConical, Tag, Eye, EyeOff, Key, ExternalLink, Plug,
+  FlaskConical, Tag, Eye, EyeOff, Key, ExternalLink, Plug, User,
 } from "lucide-react";
 import { ProcessTagSelector } from "@/components/process-tag-selector";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
@@ -135,11 +135,12 @@ function statusBadge(status: string) {
 
 interface WorkflowMeta { id: number; workflowNumber: number; name: string; description: string; }
 interface ProcessMeta { id: number; processName: string; category: string; }
+interface UserMeta { id: number; name: string; email: string; role?: string; }
 
 type PickerMode = 'fields' | 'processes';
 
 function InstructionsEditor({
-  value, onChange, processFields, workflows = [], rows = 8, placeholder, hint,
+  value, onChange, processFields, workflows = [], rows = 8, placeholder, hint, fetchHeaders,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -148,6 +149,7 @@ function InstructionsEditor({
   rows?: number;
   placeholder?: string;
   hint?: string;
+  fetchHeaders?: () => Record<string, string>;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -155,7 +157,17 @@ function InstructionsEditor({
   const [pickerFilter, setPickerFilter] = useState("");
   const [pickerMode, setPickerMode] = useState<PickerMode>('fields');
   const [processList, setProcessList] = useState<ProcessMeta[]>([]);
+  const [userList, setUserList] = useState<UserMeta[]>([]);
   const slashIndexRef = useRef<number>(-1);
+
+  const loadUsers = async () => {
+    if (userList.length > 0) return;
+    try {
+      const headers = fetchHeaders ? fetchHeaders() : {};
+      const r = await fetch(`${API}/users`, { headers });
+      if (r.ok) setUserList(await r.json());
+    } catch {}
+  };
 
   const openPicker = (ta: HTMLTextAreaElement) => {
     slashIndexRef.current = ta.selectionStart;
@@ -163,6 +175,7 @@ function InstructionsEditor({
     setPickerPos({ top: rect.bottom + 4, left: rect.left });
     setPickerFilter("");
     setPickerMode('fields');
+    loadUsers();
     setShowPicker(true);
   };
 
@@ -218,6 +231,9 @@ function InstructionsEditor({
   const filteredProcesses = processList.filter(p =>
     (p.processName || '').toLowerCase().includes(pickerFilter) ||
     (p.category || '').toLowerCase().includes(pickerFilter)
+  );
+  const filteredUsers = userList.filter(u =>
+    u.name.toLowerCase().includes(pickerFilter) || u.email.toLowerCase().includes(pickerFilter)
   );
 
   return (
@@ -284,7 +300,27 @@ function InstructionsEditor({
                     ))}
                   </>
                 )}
-                {filteredFields.length === 0 && filteredWorkflows.length === 0 && (
+                {filteredUsers.length > 0 && (
+                  <>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground/60 uppercase tracking-wider bg-secondary/30 border-t border-border">Users</div>
+                    {filteredUsers.map(u => (
+                      <button
+                        key={u.id}
+                        onMouseDown={e => { e.preventDefault(); insertRaw(`@${u.name}`); }}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-accent text-sm transition-colors"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <User className="w-3 h-3 text-primary" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{u.name}</div>
+                          <div className="text-xs text-muted-foreground font-mono">@{u.name}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </>
+                )}
+                {filteredFields.length === 0 && filteredWorkflows.length === 0 && filteredUsers.length === 0 && (
                   <div className="px-3 py-3 text-xs text-muted-foreground text-center">No matches</div>
                 )}
               </div>
@@ -2005,6 +2041,7 @@ export function AiAgentsView() {
                       onChange={markDirty(setEditTrigger)}
                       processFields={processFields}
                       workflows={workflows}
+                      fetchHeaders={fetchHeaders}
                       rows={3}
                       placeholder={`Describe when this agent should run…\nType / to insert a reference (e.g. "When {{process:Employee Review}} status changes to Complete")`}
                       hint="Describe the condition or event that triggers this agent. Type / to insert a dynamic reference."
@@ -2163,6 +2200,7 @@ export function AiAgentsView() {
                     onChange={markDirty(setEditInstructions)}
                     processFields={processFields}
                     workflows={workflows}
+                    fetchHeaders={fetchHeaders}
                   />
                 </div>
                 <div className="space-y-2">
