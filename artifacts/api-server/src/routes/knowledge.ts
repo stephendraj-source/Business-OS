@@ -2,10 +2,12 @@ import { Router, type IRouter } from "express";
 import path from "path";
 import fs from "fs";
 import multer from "multer";
+import { sql } from "drizzle-orm";
 import {
   db, knowledgeItemsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
+import { embed, vecToSql, warmUp } from "../lib/embeddings.js";
 
 const router: IRouter = Router();
 
@@ -20,6 +22,87 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 } });
+
+warmUp().catch(() => {});
+
+// ── Embedding helper (fire-and-forget) ───────────────────────────────────────
+
+async function embedItem(id: number, title: string, content: string): Promise<void> {
+  try {
+    const text = `${title}\n${content}`;
+    if (!text.trim()) return;
+    const vec = await embed(text);
+    await db.execute(
+      sql`UPDATE knowledge_items SET embedding_vec = ${vecToSql(vec)}::vector, embedded_at = NOW() WHERE id = ${id}`
+    );
+  } catch (err) {
+    console.error(`[embeddings] failed to embed item ${id}:`, err);
+  }
+}
+
+// ── Semantic search ───────────────────────────────────────────────────────────
+
+router.get("/knowledge/search", async (req, res) => {
+  try {
+    const { q, limit = "10" } = req.query as Record<string, string>;
+    if (!q?.trim()) return res.json([]);
+    const auth = (req as any).auth;
+    const limitNum = Math.min(Number(limit) || 10, 50);
+
+    const queryVec = await embed(q);
+    const embStr = vecToSql(queryVec);
+
+    const tenantCondition = auth?.tenantId
+      ? sql`tenant_id = ${auth.tenantId}`
+      : sql`tenant_id IS NULL`;
+
+    const rows = await db.execute(
+      sql`SELECT id, title, content, type, folder_id, file_name, mime_type, url,
+               ROUND((1 - (embedding_vec <=> ${embStr}::vector))::numeric, 4) AS similarity
+          FROM knowledge_items
+          WHERE ${tenantCondition}
+            AND embedding_vec IS NOT NULL
+          ORDER BY embedding_vec <=> ${embStr}::vector
+          LIMIT ${limitNum}`
+    );
+
+    res.json(rows.rows);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Reindex all unembedded docs ───────────────────────────────────────────────
+
+router.post("/knowledge/reindex", async (req, res) => {
+  try {
+    const auth = (req as any).auth;
+    const tenantCond = auth?.tenantId
+      ? and(eq(knowledgeItemsTable.tenantId, auth.tenantId), isNull(knowledgeItemsTable.embeddedAt))
+      : isNull(knowledgeItemsTable.embeddedAt);
+
+    const items = await db
+      .select({ id: knowledgeItemsTable.id, title: knowledgeItemsTable.title, content: knowledgeItemsTable.content })
+      .from(knowledgeItemsTable)
+      .where(tenantCond);
+
+    res.json({ queued: items.length, status: "indexing" });
+
+    setImmediate(async () => {
+      let done = 0;
+      for (const item of items) {
+        await embedItem(item.id, item.title, item.content);
+        done++;
+        if (done % 5 === 0) console.log(`[reindex] ${done}/${items.length}`);
+      }
+      console.log(`[reindex] complete: ${done} items embedded`);
+    });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 // ── Knowledge Items ───────────────────────────────────────────────────────────
 
@@ -51,6 +134,7 @@ router.post("/knowledge-items", async (req, res) => {
       url: url ? String(url) : null,
     }).returning();
     res.status(201).json(item);
+    setImmediate(() => embedItem(item.id, item.title, item.content));
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
@@ -89,6 +173,9 @@ router.patch("/knowledge-items/:id", async (req, res) => {
     const [item] = await db.update(knowledgeItemsTable).set(updates).where(cond).returning();
     if (!item) return res.status(404).json({ error: "Not found" });
     res.json(item);
+    if (title !== undefined || content !== undefined) {
+      setImmediate(() => embedItem(item.id, item.title, item.content));
+    }
   } catch (err) {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
