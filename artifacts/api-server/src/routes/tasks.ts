@@ -13,17 +13,19 @@ const TASK_COLS = sql`
   a.name  AS ai_agent_name,
   q.name  AS queue_name,
   ap.name AS approved_by_name,
+  w.name  AS workflow_name,
   (SELECT string_agg(p.process_name, ', ' ORDER BY p.number)
    FROM task_processes tp JOIN processes p ON p.id = tp.process_id
    WHERE tp.task_id = t.id) AS process_names
 `;
 
 const TASK_JOINS = sql`
-  LEFT JOIN users    u  ON u.id  = t.assigned_to
-  LEFT JOIN users    c  ON c.id  = t.created_by
-  LEFT JOIN ai_agents a ON a.id  = t.ai_agent_id
-  LEFT JOIN task_queues q ON q.id = t.queue_id
-  LEFT JOIN users    ap ON ap.id = t.approved_by
+  LEFT JOIN users      u  ON u.id  = t.assigned_to
+  LEFT JOIN users      c  ON c.id  = t.created_by
+  LEFT JOIN ai_agents  a  ON a.id  = t.ai_agent_id
+  LEFT JOIN task_queues q ON q.id  = t.queue_id
+  LEFT JOIN users      ap ON ap.id = t.approved_by
+  LEFT JOIN workflows  w  ON w.id  = t.workflow_id
 `;
 
 // ── List tasks ────────────────────────────────────────────────────────────────
@@ -81,14 +83,14 @@ router.post("/tasks", async (req, res) => {
     const {
       name, description, startDate, endDate, revisedEndDate,
       assignedTo, priority, aiAgentId,
-      source, queueId, approvalStatus, aiInstructions,
+      source, queueId, workflowId, approvalStatus, aiInstructions,
     } = req.body;
 
     const rows = await db.execute(sql`
       INSERT INTO tasks (
         tenant_id, name, description, start_date, end_date, revised_end_date,
         assigned_to, created_by, priority, ai_agent_id,
-        source, queue_id, approval_status, ai_instructions
+        source, queue_id, workflow_id, approval_status, ai_instructions
       ) VALUES (
         ${tenantId},
         ${name ?? ''},
@@ -102,6 +104,7 @@ router.post("/tasks", async (req, res) => {
         ${aiAgentId ?? null},
         ${source ?? 'Employees'},
         ${queueId ?? null},
+        ${workflowId ?? null},
         ${approvalStatus ?? 'none'},
         ${aiInstructions ?? ''}
       )
@@ -121,7 +124,7 @@ router.patch("/tasks/:id", async (req, res) => {
     const {
       name, description, startDate, endDate, revisedEndDate,
       assignedTo, priority, status, aiAgentId, aiResult,
-      source, queueId, approvalStatus, aiInstructions,
+      source, queueId, workflowId, approvalStatus, aiInstructions,
     } = req.body;
 
     const existing = await db.execute(sql`SELECT * FROM tasks WHERE id = ${id} LIMIT 1`);
@@ -142,6 +145,7 @@ router.patch("/tasks/:id", async (req, res) => {
         ai_result        = ${aiResult         ?? cur.ai_result},
         source           = ${source           ?? cur.source},
         queue_id         = ${queueId         !== undefined ? queueId         : cur.queue_id},
+        workflow_id      = ${workflowId      !== undefined ? workflowId      : cur.workflow_id},
         approval_status  = ${approvalStatus   ?? cur.approval_status},
         ai_instructions  = ${aiInstructions   ?? cur.ai_instructions},
         updated_at       = now()

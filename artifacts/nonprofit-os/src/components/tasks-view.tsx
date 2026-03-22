@@ -38,6 +38,8 @@ interface TaskRow {
   source: string;
   queue_id: number | null;
   queue_name: string | null;
+  workflow_id: number | null;
+  workflow_name: string | null;
   approval_status: 'none' | 'pending' | 'approved' | 'rejected';
   approved_by: number | null;
   approved_by_name: string | null;
@@ -51,6 +53,7 @@ interface AiAgent { id: number; agent_number: number; name: string }
 interface Queue { id: number; name: string; color: string }
 interface TaskSource { id: number; name: string; color: string }
 interface ProcessItem { id: number; number: number; process_name: string; category: string }
+interface WorkflowItem { id: number; workflow_number: number; name: string }
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PRIORITIES = [
@@ -148,6 +151,7 @@ export function TasksView() {
   const [editAiResult, setEditAiResult] = useState('');
   const [editSource, setEditSource] = useState<string>('Employees');
   const [editQueueId, setEditQueueId] = useState<number | ''>('');
+  const [editWorkflowId, setEditWorkflowId] = useState<number | ''>('');
   const [editAiInstructions, setEditAiInstructions] = useState('');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -165,6 +169,7 @@ export function TasksView() {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [agents, setAgents] = useState<AiAgent[]>([]);
   const [queues, setQueues] = useState<Queue[]>([]);
+  const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [sources, setSources] = useState<TaskSource[]>([]);
   const [allProcesses, setAllProcesses] = useState<ProcessItem[]>([]);
 
@@ -185,12 +190,13 @@ export function TasksView() {
   }, [fetchHeaders]);
 
   const loadOptions = useCallback(async () => {
-    const [ur, ar, qr, sr, pr] = await Promise.all([
+    const [ur, ar, qr, sr, pr, wr] = await Promise.all([
       fetch(`${API}/users`, { headers: fetchHeaders() }),
       fetch(`${API}/ai-agents`, { headers: fetchHeaders() }),
       fetch(`${API}/org/task-queues`, { headers: fetchHeaders() }),
       fetch(`${API}/org/task-sources`, { headers: fetchHeaders() }),
       fetch(`${API}/processes`, { headers: fetchHeaders() }),
+      fetch(`${API}/workflows`, { headers: fetchHeaders() }),
     ]);
     if (ur.ok) setUsers(await ur.json());
     if (ar.ok) setAgents(await ar.json());
@@ -199,6 +205,10 @@ export function TasksView() {
     if (pr.ok) {
       const prData = await pr.json();
       setAllProcesses(Array.isArray(prData) ? prData : []);
+    }
+    if (wr.ok) {
+      const wrData = await wr.json();
+      setWorkflows(Array.isArray(wrData) ? wrData : []);
     }
   }, [fetchHeaders]);
 
@@ -229,6 +239,7 @@ export function TasksView() {
     setEditAiResult(t.ai_result ?? '');
     setEditSource(t.source ?? 'Employees');
     setEditQueueId(t.queue_id ?? '');
+    setEditWorkflowId(t.workflow_id ?? '');
     setEditAiInstructions(t.ai_instructions ?? '');
     setDirty(false);
     setAgentError(null);
@@ -285,11 +296,33 @@ export function TasksView() {
     setEditStartDate(''); setEditEndDate(''); setEditRevisedEnd('');
     setEditAssignedTo(''); setEditPriority('normal'); setEditStatus('open');
     setEditAgentId(''); setEditAiResult('');
-    setEditSource('Employees'); setEditQueueId(''); setEditAiInstructions('');
+    setEditSource('Employees'); setEditQueueId(''); setEditWorkflowId(''); setEditAiInstructions('');
     setDirty(false); setAgentError(null); setApprovalResult(null);
   }
 
   function markDirty() { setDirty(true); }
+
+  const assignedToValue = editAssignedTo ? `user:${editAssignedTo}`
+    : editAgentId ? `agent:${editAgentId}`
+    : editQueueId ? `queue:${editQueueId}`
+    : editWorkflowId ? `workflow:${editWorkflowId}`
+    : '';
+
+  function handleAssignedToChange(val: string) {
+    setEditAssignedTo('');
+    setEditAgentId('');
+    setEditQueueId('');
+    setEditWorkflowId('');
+    if (val) {
+      const [type, rawId] = val.split(':');
+      const numId = Number(rawId);
+      if (type === 'user') setEditAssignedTo(numId);
+      else if (type === 'agent') setEditAgentId(numId);
+      else if (type === 'queue') setEditQueueId(numId);
+      else if (type === 'workflow') setEditWorkflowId(numId);
+    }
+    markDirty();
+  }
 
   async function toggleProcess(processId: number) {
     if (!selected) return;
@@ -322,6 +355,7 @@ export function TasksView() {
         priority: editPriority, status: editStatus,
         aiAgentId: editAgentId || null, aiResult: editAiResult,
         source: editSource, queueId: editQueueId || null,
+        workflowId: editWorkflowId || null,
         aiInstructions: editAiInstructions,
       };
       if (creating) {
@@ -856,24 +890,11 @@ export function TasksView() {
               <Textarea value={editDesc} onChange={e => { setEditDesc(e.target.value); markDirty(); }} placeholder="Describe the task…" rows={3} className="text-sm resize-none" />
             </div>
 
-            {/* Source + Queue */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><ListTodo className="w-3 h-3" />Source</label>
-                <div className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/30 border border-border/30 text-sm text-muted-foreground cursor-default select-none">
-                  {editSource || '—'}
-                </div>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Layers className="w-3 h-3" />Queue</label>
-                <select
-                  value={editQueueId}
-                  onChange={e => { setEditQueueId(e.target.value ? Number(e.target.value) : ''); markDirty(); }}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                  <option value="">— No queue —</option>
-                  {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
-                </select>
+            {/* Source */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><ListTodo className="w-3 h-3" />Source</label>
+              <div className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/30 border border-border/30 text-sm text-muted-foreground cursor-default select-none">
+                {editSource || '—'}
               </div>
             </div>
 
@@ -912,14 +933,35 @@ export function TasksView() {
               <DateInput label="Revised End" value={editRevisedEnd} onChange={v => { setEditRevisedEnd(v); markDirty(); }} />
             </div>
 
-            {/* Assigned To */}
+            {/* Assigned To — unified grouped select */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" />Assigned To</label>
-              <select value={editAssignedTo}
-                onChange={e => { setEditAssignedTo(e.target.value ? Number(e.target.value) : ''); markDirty(); }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40">
+              <select
+                value={assignedToValue}
+                onChange={e => handleAssignedToChange(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
+              >
                 <option value="">— Unassigned —</option>
-                {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.email})</option>)}
+                {users.length > 0 && (
+                  <optgroup label="— People —">
+                    {users.map(u => <option key={`user:${u.id}`} value={`user:${u.id}`}>{u.name} ({u.email})</option>)}
+                  </optgroup>
+                )}
+                {agents.length > 0 && (
+                  <optgroup label="— AI Agents —">
+                    {agents.map(a => <option key={`agent:${a.id}`} value={`agent:${a.id}`}>{a.name}</option>)}
+                  </optgroup>
+                )}
+                {queues.length > 0 && (
+                  <optgroup label="— Queues —">
+                    {queues.map(q => <option key={`queue:${q.id}`} value={`queue:${q.id}`}>{q.name}</option>)}
+                  </optgroup>
+                )}
+                {workflows.length > 0 && (
+                  <optgroup label="— Workflows —">
+                    {workflows.map(w => <option key={`workflow:${w.id}`} value={`workflow:${w.id}`}>#{w.workflow_number} {w.name}</option>)}
+                  </optgroup>
+                )}
               </select>
             </div>
 
@@ -1013,48 +1055,41 @@ export function TasksView() {
               </div>
             )}
 
-            <div className="space-y-2 border-t border-border/40 pt-4">
-              <label className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
-                <Bot className="w-3.5 h-3.5" />AI Agent
-              </label>
-              <select value={editAgentId}
-                onChange={e => { setEditAgentId(e.target.value ? Number(e.target.value) : ''); markDirty(); }}
-                className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40">
-                <option value="">— No agent —</option>
-                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
+            {/* Run Agent button — shown when an AI agent is selected via Assigned To */}
+            {editAgentId !== '' && (
+              <div className="space-y-2">
+                {!creating && selected && (
+                  <button onClick={runAgent} disabled={runningAgent}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium border border-primary/20 disabled:opacity-50 transition-colors">
+                    {runningAgent ? <><Loader2 className="w-4 h-4 animate-spin" />Running agent…</> : <><Sparkles className="w-4 h-4" />Send to AI Agent</>}
+                  </button>
+                )}
+                {agentError && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">{agentError}</p>}
+              </div>
+            )}
 
-              {!creating && selected && editAgentId && (
-                <button onClick={runAgent} disabled={runningAgent}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-sm font-medium border border-primary/20 disabled:opacity-50 transition-colors">
-                  {runningAgent ? <><Loader2 className="w-4 h-4 animate-spin" />Running agent…</> : <><Sparkles className="w-4 h-4" />Send to AI Agent</>}
-                </button>
-              )}
-              {agentError && <p className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-lg">{agentError}</p>}
+            {/* AI Instructions — shown for AI-sourced tasks or whenever instructions exist */}
+            {(editSource === 'AI Agents' || editAiInstructions) && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">AI Instructions (executed on approval)</label>
+                <Textarea
+                  value={editAiInstructions}
+                  onChange={e => { setEditAiInstructions(e.target.value); markDirty(); }}
+                  placeholder="Instructions for the AI to execute when this task is approved…"
+                  rows={4}
+                  className="text-sm resize-none font-mono text-xs"
+                />
+              </div>
+            )}
 
-              {/* AI Instructions (read-only for AI-created tasks, editable for new tasks) */}
-              {(editSource === 'AI Agents' || editAiInstructions) && (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">AI Instructions (executed on approval)</label>
-                  <Textarea
-                    value={editAiInstructions}
-                    onChange={e => { setEditAiInstructions(e.target.value); markDirty(); }}
-                    placeholder="Instructions for the AI to execute when this task is approved…"
-                    rows={4}
-                    className="text-sm resize-none font-mono text-xs"
-                  />
-                </div>
-              )}
-
-              {/* AI Result */}
-              {editAiResult && (
-                <div className="space-y-1">
-                  <label className="text-xs font-medium text-muted-foreground">AI Result</label>
-                  <Textarea value={editAiResult} onChange={e => { setEditAiResult(e.target.value); markDirty(); }}
-                    rows={5} className="text-sm resize-none font-mono text-xs" />
-                </div>
-              )}
-            </div>
+            {/* AI Result — shown whenever there's a result */}
+            {editAiResult && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">AI Result</label>
+                <Textarea value={editAiResult} onChange={e => { setEditAiResult(e.target.value); markDirty(); }}
+                  rows={5} className="text-sm resize-none font-mono text-xs" />
+              </div>
+            )}
           </div>
 
           {/* Save bar */}
