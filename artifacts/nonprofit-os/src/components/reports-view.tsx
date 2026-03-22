@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   FileBarChart, Download, Filter, ChevronDown, CheckCircle2,
   TrendingUp, Bot, Tag, Layers, BarChart3, Search,
-  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2, Copy, Sparkles, Pencil,
+  SlidersHorizontal, GripVertical, X, Plus, RotateCcw, Share2, Copy, Sparkles, Pencil, Code2, Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useListProcesses } from '@workspace/api-client-react';
@@ -222,6 +222,263 @@ function filterRuleLabel(rule: FilterRule): string {
   }
   const valLabel = FILTER_FIELDS.find(f => f.key === rule.field)?.options?.find(o => o.value === rule.value)?.label ?? rule.value;
   return `${field} ${op} "${valLabel}"`;
+}
+
+// ── SQL Generation ──────────────────────────────────────────────────────────
+
+const FIELD_TO_SQL_COL: Record<string, string> = {
+  processId:           'number',
+  processName:         'process_short_name',
+  description:         'process_name',
+  processDescription:  'process_name',
+  category:            'category',
+  aiAgent:             'ai_agent',
+  aiAgentActive:       'ai_agent_active',
+  purpose:             'purpose',
+  inputs:              'inputs',
+  outputs:             'outputs',
+  humanInTheLoop:      'human_in_the_loop',
+  kpi:                 'kpi',
+  target:              'target',
+  achievement:         'achievement',
+  trafficLight:        'traffic_light',
+  estimatedValueImpact:'estimated_value_impact',
+  valueImpact:         'estimated_value_impact',
+  industryBenchmark:   'industry_benchmark',
+  benchmark:           'industry_benchmark',
+  included:            'included',
+  inPortfolio:         'included',
+  aiScore:             'ai_score',
+};
+
+const COMPLETENESS_EXPR = [
+  'process_short_name','process_name','ai_agent','purpose','inputs','outputs',
+  'human_in_the_loop','kpi','estimated_value_impact','industry_benchmark','target','achievement',
+].map(c => `CASE WHEN ${c} IS NOT NULL AND ${c} <> '' THEN 1 ELSE 0 END`).join('\n           + ');
+
+const COMPLETENESS_SQL = `ROUND((\n           ${COMPLETENESS_EXPR}\n         )::numeric / 12 * 100)`;
+
+function q(v: string) { return `'${v.replace(/'/g, "''")}'`; }
+
+function filterRuleToSql(rule: FilterRule): string {
+  if (rule.field === 'completeness') {
+    const expr = COMPLETENESS_SQL;
+    switch (rule.operator) {
+      case 'eq':  return `${expr} = ${rule.value}`;
+      case 'neq': return `${expr} <> ${rule.value}`;
+      case 'gt':  return `${expr} > ${rule.value}`;
+      case 'lt':  return `${expr} < ${rule.value}`;
+      case 'gte': return `${expr} >= ${rule.value}`;
+      case 'lte': return `${expr} <= ${rule.value}`;
+      default:    return `-- completeness ${rule.operator} ${rule.value}`;
+    }
+  }
+  const col = FIELD_TO_SQL_COL[rule.field] ?? rule.field;
+  switch (rule.operator) {
+    case 'contains':     return `${col} ILIKE ${q('%' + rule.value + '%')}`;
+    case 'not_contains': return `${col} NOT ILIKE ${q('%' + rule.value + '%')}`;
+    case 'is':           return `${col} = ${q(rule.value)}`;
+    case 'is_not':       return `${col} <> ${q(rule.value)}`;
+    case 'is_empty':     return `(${col} IS NULL OR ${col} = '')`;
+    case 'is_not_empty': return `(${col} IS NOT NULL AND ${col} <> '')`;
+    case 'is_true':      return `${col} = TRUE`;
+    case 'is_false':     return `(${col} = FALSE OR ${col} IS NULL)`;
+    case 'eq':           return `${col} = ${rule.value}`;
+    case 'neq':          return `${col} <> ${rule.value}`;
+    case 'gt':           return `${col} > ${rule.value}`;
+    case 'lt':           return `${col} < ${rule.value}`;
+    case 'gte':          return `${col} >= ${rule.value}`;
+    case 'lte':          return `${col} <= ${rule.value}`;
+    default:             return `-- unknown: ${rule.operator}`;
+  }
+}
+
+function buildWhere(categoryFilter: string, searchQuery: string, filterRules: FilterRule[], forCategory = false): string {
+  const conds: string[] = ['tenant_id = :tenant_id'];
+  if (!forCategory && categoryFilter !== 'all') conds.push(`category = ${q(categoryFilter)}`);
+  if (!forCategory && searchQuery.trim()) {
+    const sq = searchQuery.trim().replace(/'/g, "''");
+    conds.push(`(process_short_name ILIKE ${q('%' + sq + '%')}\n     OR process_name ILIKE ${q('%' + sq + '%')}\n     OR category ILIKE ${q('%' + sq + '%')})`);
+  }
+  for (const rule of filterRules) conds.push(filterRuleToSql(rule));
+  return `WHERE ${conds.join('\n   AND ')}`;
+}
+
+function buildOrderBy(sortKey: string | null, sortDir: 'asc' | 'desc', fallback: string): string {
+  if (!sortKey) return `ORDER BY ${fallback}`;
+  const col = FIELD_TO_SQL_COL[sortKey] ?? sortKey;
+  return `ORDER BY ${col} ${sortDir.toUpperCase()}`;
+}
+
+interface SqlParams {
+  activeReport: string;
+  categoryFilter: string;
+  searchQuery: string;
+  filterRules: FilterRule[];
+  activeFields: string[];
+  sortKey: string | null;
+  sortDir: 'asc' | 'desc';
+  activeCustomReport: { name: string; fields: string[] } | null;
+}
+
+function generateReportSQL(p: SqlParams): string {
+  const where = buildWhere(p.categoryFilter, p.searchQuery, p.filterRules);
+  const whereAgg = buildWhere(p.categoryFilter, p.searchQuery, p.filterRules, true);
+
+  if (p.activeReport === 'coverage') {
+    const cols = p.activeFields.map(k => {
+      if (k === 'processId')   return `  'PRO-' || LPAD(number::text, 3, '0') AS "Process ID"`;
+      if (k === 'category')    return `  category AS "Category"`;
+      if (k === 'processName') return `  process_short_name AS "Process Name"`;
+      if (k === 'description') return `  process_name AS "Description"`;
+      if (k === 'fieldsFilled') return `  -- "Fields Filled" computed in application`;
+      if (k === 'completeness') return `  ${COMPLETENESS_SQL} AS "Completeness %"`;
+      if (k === 'status')      return `  CASE WHEN ${COMPLETENESS_SQL} >= 80 THEN 'Complete'\n       WHEN ${COMPLETENESS_SQL} >= 50 THEN 'Partial' ELSE 'Sparse' END AS "Status"`;
+      if (k === 'trafficLight') return `  traffic_light AS "Traffic Light"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    return `SELECT\n${cols}\nFROM processes\n${where}\n${buildOrderBy(p.sortKey, p.sortDir, 'number ASC')}`;
+  }
+
+  if (p.activeReport === 'category') {
+    const cols = p.activeFields.map(k => {
+      if (k === 'category')        return `  category AS "Category"`;
+      if (k === 'total')           return `  COUNT(*) AS "Total Processes"`;
+      if (k === 'inPortfolio')     return `  COUNT(*) FILTER (WHERE included = TRUE) AS "In Portfolio"`;
+      if (k === 'excluded')        return `  COUNT(*) FILTER (WHERE included = FALSE) AS "Excluded"`;
+      if (k === 'avgCompleteness') return `  ROUND(AVG(${COMPLETENESS_SQL})) AS "Avg Completeness %"`;
+      if (k === 'status')          return `  CASE WHEN ROUND(AVG(${COMPLETENESS_SQL})) >= 80 THEN 'Complete'\n       WHEN ROUND(AVG(${COMPLETENESS_SQL})) >= 50 THEN 'Partial' ELSE 'Sparse' END AS "Status"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    const sortMap: Record<string, string> = { category: 'category', total: 'COUNT(*)', inPortfolio: 'COUNT(*) FILTER (WHERE included = TRUE)', excluded: 'COUNT(*) FILTER (WHERE included = FALSE)' };
+    const ob = p.sortKey ? `ORDER BY ${sortMap[p.sortKey] ?? p.sortKey} ${p.sortDir.toUpperCase()}` : 'ORDER BY COUNT(*) DESC';
+    return `SELECT\n${cols}\nFROM processes\n${whereAgg}\nGROUP BY category\n${ob}`;
+  }
+
+  if (p.activeReport === 'ai-agents') {
+    const catWhere = p.categoryFilter !== 'all' ? `\n   AND category = ${q(p.categoryFilter)}` : '';
+    const cols = p.activeFields.map(k => {
+      if (k === 'agent')      return `  COALESCE(NULLIF(TRIM(ai_agent), ''), 'Unassigned') AS "AI Agent"`;
+      if (k === 'count')      return `  COUNT(*) AS "Process Count"`;
+      if (k === 'categories') return `  COUNT(DISTINCT category) AS "Categories Covered"`;
+      if (k === 'processes')  return `  STRING_AGG(process_short_name, ', ' ORDER BY process_short_name) AS "Processes"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    const sortMap: Record<string, string> = { agent: '"AI Agent"', count: 'COUNT(*)', categories: 'COUNT(DISTINCT category)', processes: 'COUNT(*)' };
+    const ob = p.sortKey ? `ORDER BY ${sortMap[p.sortKey] ?? p.sortKey} ${p.sortDir.toUpperCase()}` : 'ORDER BY COUNT(*) DESC';
+    return `SELECT\n${cols}\nFROM processes\nWHERE tenant_id = :tenant_id${catWhere}\nGROUP BY COALESCE(NULLIF(TRIM(ai_agent), ''), 'Unassigned')\n${ob}`;
+  }
+
+  if (p.activeReport === 'kpi') {
+    const cols = p.activeFields.map(k => {
+      if (k === 'processId')   return `  'PRO-' || LPAD(number::text, 3, '0') AS "Process ID"`;
+      if (k === 'processName') return `  process_short_name AS "Process Name"`;
+      if (k === 'category')    return `  category AS "Category"`;
+      if (k === 'kpi')         return `  kpi AS "KPI"`;
+      if (k === 'target')      return `  target AS "Target"`;
+      if (k === 'achievement') return `  achievement AS "Achievement"`;
+      if (k === 'trafficLight') return `  traffic_light AS "Traffic Light"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    return `SELECT\n${cols}\nFROM processes\n${where}\n${buildOrderBy(p.sortKey, p.sortDir, 'number ASC')}`;
+  }
+
+  if (p.activeReport === 'value') {
+    const cols = p.activeFields.map(k => {
+      if (k === 'processId')   return `  'PRO-' || LPAD(number::text, 3, '0') AS "Process ID"`;
+      if (k === 'processName') return `  process_short_name AS "Process Name"`;
+      if (k === 'category')    return `  category AS "Category"`;
+      if (k === 'valueImpact') return `  estimated_value_impact AS "Estimated Value Impact"`;
+      if (k === 'benchmark')   return `  industry_benchmark AS "Industry Benchmark"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    return `SELECT\n${cols}\nFROM processes\n${where}\n${buildOrderBy(p.sortKey, p.sortDir, 'number ASC')}`;
+  }
+
+  if (p.activeReport === 'portfolio') {
+    const cols = p.activeFields.map(k => {
+      if (k === 'processId')      return `  'PRO-' || LPAD(number::text, 3, '0') AS "Process ID"`;
+      if (k === 'category')       return `  category AS "Category"`;
+      if (k === 'processName')    return `  process_short_name AS "Process Name"`;
+      if (k === 'inPortfolio')    return `  CASE WHEN included THEN 'Yes' ELSE 'No' END AS "In Portfolio"`;
+      if (k === 'purpose')        return `  purpose AS "Purpose"`;
+      if (k === 'inputs')         return `  inputs AS "Inputs"`;
+      if (k === 'outputs')        return `  outputs AS "Outputs"`;
+      if (k === 'humanInTheLoop') return `  human_in_the_loop AS "Human-in-the-Loop"`;
+      return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
+    }).join(',\n');
+    return `SELECT\n${cols}\nFROM processes\n${where}\n${buildOrderBy(p.sortKey, p.sortDir, 'number ASC')}`;
+  }
+
+  if (p.activeCustomReport) {
+    const cols = p.activeCustomReport.fields.map(k => {
+      const col = FIELD_TO_SQL_COL[k] ?? k;
+      const label = k.replace(/([A-Z])/g, ' $1').trim();
+      if (k === 'processId') return `  'PRO-' || LPAD(number::text, 3, '0') AS "Process ID"`;
+      if (k === 'inPortfolio') return `  CASE WHEN included THEN 'Yes' ELSE 'No' END AS "In Portfolio"`;
+      if (k === 'fieldsFilled') return `  -- "Fields Filled" computed in application`;
+      if (k === 'completeness') return `  ${COMPLETENESS_SQL} AS "Completeness %"`;
+      if (k === 'status')      return `  CASE WHEN ${COMPLETENESS_SQL} >= 80 THEN 'Complete'\n       WHEN ${COMPLETENESS_SQL} >= 50 THEN 'Partial' ELSE 'Sparse' END AS "Status"`;
+      return `  ${col} AS "${label}"`;
+    }).join(',\n');
+    return `-- Custom Report: ${p.activeCustomReport.name}\nSELECT\n${cols}\nFROM processes\n${where}\n${buildOrderBy(p.sortKey, p.sortDir, 'number ASC')}`;
+  }
+
+  return `SELECT * FROM processes WHERE tenant_id = :tenant_id`;
+}
+
+function SqlQueryBlock({ sql }: { sql: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    navigator.clipboard.writeText(sql).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  const highlighted = sql.split('\n').map((line, i) => {
+    const keywords = /\b(SELECT|FROM|WHERE|AND|OR|ORDER BY|GROUP BY|HAVING|CASE|WHEN|THEN|ELSE|END|AS|ILIKE|LIKE|NOT|IN|IS|NULL|TRUE|FALSE|ROUND|AVG|COUNT|FILTER|MIN|MAX|SUM|DISTINCT|LPAD|TRIM|NULLIF|COALESCE|STRING_AGG)\b/g;
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    keywords.lastIndex = 0;
+    const lineUpper = line;
+    while ((m = keywords.exec(lineUpper)) !== null) {
+      if (m.index > last) parts.push(<span key={`t${last}`}>{line.slice(last, m.index)}</span>);
+      parts.push(<span key={`k${m.index}`} className="text-sky-400 font-semibold">{m[0]}</span>);
+      last = m.index + m[0].length;
+    }
+    if (last < line.length) parts.push(<span key={`t${last}`}>{line.slice(last)}</span>);
+
+    const isComment = line.trim().startsWith('--');
+    return (
+      <div key={i} className={cn('leading-relaxed', isComment ? 'text-muted-foreground/50 italic' : '')}>
+        {isComment ? <span className="text-muted-foreground/50">{line}</span> : parts}
+      </div>
+    );
+  });
+
+  return (
+    <div className="rounded-xl border border-border bg-[hsl(var(--card))] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-secondary/30">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <Code2 className="w-3.5 h-3.5 text-primary" />
+          Generated SQL
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono">PostgreSQL</span>
+        </div>
+        <button
+          onClick={copy}
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-secondary transition-all"
+        >
+          {copied ? <><Check className="w-3 h-3 text-green-400" /><span className="text-green-400">Copied!</span></> : <><Copy className="w-3 h-3" />Copy</>}
+        </button>
+      </div>
+      <pre className="px-5 py-4 text-[12px] font-mono overflow-x-auto leading-5 text-foreground/90 whitespace-pre">
+        {highlighted}
+      </pre>
+    </div>
+  );
 }
 
 // Inline filter builder row
@@ -1151,6 +1408,7 @@ export function ReportsView() {
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [showFilterBuilder, setShowFilterBuilder] = useState(false);
   const [fieldConfig, setFieldConfig] = useState<Record<ReportId, string[]>>(loadFieldConfig);
+  const [showSql, setShowSql] = useState(false);
 
   const sharingReport = customReports.find(r => r.id === sharingReportId) ?? null;
 
@@ -1674,6 +1932,19 @@ export function ReportsView() {
                     {activeFields.length}
                   </span>
                 </button>
+                {/* SQL toggle button */}
+                <button
+                  onClick={() => setShowSql(v => !v)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border font-medium transition-all",
+                    showSql
+                      ? "bg-sky-500/10 border-sky-500/30 text-sky-400"
+                      : "border-border text-muted-foreground hover:text-foreground hover:bg-secondary"
+                  )}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                  SQL
+                </button>
               </div>
 
               {/* Row 2: active filter chips */}
@@ -1712,23 +1983,37 @@ export function ReportsView() {
             </div>
 
             {/* Report content */}
-            <div className="flex-1 overflow-auto p-5">
-              {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
-              {activeCustomReport && (
-                <CustomReport
-                  report={activeCustomReport}
-                  processes={filtered}
-                  sortKey={sortKey}
-                  sortDir={sortDir}
-                  onSortChange={toggleSort}
-                  onRowClick={setDetailProcess}
-                  onReorderField={reorderField}
-                />
+            <div className="flex-1 overflow-auto p-5 space-y-5">
+              <div>
+                {activeReport === 'coverage'  && <CoverageReport  processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeReport === 'category'  && <CategoryReport  processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeReport === 'ai-agents' && <AiAgentReport   processes={processes as Process[]} categoryFilter={categoryFilter} activeFields={activeFields} onGroupClick={(title, subtitle, ps) => setDetailGroup({ title, subtitle, processes: ps })} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeReport === 'kpi'       && <KpiReport       processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeReport === 'value'     && <ValueReport     processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeReport === 'portfolio' && <PortfolioReport processes={filtered}               activeFields={activeFields} onRowClick={setDetailProcess} onReorderField={reorderField} sortKey={sortKey} sortDir={sortDir} onSortChange={toggleSort} />}
+                {activeCustomReport && (
+                  <CustomReport
+                    report={activeCustomReport}
+                    processes={filtered}
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    onSortChange={toggleSort}
+                    onRowClick={setDetailProcess}
+                    onReorderField={reorderField}
+                  />
+                )}
+              </div>
+              {showSql && (
+                <SqlQueryBlock sql={generateReportSQL({
+                  activeReport,
+                  categoryFilter,
+                  searchQuery,
+                  filterRules,
+                  activeFields,
+                  sortKey,
+                  sortDir,
+                  activeCustomReport,
+                })} />
               )}
             </div>
           </div>
