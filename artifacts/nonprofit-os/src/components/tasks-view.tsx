@@ -53,7 +53,7 @@ interface AiAgent { id: number; agent_number: number; name: string }
 interface Queue { id: number; name: string; color: string }
 interface TaskSource { id: number; name: string; color: string }
 interface ProcessItem { id: number; number: number; process_name: string; category: string }
-interface WorkflowItem { id: number; workflow_number: number; name: string }
+interface WorkflowItem { id: number; workflowNumber: number; name: string }
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PRIORITIES = [
@@ -363,6 +363,7 @@ export function TasksView() {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
           body: JSON.stringify(body),
         });
+        if (!r.ok) { console.error('Create task failed', await r.text()); return; }
         const newTask = await r.json();
         await loadTasks(); setCreating(false); setSelected(newTask); populateEdit(newTask);
       } else if (selected) {
@@ -370,6 +371,7 @@ export function TasksView() {
           method: 'PATCH', headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
           body: JSON.stringify(body),
         });
+        if (!r.ok) { console.error('Update task failed', await r.text()); return; }
         const updated = await r.json();
         await loadTasks(); setSelected(updated); populateEdit(updated);
       }
@@ -959,7 +961,7 @@ export function TasksView() {
                 )}
                 {workflows.length > 0 && (
                   <optgroup label="— Workflows —">
-                    {workflows.map(w => <option key={`workflow:${w.id}`} value={`workflow:${w.id}`}>#{w.workflow_number} {w.name}</option>)}
+                    {workflows.map(w => <option key={`workflow:${w.id}`} value={`workflow:${w.id}`}>#{w.workflowNumber} {w.name}</option>)}
                   </optgroup>
                 )}
               </select>

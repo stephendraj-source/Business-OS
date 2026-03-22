@@ -119,9 +119,17 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const dragRef = useRef<{ nodeId: string; startX: number; startY: number; origX: number; origY: number; moved: boolean } | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mapDataRef = useRef(mapData);
+  const inlineEditRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { mapDataRef.current = mapData; }, [mapData]);
   useEffect(() => { setNameValue(mindmapName); }, [mindmapName]);
+
+  // Focus the inline edit input via ref when editing starts (more reliable than autoFocus in SVG foreignObject)
+  useEffect(() => {
+    if (editingLabel) {
+      requestAnimationFrame(() => { inlineEditRef.current?.focus(); });
+    }
+  }, [editingLabel?.nodeId]);
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
@@ -755,13 +763,16 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     )}
                     {/* Label */}
                     {editingLabel?.nodeId === node.id ? (
-                      <foreignObject x={isTaskNode ? 8 : 12} y={8} width={NODE_W - 24} height={h - 12}>
+                      <foreignObject
+                        x={isTaskNode ? 8 : 12} y={8} width={NODE_W - 24} height={h - 12}
+                        onPointerDown={e => e.stopPropagation()}
+                      >
                         <input
+                          ref={inlineEditRef}
                           value={editingLabel.value}
                           onChange={e => setEditingLabel(l => l ? { ...l, value: e.target.value } : null)}
                           onBlur={commitLabelEdit}
                           onKeyDown={e => { if (e.key === 'Enter') commitLabelEdit(); if (e.key === 'Escape') setEditingLabel(null); }}
-                          autoFocus
                           style={{
                             width: '100%', height: '100%', background: 'transparent', border: 'none',
                             outline: 'none', color: '#1e293b', fontSize: 12, fontWeight: 600,
