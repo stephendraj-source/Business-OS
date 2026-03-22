@@ -209,7 +209,9 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
     checklists,
     checklistItems,
   ] = await Promise.all([
-    db.select().from(processesTable).orderBy(processesTable.number),
+    db.select().from(processesTable)
+      .where(tenantId ? eq(processesTable.tenantId, tenantId) : sql`1=1`)
+      .orderBy(processesTable.number),
     db.select().from(workflowsTable)
       .where(tenantId ? eq(workflowsTable.tenantId, tenantId) : sql`1=1`)
       .orderBy(workflowsTable.workflowNumber),
@@ -231,10 +233,18 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
     db.select().from(checklistItemsTable).orderBy(checklistItemsTable.id),
   ]);
 
-  // Processes
-  const processSummary = processes.map(p =>
-    `[#${p.number}] ${p.processName || p.processDescription} | Category: ${p.category} | KPI: ${p.kpi || "—"} | Benchmark: ${p.industryBenchmark || "—"} | Target: ${p.target || "—"} | Achievement: ${p.achievement || "—"} | Traffic light: ${p.trafficLight || "—"} | Included: ${p.included ? "Yes" : "No"}`
-  ).join("\n");
+  // Processes — split into "in process map" (included=true) vs library (included=false)
+  const inMap    = processes.filter(p => p.included);
+  const notInMap = processes.filter(p => !p.included);
+
+  const fmtProcess = (p: typeof processes[0]) =>
+    `  [#${p.number}] ${p.processName || p.processDescription} | Category: ${p.category} | KPI: ${p.kpi || "—"} | Target: ${p.target || "—"} | Achievement: ${p.achievement || "—"} | Traffic light: ${p.trafficLight || "—"}`;
+
+  const processSummary =
+    `### Process Map (included = true): ${inMap.length} processes\n` +
+    (inMap.length === 0 ? "  (none)" : inMap.map(fmtProcess).join("\n")) +
+    `\n\n### Full Process Library (included = false, NOT in process map): ${notInMap.length} processes\n` +
+    (notInMap.length === 0 ? "  (none)" : notInMap.map(fmtProcess).join("\n"));
 
   // Workflows
   const workflowSummary = workflows.length === 0 ? "None created yet." :
@@ -316,7 +326,9 @@ Use markdown. Bold key terms. Tables for comparisons. Always confirm what was ch
 
 ## LIVE DATABASE SNAPSHOT
 
-### Processes (${processes.length} total)
+### Processes (${processes.length} total | ${inMap.length} in process map | ${notInMap.length} in library only)
+
+**IMPORTANT:** The "Process Map" is the organisation's active operational map — it contains only processes where \`included = true\`. When a user asks "how many processes are in the process map" or "how many processes does the organisation have", answer with **${inMap.length}** (not ${processes.length}). The ${notInMap.length} library processes exist in the database but are NOT displayed in the process map.
 
 ${processSummary}
 
