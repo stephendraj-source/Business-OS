@@ -780,8 +780,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {/* Transparent hit-area covering node + both button zones to keep hover active */}
                     <rect
                       x={-4} y={-4}
-                      width={NODE_W + 38}
-                      height={h + 38}
+                      width={NODE_W + 54}
+                      height={h + 54}
                       fill="rgba(0,0,0,0)"
                       stroke="none"
                       style={{ pointerEvents: 'fill' }}
@@ -860,7 +860,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {/* + Add Child button (right side → subordinate) */}
                     {showPlus && (
                       <g
-                        transform={`translate(${NODE_W + 2}, ${h / 2 - 11})`}
+                        transform={`translate(${NODE_W + 18}, ${h / 2 - 11})`}
                         style={{ cursor: 'pointer' }}
                         onPointerDown={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); addChildNode(node.id); }}
@@ -875,7 +875,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {/* + Add Peer button (bottom → sibling at same level) */}
                     {showPlus && (
                       <g
-                        transform={`translate(${NODE_W / 2 - 11}, ${h + 4})`}
+                        transform={`translate(${NODE_W / 2 - 11}, ${h + 18})`}
                         style={{ cursor: 'pointer' }}
                         onPointerDown={e => e.stopPropagation()}
                         onClick={e => { e.stopPropagation(); addPeerNode(node.id); }}
