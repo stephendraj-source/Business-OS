@@ -2497,7 +2497,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                                 return (
                                   <button
                                     key={form.id}
-                                    onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setMode('templates'); setShowAllForms(false); }}
+                                    onClick={() => { setSelectedId(form.id); setSelectedKnowledgeId(null); setSelectedMindmapId(null); setMode('templates'); setShowAllForms(false); }}
                                     className={cn(
                                       "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-primary/40 hover:-translate-y-0.5",
                                       selectedId === form.id ? "border-primary bg-primary/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
@@ -2554,7 +2554,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                         {visibleKnowledge.map(item => (
                           <button
                             key={item.id}
-                            onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setMode('templates'); setShowAllForms(false); }}
+                            onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setSelectedMindmapId(null); setMode('templates'); setShowAllForms(false); }}
                             className={cn(
                               "group text-left flex flex-col gap-2 p-4 rounded-xl border transition-all hover:shadow-md hover:border-violet-400/40 hover:-translate-y-0.5",
                               selectedKnowledgeId === item.id ? "border-violet-400 bg-violet-500/5 shadow-sm" : "border-border bg-card hover:bg-card/80"
