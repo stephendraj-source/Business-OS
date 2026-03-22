@@ -773,15 +773,9 @@ export function TasksView() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><ListTodo className="w-3 h-3" />Source</label>
-                <select
-                  value={editSource}
-                  onChange={e => { setEditSource(e.target.value); markDirty(); }}
-                  className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/50 border border-border/50 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40"
-                >
-                  {sources.length > 0
-                    ? sources.map(s => <option key={s.id} value={s.name}>{s.name}</option>)
-                    : <option value="Employees">Employees</option>}
-                </select>
+                <div className="w-full px-2.5 py-1.5 rounded-lg bg-secondary/30 border border-border/30 text-sm text-muted-foreground cursor-default select-none">
+                  {editSource || '—'}
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-muted-foreground flex items-center gap-1"><Layers className="w-3 h-3" />Queue</label>
