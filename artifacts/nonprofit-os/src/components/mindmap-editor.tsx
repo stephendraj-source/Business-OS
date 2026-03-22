@@ -1239,7 +1239,29 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
               </marker>
             </defs>
             <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
-              {/* Edges */}
+
+              {/* ── Layer 1: Node backgrounds (rendered first, behind edges) ── */}
+              {mapData.nodes.map(node => {
+                const isTaskNode = node.type === 'task';
+                const h = nodeHeight(node);
+                return (
+                  <g key={`bg-${node.id}`} transform={`translate(${node.x}, ${node.y})`} style={{ pointerEvents: 'none' }}>
+                    {/* Node body fill */}
+                    <rect
+                      x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
+                      fill={isTaskNode ? '#f0fdf4' : '#ffffff'}
+                      stroke={isTaskNode ? '#10b981' : node.color}
+                      strokeWidth={isTaskNode ? 2 : 1.5}
+                    />
+                    {/* Left color bar (normal nodes) */}
+                    {!isTaskNode && (
+                      <rect x={0} y={0} width={5} height={h} rx={NODE_RX} fill={node.color} />
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* ── Layer 2: Edges (always above node backgrounds) ── */}
               {mapData.edges.map(edge => {
                 const src = mapData.nodes.find(n => n.id === edge.sourceId);
                 const dst = mapData.nodes.find(n => n.id === edge.targetId);
@@ -1261,7 +1283,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                 );
               })}
 
-              {/* Nodes */}
+              {/* ── Layer 3: Node foreground — labels, icons, rings, buttons (always on top) ── */}
               {mapData.nodes.map(node => {
                 const isSelected = selectedNodeId === node.id;
                 const isHovered = hoveredNodeId === node.id;
@@ -1302,18 +1324,6 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                     {(isSelected || isConnectSrc) && (
                       <rect x={-3} y={-3} width={NODE_W + 6} height={h + 6} rx={NODE_RX + 2}
                         fill="none" stroke={isConnectSrc ? '#a855f7' : '#6366f1'} strokeWidth={2} opacity={0.7} />
-                    )}
-                    {/* Node body */}
-                    <rect
-                      x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
-                      fill={isTaskNode ? '#f0fdf4' : '#ffffff'}
-                      stroke={isTaskNode ? '#10b981' : node.color}
-                      strokeWidth={isTaskNode ? 2 : 1.5}
-                    />
-                    {/* Left color bar (normal nodes) */}
-                    {!isTaskNode && (
-                      <rect x={0} y={0} width={5} height={h} rx={NODE_RX}
-                        fill={node.color} />
                     )}
                     {/* Task badge */}
                     {isTaskNode && (
@@ -1375,7 +1385,6 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                         <rect x={0} y={0} width={22} height={22} rx={11} fill="#6366f1" />
                         <text x={11} y={15.5} textAnchor="middle" fill="#ffffff" fontSize={15} fontWeight={700}
                           style={{ userSelect: 'none', pointerEvents: 'none' }}>+</text>
-                        {/* Tooltip */}
                         <title>Add child node</title>
                       </g>
                     )}
