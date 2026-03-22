@@ -78,7 +78,12 @@ function nodeHeight(node: MapNode) {
 
 // ── Edge path helper ──────────────────────────────────────────────────────────
 
-function edgePath(src: MapNode, dst: MapNode): string {
+interface EdgeData {
+  path: string;
+  arrowTip: { x: number; y: number; angle: number };
+}
+
+function edgeData(src: MapNode, dst: MapNode): EdgeData {
   const sh = nodeHeight(src);
   const dh = nodeHeight(dst);
   const srcCx = src.x + NODE_W / 2;
@@ -92,7 +97,6 @@ function edgePath(src: MapNode, dst: MapNode): string {
   let cp1x: number, cp1y: number, cp2x: number, cp2y: number;
 
   if (Math.abs(diffX) >= Math.abs(diffY)) {
-    // Primarily horizontal — connect right→left or left→right edge
     if (diffX >= 0) {
       sx = src.x + NODE_W; sy = srcCy;
       ex = dst.x;          ey = dstCy;
@@ -104,7 +108,6 @@ function edgePath(src: MapNode, dst: MapNode): string {
     cp1x = sx + (diffX >= 0 ? bend : -bend); cp1y = sy;
     cp2x = ex + (diffX >= 0 ? -bend : bend); cp2y = ey;
   } else {
-    // Primarily vertical — connect bottom→top or top→bottom edge
     if (diffY >= 0) {
       sx = srcCx; sy = src.y + sh;
       ex = dstCx; ey = dst.y;
@@ -117,7 +120,13 @@ function edgePath(src: MapNode, dst: MapNode): string {
     cp2x = ex; cp2y = ey + (diffY >= 0 ? -bend : bend);
   }
 
-  return `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`;
+  // Arrowhead tip angle: tangent at end of cubic bezier = direction from cp2 → end
+  const angle = Math.atan2(ey - cp2y, ex - cp2x) * (180 / Math.PI);
+
+  return {
+    path: `M ${sx} ${sy} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${ex} ${ey}`,
+    arrowTip: { x: ex, y: ey, angle },
+  };
 }
 
 // ── Context Menu Component ────────────────────────────────────────────────────
@@ -1233,27 +1242,41 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
             onContextMenu={e => e.preventDefault()}
             style={{ cursor: connectMode ? 'crosshair' : 'default' }}
           >
-            <defs>
-              <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
-                <polygon points="0 0, 8 3, 0 6" fill="#94a3b8" />
-              </marker>
-            </defs>
             <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
 
-              {/* ── Layer 1: Node backgrounds (rendered first, behind edges) ── */}
+              {/* ── Layer 1: Edge lines (behind all node fills) ── */}
+              {mapData.edges.map(edge => {
+                const src = mapData.nodes.find(n => n.id === edge.sourceId);
+                const dst = mapData.nodes.find(n => n.id === edge.targetId);
+                if (!src || !dst) return null;
+                const isSelected = selectedEdgeId === edge.id;
+                const data = edgeData(src, dst);
+                return (
+                  <path
+                    key={edge.id}
+                    className="mm-edge"
+                    d={data.path}
+                    fill="none"
+                    stroke={isSelected ? '#6366f1' : '#94a3b8'}
+                    strokeWidth={isSelected ? 2 : 1.5}
+                    strokeDasharray={isSelected ? '6 3' : undefined}
+                    style={{ cursor: 'pointer' }}
+                    onClick={(e) => handleEdgeClick(e, edge.id)}
+                  />
+                );
+              })}
+
+              {/* ── Layer 2: Node fills (cover edges that pass through nodes) ── */}
               {mapData.nodes.map(node => {
                 const isTaskNode = node.type === 'task';
                 const h = nodeHeight(node);
                 return (
                   <g key={`bg-${node.id}`} transform={`translate(${node.x}, ${node.y})`} style={{ pointerEvents: 'none' }}>
-                    {/* Node body fill */}
                     <rect
                       x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
                       fill={isTaskNode ? '#f0fdf4' : '#ffffff'}
-                      stroke={isTaskNode ? '#10b981' : node.color}
-                      strokeWidth={isTaskNode ? 2 : 1.5}
+                      stroke="none"
                     />
-                    {/* Left color bar (normal nodes) */}
                     {!isTaskNode && (
                       <rect x={0} y={0} width={5} height={h} rx={NODE_RX} fill={node.color} />
                     )}
@@ -1261,29 +1284,26 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                 );
               })}
 
-              {/* ── Layer 2: Edges (always above node backgrounds) ── */}
+              {/* ── Layer 3: Arrowheads at node borders (above fills, below content) ── */}
               {mapData.edges.map(edge => {
                 const src = mapData.nodes.find(n => n.id === edge.sourceId);
                 const dst = mapData.nodes.find(n => n.id === edge.targetId);
                 if (!src || !dst) return null;
                 const isSelected = selectedEdgeId === edge.id;
+                const { arrowTip } = edgeData(src, dst);
+                const color = isSelected ? '#6366f1' : '#94a3b8';
                 return (
-                  <path
-                    key={edge.id}
-                    className="mm-edge"
-                    d={edgePath(src, dst)}
-                    fill="none"
-                    stroke={isSelected ? '#6366f1' : '#94a3b8'}
-                    strokeWidth={isSelected ? 2 : 1.5}
-                    strokeDasharray={isSelected ? '6 3' : undefined}
-                    markerEnd="url(#arrowhead)"
-                    style={{ cursor: 'pointer' }}
-                    onClick={(e) => handleEdgeClick(e, edge.id)}
+                  <polygon
+                    key={`arrow-${edge.id}`}
+                    points="-8,3 0,0 -8,-3"
+                    fill={color}
+                    style={{ pointerEvents: 'none' }}
+                    transform={`translate(${arrowTip.x}, ${arrowTip.y}) rotate(${arrowTip.angle})`}
                   />
                 );
               })}
 
-              {/* ── Layer 3: Node foreground — labels, icons, rings, buttons (always on top) ── */}
+              {/* ── Layer 4: Node borders, labels, icons, rings, buttons (always on top) ── */}
               {mapData.nodes.map(node => {
                 const isSelected = selectedNodeId === node.id;
                 const isHovered = hoveredNodeId === node.id;
@@ -1314,6 +1334,14 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                       fill="rgba(0,0,0,0)"
                       stroke="none"
                       style={{ pointerEvents: 'fill' }}
+                    />
+                    {/* Node border (stroke only, fill=none — drawn above arrowheads) */}
+                    <rect
+                      x={0} y={0} width={NODE_W} height={h} rx={NODE_RX}
+                      fill="none"
+                      stroke={isTaskNode ? '#10b981' : node.color}
+                      strokeWidth={isTaskNode ? 2 : 1.5}
+                      style={{ pointerEvents: 'none' }}
                     />
                     {/* Orphan indicator — dashed amber ring when no connections */}
                     {orphaned && !isSelected && !isConnectSrc && (
