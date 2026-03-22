@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions } from '@workspace/db';
-import { eq, and } from 'drizzle-orm';
+import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions, userRoles, roles } from '@workspace/db';
+import { eq, and, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 import { requireAuth } from '../middleware/auth.js';
 
@@ -55,7 +55,24 @@ usersRouter.get('/', async (req, res) => {
     } else {
       rows = await db.select().from(users).orderBy(users.createdAt);
     }
-    res.json(rows.map(safeUser));
+    // Fetch org role assignments for all users in this result
+    const userIds = rows.map(u => u.id);
+    const orgRoleRows = userIds.length > 0
+      ? await db
+          .select({ userId: userRoles.userId, roleName: roles.name })
+          .from(userRoles)
+          .innerJoin(roles, eq(userRoles.roleId, roles.id))
+          .where(inArray(userRoles.userId, userIds))
+      : [];
+    const orgRoleMap = new Map<number, string[]>();
+    for (const r of orgRoleRows) {
+      if (!orgRoleMap.has(r.userId)) orgRoleMap.set(r.userId, []);
+      orgRoleMap.get(r.userId)!.push(r.roleName);
+    }
+    res.json(rows.map(u => ({
+      ...safeUser(u),
+      orgRoles: orgRoleMap.get(u.id) ?? [],
+    })));
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
@@ -115,7 +132,13 @@ usersRouter.get('/:id', requireAuth, async (req, res) => {
     const categories = await db.select().from(userAllowedCategories).where(eq(userAllowedCategories.userId, id));
     const processes = await db.select().from(userAllowedProcesses).where(eq(userAllowedProcesses.userId, id));
     const fields = await db.select().from(userFieldPermissions).where(eq(userFieldPermissions.userId, id));
-    res.json({ ...safeUser(row), modules, categories, processes, fields });
+    const orgRoleRows = await db
+      .select({ roleName: roles.name })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, id));
+    const orgRoles = orgRoleRows.map(r => r.roleName);
+    res.json({ ...safeUser(row), modules, categories, processes, fields, orgRoles });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

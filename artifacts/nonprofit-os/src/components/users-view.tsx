@@ -84,6 +84,7 @@ interface UserRow {
   name: string;
   email: string;
   role: string;
+  orgRoles: string[];
   designation: string;
   category: string;
   isActive: boolean;
@@ -133,14 +134,19 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-function RoleBadge({ role }: { role: string }) {
+function RoleBadge({ orgRoles }: { orgRoles: string[] }) {
+  const labels = orgRoles.length > 0 ? orgRoles : ['All Users'];
   return (
-    <span className={cn(
-      'text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide',
-      role === 'admin' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
-    )}>
-      {role}
-    </span>
+    <div className="flex flex-wrap gap-1">
+      {labels.map(label => (
+        <span key={label} className={cn(
+          'text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide',
+          label === 'All Administrators' ? 'bg-primary/15 text-primary' : 'bg-secondary text-muted-foreground'
+        )}>
+          {label}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -306,7 +312,7 @@ function UsersListView() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-3"><RoleBadge role={u.role} /></td>
+                    <td className="px-3 py-3"><RoleBadge orgRoles={u.orgRoles ?? []} /></td>
                     <td className="px-3 py-3">
                       {u.category ? (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{u.category}</span>
@@ -398,7 +404,7 @@ function UserDetailPanel({
             <div className="font-semibold text-base">{user.name}</div>
             <div className="text-xs text-muted-foreground">{user.email}</div>
           </div>
-          <RoleBadge role={user.role} />
+          <RoleBadge orgRoles={user.orgRoles ?? []} />
         </div>
         <div className="flex items-center gap-2">
           {saveMsg && <span className="text-xs text-green-400 font-medium">{saveMsg}</span>}
