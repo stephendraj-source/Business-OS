@@ -304,7 +304,7 @@ export function TasksView() {
     setSelected(null); setCreating(true);
     setEditName(''); setEditDesc('');
     setEditStartDate(''); setEditEndDate(''); setEditRevisedEnd('');
-    setEditAssignedTo(''); setEditPriority('normal'); setEditStatus('open');
+    setEditAssignedTo(user?.id ?? ''); setEditPriority('normal'); setEditStatus('open');
     setEditAgentId(''); setEditAiResult('');
     setEditSource('Users'); setEditQueueId(''); setEditWorkflowId(''); setEditAiInstructions('');
     setDirty(false); setAgentError(null); setApprovalResult(null);
