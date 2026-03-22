@@ -310,9 +310,20 @@ export function SettingsView() {
         return;
       }
       const s = result.summary;
-      setImportSuccess(
-        `Blueprint imported successfully. Restored: ${s.processes} processes, ${s.aiAgents} AI agents, ${s.groups} groups, ${s.roles} roles, ${s.businessUnits} business units, ${s.regions} regions, ${s.checklists} checklists, ${s.initiatives} initiatives.`
-      );
+      const parts = [
+        `${s.processes} processes`,
+        `${s.aiAgents} AI agents`,
+        `${s.workflows} workflows`,
+        `${s.groups} groups`,
+        `${s.roles} roles`,
+        `${s.businessUnits} business units`,
+        `${s.regions} regions`,
+        `${s.checklists} checklists`,
+        `${s.initiatives} initiatives`,
+        `${s.forms} forms`,
+        `${s.strategicGoals} strategic goals`,
+      ];
+      setImportSuccess(`Blueprint imported successfully. Restored: ${parts.join(', ')}.`);
       setImportFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     } catch (e: any) {
@@ -464,7 +475,7 @@ export function SettingsView() {
                   <h4 className="font-medium text-sm">Export Blueprint</h4>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Downloads all your workspace data — processes, workflows, AI agents, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
+                  Downloads all your workspace configuration — processes, workflows, AI agents, forms, strategic goals, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
                 </p>
                 <div className="flex gap-3 items-center">
                   <input

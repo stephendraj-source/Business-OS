@@ -14,8 +14,9 @@ import {
   checklistsTable, checklistItemsTable,
   customReportsTable, dashboardsTable,
   initiatives, initiativeUrls, initiativeProcesses,
+  formsTable, formFoldersTable,
 } from '@workspace/db';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 export const blueprintRouter = Router();
@@ -27,7 +28,7 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
     const tenantId = req.auth!.tenantId!;
 
     // Fetch top-level tenant-scoped tables
-    const [procs, agents, wflows, grps, rls, bus, rgns, govStandards, chklists, dashboards, reports, inits] =
+    const [procs, agents, wflows, grps, rls, bus, rgns, govStandards, chklists, dashboards, reports, inits, fmFolders, fms, sgResult] =
       await Promise.all([
         db.select().from(processesTable).where(eq(processesTable.tenantId, tenantId)),
         db.select().from(aiAgentsTable).where(eq(aiAgentsTable.tenantId, tenantId)),
@@ -41,6 +42,9 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
         db.select().from(dashboardsTable).where(eq(dashboardsTable.tenantId, tenantId)),
         db.select().from(customReportsTable).where(eq(customReportsTable.tenantId, tenantId)),
         db.select().from(initiatives).where(eq(initiatives.tenantId, tenantId)),
+        db.select().from(formFoldersTable).where(eq(formFoldersTable.tenantId, tenantId)),
+        db.select().from(formsTable).where(eq(formsTable.tenantId, tenantId)),
+        db.execute(sql`SELECT * FROM strategic_goals WHERE tenant_id = ${tenantId} ORDER BY id`),
       ]);
 
     const procIds = procs.map((p: any) => p.id);
@@ -87,7 +91,7 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
     ]);
 
     res.json({
-      _meta: { version: 1, exportedAt: new Date().toISOString(), exportedByTenantId: tenantId },
+      _meta: { version: 2, exportedAt: new Date().toISOString(), exportedByTenantId: tenantId },
       processes: procs,
       aiAgents: agents,
       agentKnowledgeUrls: agentUrls,
@@ -121,6 +125,9 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
       initiatives: inits,
       initiativeUrls: initUrls,
       initiativeProcesses: initProcs,
+      formFolders: fmFolders,
+      forms: fms,
+      strategicGoals: (sgResult as any).rows ?? [],
     });
   } catch (e: any) {
     console.error('[blueprint export error]', e);
@@ -135,8 +142,8 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
     const tenantId = req.auth!.tenantId!;
     const bp = req.body;
 
-    if (!bp || bp._meta?.version !== 1) {
-      return res.status(400).json({ error: 'Invalid blueprint file. Expected version 1.' });
+    if (!bp || ![1, 2].includes(bp._meta?.version)) {
+      return res.status(400).json({ error: 'Invalid blueprint file. Expected version 1 or 2.' });
     }
 
     // Strip id and tenantId from a row before inserting
@@ -209,6 +216,12 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
 
     // ── 3. Delete base tables (cascade handles process_governance + gov_docs) ──
 
+    // Delete forms before form_folders (FK: forms.folder_id → form_folders.id)
+    await db.delete(formsTable).where(eq(formsTable.tenantId, tenantId));
+    // Delete child folders before parent folders
+    await db.execute(sql`DELETE FROM form_folders WHERE tenant_id = ${tenantId}`);
+    await db.execute(sql`DELETE FROM strategic_goals WHERE tenant_id = ${tenantId}`);
+
     await Promise.all([
       eAgentIds.length ? db.delete(aiAgentsTable).where(inArray(aiAgentsTable.id, eAgentIds)) : Promise.resolve(),
       eGroupIds.length ? db.delete(groups).where(inArray(groups.id, eGroupIds)) : Promise.resolve(),
@@ -230,6 +243,7 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
 
     const procMap = new Map<number, number>();
     const agentMap = new Map<number, number>();
+    const wflowMap = new Map<number, number>();
     const grpMap = new Map<number, number>();
     const rlMap = new Map<number, number>();
     const buMap = new Map<number, number>();
@@ -237,6 +251,8 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
     const chkMap = new Map<number, number>();
     const initMap = new Map<number, number>();
     const govStdMap = new Map<number, number>();
+    const folderMap = new Map<number, number>();
+    const formMap = new Map<number, number>();
 
     async function insertMapped(table: any, rows: any[], idMap: Map<number, number>, extra: Record<string, any> = {}) {
       if (!rows?.length) return;
@@ -255,7 +271,7 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
 
     await insertMapped(processesTable, bp.processes, procMap, { tenantId });
     await insertMapped(aiAgentsTable, bp.aiAgents, agentMap, { tenantId });
-    await insertSimple(workflowsTable, bp.workflows, { tenantId });
+    await insertMapped(workflowsTable, bp.workflows, wflowMap, { tenantId });
     await insertMapped(groups, bp.groups, grpMap, { tenantId });
     await insertMapped(roles, bp.roles, rlMap, { tenantId });
     await insertMapped(businessUnits, bp.businessUnits, buMap, { tenantId });
@@ -370,17 +386,69 @@ blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req,
       if (newInitId) await db.insert(initiativeProcesses).values({ initiativeId: newInitId, processId: newProcId });
     }
 
+    // Form folders — hierarchical: insert root folders first, then children in waves
+    if (bp.formFolders?.length) {
+      const pending = [...bp.formFolders];
+      let safety = 0;
+      while (pending.length > 0 && safety++ < 20) {
+        const retry: any[] = [];
+        for (const f of pending) {
+          const newParentId = f.parentId == null ? null : folderMap.get(f.parentId);
+          if (f.parentId != null && newParentId == null) {
+            retry.push(f);
+            continue;
+          }
+          const { id: _id, tenantId: _t, parentId: _p, ...rest } = f;
+          const [ins] = await db.insert(formFoldersTable)
+            .values({ ...rest, parentId: newParentId ?? null, tenantId })
+            .returning({ id: formFoldersTable.id });
+          folderMap.set(f.id, ins.id);
+        }
+        if (retry.length === pending.length) break;
+        pending.length = 0;
+        pending.push(...retry);
+      }
+    }
+
+    // Forms — remap folderId, linkedWorkflowId, linkedAgentId
+    if (bp.forms?.length) {
+      for (const f of bp.forms) {
+        const { id: _id, tenantId: _t, folderId: _fi, linkedWorkflowId: _lw, linkedAgentId: _la, publishSlug: _ps, ...rest } = f;
+        const newFolderId = f.folderId != null ? (folderMap.get(f.folderId) ?? null) : null;
+        const newWfId = f.linkedWorkflowId != null ? (wflowMap.get(f.linkedWorkflowId) ?? null) : null;
+        const newAgentId = f.linkedAgentId != null ? (agentMap.get(f.linkedAgentId) ?? null) : null;
+        const [ins] = await db.insert(formsTable)
+          .values({ ...rest, tenantId, folderId: newFolderId, linkedWorkflowId: newWfId, linkedAgentId: newAgentId })
+          .returning({ id: formsTable.id });
+        formMap.set(f.id, ins.id);
+      }
+    }
+
+    // Strategic goals — raw SQL (no Drizzle ORM table)
+    let sgCount = 0;
+    for (const g of (bp.strategicGoals || [])) {
+      await db.execute(sql`
+        INSERT INTO strategic_goals (tenant_id, title, description, target_date, status, color)
+        VALUES (${tenantId}, ${g.title ?? ''}, ${g.description ?? ''}, ${g.target_date ?? null}, ${g.status ?? 'active'}, ${g.color ?? '#6366f1'})
+      `);
+      sgCount++;
+    }
+
     res.json({
       ok: true,
       summary: {
         processes: procMap.size,
         aiAgents: agentMap.size,
+        workflows: wflowMap.size,
         groups: grpMap.size,
         roles: rlMap.size,
         businessUnits: buMap.size,
         regions: rgnMap.size,
         checklists: chkMap.size,
         initiatives: initMap.size,
+        formFolders: folderMap.size,
+        forms: formMap.size,
+        strategicGoals: sgCount,
       },
     });
   } catch (e: any) {
