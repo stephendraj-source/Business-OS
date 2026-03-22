@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
   GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
   AlignLeft, ChevronDown, Calendar, FileDown, Pencil, Copy,
-  GitFork, Palette, LayoutDashboard,
+  GitFork, Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1057,13 +1057,6 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           {connectMode
             ? connectSource ? "Click target node…" : "Click source node…"
             : "Connect"}
-        </button>
-        <button
-          onClick={autoArrange}
-          className="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
-          title="Auto-arrange nodes into a neat tree layout"
-        >
-          <LayoutDashboard className="w-3.5 h-3.5" /> Auto Arrange
         </button>
         <div className="w-px h-4 bg-border mx-0.5" />
         <button onClick={() => {
