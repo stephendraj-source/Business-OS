@@ -123,6 +123,7 @@ function getIcon(id: ActiveView) {
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
 
+const API = '/api';
 const STORAGE_SECTIONS = 'bos-nav-sections-v1';
 const STORAGE_ITEMS    = 'bos-nav-items-v1';
 
@@ -231,9 +232,74 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const dragRef = useRef<DragState | null>(null);
   const [dropTarget, setDropTarget]     = useState<DropTarget | null>(null);
 
-  // Persist whenever order changes
-  useEffect(() => { localStorage.setItem(STORAGE_SECTIONS, JSON.stringify(sectionOrder)); }, [sectionOrder]);
-  useEffect(() => { localStorage.setItem(STORAGE_ITEMS, JSON.stringify(itemOrder)); }, [itemOrder]);
+  // Refs for server sync (avoids stale closures + prevents re-saving during hydration)
+  const serverLoadingRef  = useRef(false);
+  const sectionOrderRef   = useRef(sectionOrder);
+  const itemOrderRef      = useRef(itemOrder);
+  const saveTimerRef      = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function scheduleNavServerSave() {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const token = localStorage.getItem('nonprofit-os-auth-token');
+      if (!token) return;
+      fetch(`${API}/nav-preferences`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          sections: JSON.stringify(sectionOrderRef.current),
+          items: JSON.stringify(itemOrderRef.current),
+        }),
+      }).catch(() => {});
+    }, 600);
+  }
+
+  // On mount: load effective nav order from server (user-specific or tenant default)
+  useEffect(() => {
+    const token = localStorage.getItem('nonprofit-os-auth-token');
+    if (!token) return;
+    serverLoadingRef.current = true;
+    fetch(`${API}/nav-preferences`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.sections && data?.items) {
+          try {
+            const parsedSec: string[] = JSON.parse(data.sections);
+            const parsedItems: Record<string, ActiveView[]> = JSON.parse(data.items);
+            const validSectionIds = new Set(SECTIONS_DEF.map(s => s.id));
+            const validItemIds    = new Set(ITEMS_DEF.map(i => i.id));
+            const cleanSec = parsedSec.filter(id => validSectionIds.has(id));
+            const missingSec = SECTIONS_DEF.map(s => s.id).filter(id => !cleanSec.includes(id));
+            const finalSec = [...cleanSec, ...missingSec];
+            const cleanItems: Record<string, ActiveView[]> = {};
+            const accounted = new Set<string>();
+            for (const s of SECTIONS_DEF) {
+              cleanItems[s.id] = (parsedItems[s.id] || []).filter(id => validItemIds.has(id as ActiveView)) as ActiveView[];
+              cleanItems[s.id].forEach(id => accounted.add(id));
+            }
+            for (const item of ITEMS_DEF) { if (!accounted.has(item.id)) cleanItems[item.sectionId].push(item.id); }
+            setSectionOrder(finalSec);
+            setItemOrder(cleanItems);
+            localStorage.setItem(STORAGE_SECTIONS, data.sections);
+            localStorage.setItem(STORAGE_ITEMS, data.items);
+          } catch {}
+        }
+      })
+      .catch(() => {})
+      .finally(() => { setTimeout(() => { serverLoadingRef.current = false; }, 0); });
+  }, []);
+
+  // Persist whenever order changes (localStorage + debounced server save)
+  useEffect(() => {
+    sectionOrderRef.current = sectionOrder;
+    localStorage.setItem(STORAGE_SECTIONS, JSON.stringify(sectionOrder));
+    if (!serverLoadingRef.current) scheduleNavServerSave();
+  }, [sectionOrder]);
+  useEffect(() => {
+    itemOrderRef.current = itemOrder;
+    localStorage.setItem(STORAGE_ITEMS, JSON.stringify(itemOrder));
+    if (!serverLoadingRef.current) scheduleNavServerSave();
+  }, [itemOrder]);
 
   function resetNavOrder() {
     setSectionOrder(defaultSectionOrder());
