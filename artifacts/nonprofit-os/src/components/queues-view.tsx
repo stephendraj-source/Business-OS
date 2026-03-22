@@ -264,7 +264,6 @@ function TaskRow({
   isSelected: boolean;
   onClick: () => void;
 }) {
-  const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const priorityCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.normal;
   const due = formatDate(task.end_date);
   const isOverdue = task.end_date && task.status !== 'completed' && task.status !== 'cancelled'
@@ -280,11 +279,6 @@ function TaskRow({
           : 'hover:bg-secondary/40 border-l-2 border-l-transparent',
       )}
     >
-      {/* Status icon (read-only indicator, no button) */}
-      <span className={cn('flex-shrink-0', statusCfg.className)}>
-        {statusCfg.icon}
-      </span>
-
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
@@ -359,32 +353,22 @@ function TaskDetailPanel({
           <h2 className="text-sm font-semibold text-foreground leading-snug">{task.name}</h2>
         </div>
 
-        {/* Status picker */}
+        {/* Status */}
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Status</p>
-          <div className="flex flex-col gap-1">
-            {STATUS_ORDER.map(s => {
-              const cfg = STATUS_CONFIG[s];
-              const isActive = task.status === s;
-              return (
-                <button
-                  key={s}
-                  onClick={() => !isActive && onStatusChange(task.id, s)}
-                  className={cn(
-                    'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left w-full',
-                    isActive
-                      ? 'bg-indigo-500/15 border border-indigo-500/30'
-                      : 'hover:bg-secondary border border-transparent',
-                    cfg.className,
-                  )}
-                >
-                  {cfg.icon}
-                  <span className={cn('text-xs font-medium', isActive ? '' : 'text-foreground/70')}>{cfg.label}</span>
-                  {isActive && <Check className="w-3 h-3 ml-auto text-indigo-400" />}
-                </button>
-              );
-            })}
+          <div className={cn('inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium mb-2', statusCfg.className)}>
+            {statusCfg.icon}
+            {statusCfg.label}
           </div>
+          <select
+            value={task.status}
+            onChange={e => onStatusChange(task.id, e.target.value)}
+            className="block w-full text-xs rounded-lg border border-border bg-secondary text-foreground px-2.5 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            {STATUS_ORDER.map(s => (
+              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
+            ))}
+          </select>
         </div>
 
         {/* Priority */}
