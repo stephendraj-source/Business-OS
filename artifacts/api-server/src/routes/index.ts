@@ -19,6 +19,7 @@ import { formsRouter } from "./forms";
 import knowledgeRouter from "./knowledge";
 import activitiesRouter from "./activities";
 import processAttachmentsRouter from "./process-attachments";
+import tasksRouter from "./tasks";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(formsRouter);
 router.use(knowledgeRouter);
 router.use(activitiesRouter);
 router.use(processAttachmentsRouter);
+router.use(tasksRouter);
 
 export default router;

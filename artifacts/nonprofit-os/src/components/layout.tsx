@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot, GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff, X, Check, Settings2, Activity, ListTodo,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useOrgName } from '@/hooks/use-org-name';
@@ -9,7 +9,7 @@ import { useUser } from '@/contexts/UserContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCredits } from '@/hooks/use-credits';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -137,6 +137,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
               <NavItem icon={<GitBranch />} label="Workflows" active={activeView === 'workflows'} onClick={() => onViewChange('workflows')} />
               <NavItem icon={<ClipboardList />} label="Forms and Documents" active={activeView === 'forms'} onClick={() => onViewChange('forms')} />
               <NavItem icon={<Activity />} label="Activities" active={activeView === 'activities'} onClick={() => onViewChange('activities')} />
+              <NavItem icon={<ListTodo />} label="Tasks" active={activeView === 'tasks'} onClick={() => onViewChange('tasks')} />
             </div>
           </div>
 
