@@ -29,15 +29,16 @@ function strip(html: string, maxLen = 4000): string {
 
 async function searchKnowledgeBase(query: string, tenantId: number | null, limit = 6): Promise<string> {
   try {
-    // 1. Vector similarity search
     const queryVec = await embed(query);
     const embStr = vecToSql(queryVec);
     const tenantCond = tenantId ? sql`ki.tenant_id = ${tenantId}` : sql`ki.tenant_id IS NULL`;
 
+    // 1. Vector similarity — knowledge_items
     const vecResult = await db.execute(
       sql`SELECT ki.id, ki.title, ki.content, ki.type, ki.url, ki.file_name,
                ff.name AS folder_name,
-               1 - (ki.embedding_vec <=> ${embStr}::vector) AS similarity
+               1 - (ki.embedding_vec <=> ${embStr}::vector) AS similarity,
+               'knowledge' AS source
             FROM knowledge_items ki
             LEFT JOIN form_folders ff ON ff.id = ki.folder_id
             WHERE ki.embedding_vec IS NOT NULL AND ${tenantCond}
@@ -46,46 +47,72 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
     );
     const vecRows: any[] = vecResult.rows as any[];
 
-    // 2. Full-text keyword fallback for docs without embeddings
+    // 2. Vector similarity — governance_documents
+    const govVecResult = await db.execute(
+      sql`SELECT gd.id, gd.original_name AS title,
+               left(gd.extracted_text, 6000) AS content,
+               'governance_doc' AS type, NULL AS url, gd.original_name AS file_name,
+               gs.compliance_name AS folder_name,
+               1 - (gd.embedding_vec <=> ${embStr}::vector) AS similarity,
+               'governance' AS source
+            FROM governance_documents gd
+            JOIN governance_standards gs ON gs.id = gd.governance_id
+            WHERE gd.embedding_vec IS NOT NULL
+            ORDER BY gd.embedding_vec <=> ${embStr}::vector
+            LIMIT 4`
+    );
+    const govVecRows: any[] = govVecResult.rows as any[];
+
+    // 3. Full-text keyword fallback for knowledge_items without embeddings
     const words = query.split(/\s+/).filter(w => w.length > 2).slice(0, 3);
     const ftRows: any[] = [];
     if (words.length > 0) {
       const pattern = `%${words.join("%")}%`;
       const ftResult = await db.execute(
         sql`SELECT ki.id, ki.title, ki.content, ki.type, ki.url, ki.file_name,
-                   ff.name AS folder_name, 0.0 AS similarity
+                   ff.name AS folder_name, 0.0 AS similarity, 'knowledge' AS source
               FROM knowledge_items ki
               LEFT JOIN form_folders ff ON ff.id = ki.folder_id
               WHERE ${tenantCond}
                 AND (lower(ki.title) LIKE lower(${pattern}) OR lower(ki.content) LIKE lower(${pattern}))
               LIMIT 4`
       );
-      const ftResult2: any[] = ftResult.rows as any[];
-      for (const r of ftResult2) {
+      for (const r of (ftResult.rows as any[])) {
         if (!vecRows.find((v: any) => v.id === r.id)) ftRows.push(r);
+      }
+      // Full-text fallback for governance_documents
+      const govFtResult = await db.execute(
+        sql`SELECT gd.id, gd.original_name AS title,
+                   left(gd.extracted_text, 6000) AS content,
+                   'governance_doc' AS type, NULL AS url, gd.original_name AS file_name,
+                   gs.compliance_name AS folder_name, 0.0 AS similarity, 'governance' AS source
+              FROM governance_documents gd
+              JOIN governance_standards gs ON gs.id = gd.governance_id
+              WHERE lower(gd.original_name) LIKE lower(${pattern})
+                 OR lower(gd.extracted_text) LIKE lower(${pattern})
+              LIMIT 3`
+      );
+      for (const r of (govFtResult.rows as any[])) {
+        if (!govVecRows.find((v: any) => v.id === r.id)) ftRows.push(r);
       }
     }
 
-    const allRows = [...vecRows, ...ftRows];
+    const allRows = [...vecRows, ...govVecRows, ...ftRows];
     if (allRows.length === 0) return "";
 
-    // Top results regardless of threshold (always at least show best matches)
     const snippets = allRows.map((r: any) => {
       const sim = parseFloat(r.similarity);
       const simLabel = sim > 0 ? ` | Match: ${Math.round(sim * 100)}%` : " | keyword match";
-      const location = r.folder_name ? `Forms & Documents > ${r.folder_name}` : "Forms & Documents (root)";
-      let body = "";
-      if (r.type === "wiki" || r.type === "document" || r.type === "file") {
-        body = strip(r.content ?? "", 4000);
-      } else if (r.type === "url") {
-        body = r.url ? `URL: ${r.url}` : strip(r.content ?? "", 800);
-      } else {
-        body = strip(r.content ?? "", 2000);
-      }
-      return `### [${r.title}](knowledge://item-${r.id}) (${r.type}${simLabel})\n**Location:** ${location}${r.file_name ? ` | **File:** ${r.file_name}` : ""}\n\n${body || "(no content yet)"}`;
+      const isGov = r.source === "governance";
+      const location = isGov
+        ? `Governance & Compliance > ${r.folder_name}`
+        : r.folder_name ? `Forms & Documents > ${r.folder_name}` : "Forms & Documents (root)";
+      const idRef = isGov ? `governance://doc-${r.id}` : `knowledge://item-${r.id}`;
+      let body = strip(r.content ?? "", 5000);
+      return `### [${r.title}](${idRef}) (${r.type}${simLabel})\n**Location:** ${location}${r.file_name ? ` | **File:** ${r.file_name}` : ""}\n\n${body || "(no content yet)"}`;
     }).join("\n\n---\n\n");
 
-    return `## Knowledge Base Documents (${allRows.length} results)\n\nWhen referencing these documents, use the clickable link format [Title](knowledge://item-{id}).\n\n${snippets}\n\n---`;
+    return `## Knowledge Base & Governance Documents (${allRows.length} results)\n\nWhen referencing knowledge items, use [Title](knowledge://item-{id}). For governance documents, use [Title](governance://doc-{id}).\n\n${snippets}\n\n---`;
   } catch (err) {
     console.error("[rag] knowledge search failed:", err);
     return "";
