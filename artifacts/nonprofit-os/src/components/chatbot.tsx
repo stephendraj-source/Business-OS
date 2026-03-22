@@ -50,11 +50,15 @@ interface PendingTask {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const PANEL_W = 440;
-const PANEL_H = 620;
+const PANEL_H = 560;
 const MARGIN = 24;
+// The sidebar in layout.tsx is w-64 = 256px. We open the chat panel just to the
+// right of the sidebar so it NEVER covers the right-side action buttons (Add, Edit, etc.)
+// that live at the far right of every view header.
+const SIDEBAR_W = 256;
 
 function defaultPosition(): Position {
-  return { x: window.innerWidth - PANEL_W - MARGIN, y: window.innerHeight - PANEL_H - 96 };
+  return { x: SIDEBAR_W + 8, y: window.innerHeight - PANEL_H - 96 };
 }
 
 const SUGGESTIONS = [
@@ -370,14 +374,14 @@ export function Chatbot() {
 
   return (
     <>
-      {/* Floating trigger button */}
+      {/* Floating trigger button — sits just right of the sidebar so it never covers content */}
       <button
         onClick={() => setOpen(v => !v)}
         className={cn(
           "fixed z-[60] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
           open ? "bg-destructive/90 hover:bg-destructive" : "bg-primary hover:bg-primary/90"
         )}
-        style={{ bottom: 24, right: 24 }}
+        style={{ bottom: 24, left: SIDEBAR_W + 8 }}
         title={open ? "Close AI Assistant" : "Open AI Assistant"}
       >
         {open ? <X className="w-6 h-6 text-white" /> : <Sparkles className="w-6 h-6 text-primary-foreground" />}
