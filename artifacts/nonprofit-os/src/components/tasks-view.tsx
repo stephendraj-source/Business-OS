@@ -190,26 +190,31 @@ export function TasksView() {
   }, [fetchHeaders]);
 
   const loadOptions = useCallback(async () => {
+    const safe = (p: Promise<Response>) => p.catch(() => null);
     const [ur, ar, qr, sr, pr, wr] = await Promise.all([
-      fetch(`${API}/users`, { headers: fetchHeaders() }),
-      fetch(`${API}/ai-agents`, { headers: fetchHeaders() }),
-      fetch(`${API}/org/task-queues`, { headers: fetchHeaders() }),
-      fetch(`${API}/org/task-sources`, { headers: fetchHeaders() }),
-      fetch(`${API}/processes`, { headers: fetchHeaders() }),
-      fetch(`${API}/workflows`, { headers: fetchHeaders() }),
+      safe(fetch(`${API}/users`, { headers: fetchHeaders() })),
+      safe(fetch(`${API}/ai-agents`, { headers: fetchHeaders() })),
+      safe(fetch(`${API}/org/task-queues`, { headers: fetchHeaders() })),
+      safe(fetch(`${API}/org/task-sources`, { headers: fetchHeaders() })),
+      safe(fetch(`${API}/processes`, { headers: fetchHeaders() })),
+      safe(fetch(`${API}/workflows`, { headers: fetchHeaders() })),
     ]);
-    if (ur.ok) setUsers(await ur.json());
-    if (ar.ok) setAgents(await ar.json());
-    if (qr.ok) setQueues(await qr.json());
-    if (sr.ok) setSources(await sr.json());
-    if (pr.ok) {
-      const prData = await pr.json();
-      setAllProcesses(Array.isArray(prData) ? prData : []);
-    }
-    if (wr.ok) {
-      const wrData = await wr.json();
-      setWorkflows(Array.isArray(wrData) ? wrData : []);
-    }
+    try { if (ur?.ok) setUsers(await ur.json()); } catch {}
+    try { if (ar?.ok) setAgents(await ar.json()); } catch {}
+    try { if (qr?.ok) setQueues(await qr.json()); } catch {}
+    try { if (sr?.ok) setSources(await sr.json()); } catch {}
+    try {
+      if (pr?.ok) {
+        const prData = await pr.json();
+        setAllProcesses(Array.isArray(prData) ? prData : []);
+      }
+    } catch {}
+    try {
+      if (wr?.ok) {
+        const wrData = await wr.json();
+        setWorkflows(Array.isArray(wrData) ? wrData : []);
+      }
+    } catch {}
   }, [fetchHeaders]);
 
   useEffect(() => { loadTasks(); loadOptions(); }, [loadTasks, loadOptions]);

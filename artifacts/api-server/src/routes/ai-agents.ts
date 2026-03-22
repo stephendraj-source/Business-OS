@@ -362,6 +362,18 @@ router.delete("/ai-agents/:id/knowledge/urls/:urlId", async (req, res) => {
 
 // ── Knowledge: Files ──────────────────────────────────────────────────────────
 
+router.get("/ai-agents/:id/knowledge/files", async (req, res) => {
+  try {
+    const agentId = Number(req.params.id);
+    const files = await db.select().from(agentKnowledgeFilesTable)
+      .where(eq(agentKnowledgeFilesTable.agentId, agentId));
+    res.json(files);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.post("/ai-agents/:id/knowledge/files", upload.array("files", 20), async (req, res) => {
   try {
     const agentId = Number(req.params.id);
@@ -721,7 +733,7 @@ setInterval(runScheduler, 60_000);
 
 // ── Agent Permissions ──────────────────────────────────────────────────────────
 
-router.get("/:id/permissions", async (req, res) => {
+router.get("/ai-agents/:id/permissions", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const [modules, categories, procs, fields] = await Promise.all([
@@ -734,7 +746,7 @@ router.get("/:id/permissions", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.put("/:id/permissions/modules", async (req, res) => {
+router.put("/ai-agents/:id/permissions/modules", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { modules } = req.body as { modules: { module: string; hasAccess: boolean }[] };
@@ -746,7 +758,7 @@ router.put("/:id/permissions/modules", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.put("/:id/permissions/categories", async (req, res) => {
+router.put("/ai-agents/:id/permissions/categories", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { categories } = req.body as { categories: string[] };
@@ -758,7 +770,7 @@ router.put("/:id/permissions/categories", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.put("/:id/permissions/processes", async (req, res) => {
+router.put("/ai-agents/:id/permissions/processes", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { processes } = req.body as { processes: { processId: number; canEdit: boolean }[] };
@@ -770,7 +782,7 @@ router.put("/:id/permissions/processes", async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-router.put("/:id/permissions/field-permissions", async (req, res) => {
+router.put("/ai-agents/:id/permissions/field-permissions", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { permissions } = req.body as { permissions: { catalogueType: string; fieldKey: string; canView: boolean; canEdit: boolean }[] };
