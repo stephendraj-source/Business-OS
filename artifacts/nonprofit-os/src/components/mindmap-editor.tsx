@@ -1107,19 +1107,6 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           if (!el) return;
           const { width, height } = el.getBoundingClientRect();
           setTransform(t => {
-            const newScale = Math.min(3, t.scale * 1.2);
-            const ratio = newScale / t.scale;
-            const cx = width / 2; const cy = height / 2;
-            return { scale: newScale, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
-          });
-        }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom in">
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
-        <button onClick={() => {
-          const el = svgRef.current;
-          if (!el) return;
-          const { width, height } = el.getBoundingClientRect();
-          setTransform(t => {
             const newScale = Math.max(0.15, t.scale * 0.8);
             const ratio = newScale / t.scale;
             const cx = width / 2; const cy = height / 2;
@@ -1128,11 +1115,26 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom out">
           <ZoomOut className="w-3.5 h-3.5" />
         </button>
+        <div className="text-[11px] font-medium tabular-nums text-muted-foreground w-9 text-center select-none">
+          {Math.round(transform.scale * 100)}%
+        </div>
+        <button onClick={() => {
+          const el = svgRef.current;
+          if (!el) return;
+          const { width, height } = el.getBoundingClientRect();
+          setTransform(t => {
+            const newScale = Math.min(3, t.scale * 1.2);
+            const ratio = newScale / t.scale;
+            const cx = width / 2; const cy = height / 2;
+            return { scale: newScale, x: cx - (cx - t.x) * ratio, y: cy - (cy - t.y) * ratio };
+          });
+        }} className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Zoom in">
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
         <button onClick={() => fitView()}
-          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Fit all nodes">
+          className="p-1.5 rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Fit all nodes in view">
           <Maximize2 className="w-3.5 h-3.5" />
         </button>
-        <div className="text-[10px] text-muted-foreground ml-1">{Math.round(transform.scale * 100)}%</div>
         <div className="flex-1" />
         <button
           onClick={exportAsPdf}
