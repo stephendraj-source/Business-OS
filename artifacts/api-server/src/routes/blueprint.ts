@@ -25,7 +25,8 @@ export const blueprintRouter = Router();
 
 blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const tenantId = req.auth!.tenantId!;
+    const tenantId = req.auth!.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Blueprint export requires a tenant context.' });
 
     // Fetch top-level tenant-scoped tables
     const [procs, agents, wflows, grps, rls, bus, rgns, govStandards, chklists, dashboards, reports, inits, fmFolders, fms, sgResult] =
@@ -139,7 +140,8 @@ blueprintRouter.get('/blueprint/export', requireAuth, requireAdmin, async (req, 
 
 blueprintRouter.post('/blueprint/import', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const tenantId = req.auth!.tenantId!;
+    const tenantId = req.auth!.tenantId;
+    if (!tenantId) return res.status(403).json({ error: 'Blueprint import requires a tenant context.' });
     const bp = req.body;
 
     if (!bp || ![1, 2].includes(bp._meta?.version)) {

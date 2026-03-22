@@ -46,7 +46,10 @@ async function writeAuditLog(data: {
 // --- Export (must be before /:id) ---
 router.get("/processes/export", async (req, res) => {
   try {
-    const processes = await db.select().from(processesTable).orderBy(processesTable.number);
+    const tf = tenantFilter(req);
+    const processes = tf
+      ? await db.select().from(processesTable).where(tf).orderBy(processesTable.number)
+      : await db.select().from(processesTable).orderBy(processesTable.number);
 
     const rows = processes.map(p => ({
       "#": p.number,
