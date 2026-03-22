@@ -1887,9 +1887,10 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
     if (!selectedKnowledgeId) return;
     const formData = new FormData();
     formData.append("file", file);
+    const { 'Content-Type': _ct, ...uploadHeaders } = fetchHeaders();
     const r = await fetch(`${API}/knowledge-items/${selectedKnowledgeId}/upload`, {
       method: "POST",
-      headers: fetchHeaders(),
+      headers: uploadHeaders,
       body: formData,
     });
     if (r.ok) {

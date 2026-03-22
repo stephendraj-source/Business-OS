@@ -874,7 +874,8 @@ function KnowledgePanel({ agentId }: { agentId: number }) {
     setUploading(true);
     const fd = new FormData();
     Array.from(f).forEach(file => fd.append("files", file));
-    await fetch(`${API}/ai-agents/${agentId}/knowledge/files`, { method: "POST", headers: fetchHeaders(), body: fd });
+    const { 'Content-Type': _ct, ...uploadHeaders } = fetchHeaders();
+    await fetch(`${API}/ai-agents/${agentId}/knowledge/files`, { method: "POST", headers: uploadHeaders, body: fd });
     setUploading(false);
     fetchKnowledge();
     if (fileInputRef.current) fileInputRef.current.value = "";

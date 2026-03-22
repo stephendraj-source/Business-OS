@@ -148,8 +148,9 @@ export function GovernanceView() {
     setUploadingFor(governanceId);
     const formData = new FormData();
     Array.from(files).forEach(f => formData.append('files', f));
+    const { 'Content-Type': _ct, ...uploadHeaders } = fetchHeaders();
     try {
-      await fetch(`${API}/governance/${governanceId}/documents`, { method: 'POST', headers: fetchHeaders(), body: formData });
+      await fetch(`${API}/governance/${governanceId}/documents`, { method: 'POST', headers: uploadHeaders, body: formData });
       await load();
     } finally {
       setUploadingFor(null);

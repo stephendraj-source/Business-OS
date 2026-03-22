@@ -189,9 +189,10 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
       const formData = new FormData();
       formData.append('file', file);
       formData.append('title', file.name);
+      const { 'Content-Type': _ct, ...uploadHeaders } = fetchHeaders();
       const r = await fetch(`${API}/processes/${initialProcess.id}/attachments/upload`, {
         method: 'POST',
-        headers: fetchHeaders(),
+        headers: uploadHeaders,
         body: formData,
       });
       if (r.ok) await fetchAttachments();
@@ -1008,7 +1009,8 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      const res = await fetch('/api/processes/import', { method: 'POST', headers: fetchHeaders(), body: formData });
+      const { 'Content-Type': _ct, ...importHeaders } = fetchHeaders();
+      const res = await fetch('/api/processes/import', { method: 'POST', headers: importHeaders, body: formData });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Import failed');
       setImportResult(result);
