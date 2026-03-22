@@ -1,31 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers, Activity, Bot } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers, Activity, Bot, Palette } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { THEMES, THEME_PREVIEW, applyTheme } from './settings-view';
 
 const API = '/api';
-
-const PRESET_COLORS = [
-  '#6366f1', '#8b5cf6', '#ec4899', '#ef4444', '#f97316',
-  '#eab308', '#22c55e', '#14b8a6', '#06b6d4', '#3b82f6',
-  '#94a3b8', '#f1f5f9',
-];
 
 interface OrgItem {
   id: number;
   name: string;
   description: string;
   color: string;
-}
-
-function ColorSwatch({ color, size = 'sm' }: { color: string; size?: 'sm' | 'lg' }) {
-  const sz = size === 'lg' ? 'w-5 h-5' : 'w-3.5 h-3.5';
-  return (
-    <span
-      className={cn("rounded-full flex-shrink-0 border border-black/10", sz)}
-      style={{ backgroundColor: color || '#94a3b8' }}
-    />
-  );
 }
 
 interface SectionProps {
@@ -42,11 +27,9 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
-  const [editColor, setEditColor] = useState('');
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
-  const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -75,7 +58,7 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
       const res = await fetch(`${API}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), color: newColor }),
+        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() }),
       });
       if (res.ok) {
         const item = await res.json();
@@ -83,7 +66,6 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
         setAdding(false);
         setNewName('');
         setNewDesc('');
-        setNewColor(PRESET_COLORS[0]);
       }
     } finally {
       setSaving(false);
@@ -94,7 +76,6 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
     setEditingId(item.id);
     setEditName(item.name);
     setEditDesc(item.description);
-    setEditColor(item.color || PRESET_COLORS[0]);
   }
 
   async function saveEdit() {
@@ -104,7 +85,7 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
       const res = await fetch(`${API}${endpoint}/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-        body: JSON.stringify({ name: editName.trim(), description: editDesc.trim(), color: editColor }),
+        body: JSON.stringify({ name: editName.trim(), description: editDesc.trim() }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -162,60 +143,38 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
             {items.map(item => (
               <div key={item.id} className="px-5 py-3.5">
                 {editingId === item.id ? (
-                  /* Inline edit form */
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <ColorSwatch color={editColor} size="lg" />
-                      <input
-                        autoFocus
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
-                        placeholder="Name"
-                        className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
-                      />
-                      <input
-                        value={editDesc}
-                        onChange={e => setEditDesc(e.target.value)}
-                        placeholder="Description (optional)"
-                        className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-muted-foreground">Color:</span>
-                      {PRESET_COLORS.map(c => (
-                        <button
-                          key={c}
-                          onClick={() => setEditColor(c)}
-                          className={cn(
-                            "w-5 h-5 rounded-full border-2 transition-all",
-                            editColor === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"
-                          )}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                      <div className="ml-auto flex items-center gap-2">
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
-                        >
-                          <X className="w-3 h-3" /> Cancel
-                        </button>
-                        <button
-                          onClick={saveEdit}
-                          disabled={saving || !editName.trim()}
-                          className="flex items-center gap-1 px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                        >
-                          {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                          Save
-                        </button>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      autoFocus
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditingId(null); }}
+                      placeholder="Name"
+                      className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
+                    />
+                    <input
+                      value={editDesc}
+                      onChange={e => setEditDesc(e.target.value)}
+                      placeholder="Description (optional)"
+                      className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
+                    />
+                    <button
+                      onClick={() => setEditingId(null)}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
+                    >
+                      <X className="w-3 h-3" /> Cancel
+                    </button>
+                    <button
+                      onClick={saveEdit}
+                      disabled={saving || !editName.trim()}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                    >
+                      {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                      Save
+                    </button>
                   </div>
                 ) : (
-                  /* Display row */
                   <div className="flex items-center gap-3 group">
-                    <ColorSwatch color={item.color} size="lg" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-foreground">{item.name}</div>
                       {item.description && (
@@ -265,54 +224,35 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
             {/* Add new form */}
             {adding && (
               <div className="px-5 py-3.5 bg-secondary/10">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <ColorSwatch color={newColor} size="lg" />
-                    <input
-                      ref={addInputRef}
-                      value={newName}
-                      onChange={e => setNewName(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveNew(); if (e.key === 'Escape') { setAdding(false); setNewName(''); setNewDesc(''); } }}
-                      placeholder={`${title.slice(0, -1)} name…`}
-                      className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
-                    />
-                    <input
-                      value={newDesc}
-                      onChange={e => setNewDesc(e.target.value)}
-                      placeholder="Description (optional)"
-                      className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-muted-foreground">Color:</span>
-                    {PRESET_COLORS.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => setNewColor(c)}
-                        className={cn(
-                          "w-5 h-5 rounded-full border-2 transition-all",
-                          newColor === c ? "border-foreground scale-110" : "border-transparent hover:scale-105"
-                        )}
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                    <div className="ml-auto flex items-center gap-2">
-                      <button
-                        onClick={() => { setAdding(false); setNewName(''); setNewDesc(''); }}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
-                      >
-                        <X className="w-3 h-3" /> Cancel
-                      </button>
-                      <button
-                        onClick={saveNew}
-                        disabled={saving || !newName.trim()}
-                        className="flex items-center gap-1 px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                      >
-                        {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-                        Add
-                      </button>
-                    </div>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    ref={addInputRef}
+                    value={newName}
+                    onChange={e => setNewName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveNew(); if (e.key === 'Escape') { setAdding(false); setNewName(''); setNewDesc(''); } }}
+                    placeholder={`${title.slice(0, -1)} name…`}
+                    className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
+                  />
+                  <input
+                    value={newDesc}
+                    onChange={e => setNewDesc(e.target.value)}
+                    placeholder="Description (optional)"
+                    className="flex-1 text-sm bg-background border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:border-primary/50"
+                  />
+                  <button
+                    onClick={() => { setAdding(false); setNewName(''); setNewDesc(''); }}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg transition-colors"
+                  >
+                    <X className="w-3 h-3" /> Cancel
+                  </button>
+                  <button
+                    onClick={saveNew}
+                    disabled={saving || !newName.trim()}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                    Add
+                  </button>
                 </div>
               </div>
             )}
@@ -560,6 +500,178 @@ function SystemPromptSection({ fetchHeaders }: { fetchHeaders: () => Record<stri
   );
 }
 
+function ThemeCard({ themeId, active, onClick }: { themeId: string; active: boolean; onClick: () => void }) {
+  const theme = THEMES.find(t => t.id === themeId);
+  const preview = THEME_PREVIEW[themeId];
+  if (!theme || !preview) return null;
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'relative flex flex-col items-start gap-2 p-3 rounded-xl border-2 transition-all text-left w-full',
+        active ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/40'
+      )}
+    >
+      <div className="w-full h-10 rounded-lg flex items-center gap-1.5 px-2.5" style={{ backgroundColor: preview.bg }}>
+        <div className="w-5 h-5 rounded" style={{ backgroundColor: preview.accent }} />
+        <div className="flex flex-col gap-1 flex-1">
+          <div className="h-1.5 rounded-full w-3/4" style={{ backgroundColor: preview.text }} />
+          <div className="h-1.5 rounded-full w-1/2" style={{ backgroundColor: preview.text, opacity: 0.5 }} />
+        </div>
+      </div>
+      <div className="flex items-center justify-between w-full">
+        <div>
+          <p className="text-xs font-semibold text-foreground">{theme.name}</p>
+          <p className="text-[10px] text-muted-foreground">{theme.description}</p>
+        </div>
+        {active && <div className="w-4 h-4 rounded-full bg-primary flex items-center justify-center"><Check className="w-2.5 h-2.5 text-primary-foreground" /></div>}
+      </div>
+    </button>
+  );
+}
+
+function ColourSchemeSection({ fetchHeaders }: { fetchHeaders: () => Record<string, string> }) {
+  const { isAdmin } = useAuth();
+  const [personalTheme, setPersonalTheme] = useState<string | null>(null);
+  const [orgTheme, setOrgTheme] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingPersonal, setSavingPersonal] = useState(false);
+  const [savingOrg, setSavingOrg] = useState(false);
+  const [personalOk, setPersonalOk] = useState(false);
+  const [orgOk, setOrgOk] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/auth/color-scheme`, { headers: fetchHeaders() })
+      .then(r => r.json())
+      .then(d => { setPersonalTheme(d.personal ?? null); setOrgTheme(d.org ?? null); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const effectivePersonal = personalTheme ?? orgTheme ?? 'dark';
+
+  const savePersonal = async (themeId: string) => {
+    setPersonalTheme(themeId);
+    applyTheme(themeId);
+    setSavingPersonal(true);
+    try {
+      await fetch(`${API}/auth/color-scheme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ colorScheme: themeId }),
+      });
+      setPersonalOk(true);
+      setTimeout(() => setPersonalOk(false), 2000);
+    } catch {}
+    setSavingPersonal(false);
+  };
+
+  const saveOrg = async (themeId: string) => {
+    setOrgTheme(themeId);
+    setSavingOrg(true);
+    try {
+      await fetch(`${API}/org/color-scheme`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ colorScheme: themeId }),
+      });
+      setOrgOk(true);
+      setTimeout(() => setOrgOk(false), 2000);
+    } catch {}
+    setSavingOrg(false);
+  };
+
+  if (loading) return (
+    <div className="border border-border rounded-xl bg-card p-6 flex items-center gap-2 text-muted-foreground text-sm">
+      <Loader2 className="w-4 h-4 animate-spin" /> Loading colour scheme…
+    </div>
+  );
+
+  return (
+    <div className="border border-border rounded-xl bg-card overflow-hidden">
+      <div className="p-4 border-b border-border flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
+          <Palette className="w-4 h-4 text-foreground" />
+        </div>
+        <div className="flex-1">
+          <h3 className="font-semibold text-foreground text-sm">Colour Scheme</h3>
+          <p className="text-xs text-muted-foreground">Personalise how the application looks</p>
+        </div>
+      </div>
+
+      <div className="p-4 space-y-6">
+        {/* Personal theme */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Your personal theme</p>
+              <p className="text-xs text-muted-foreground">Only visible to you — overrides the organisation default</p>
+            </div>
+            {savingPersonal ? (
+              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+            ) : personalOk ? (
+              <span className="text-xs text-green-500 flex items-center gap-1"><Check className="w-3 h-3" /> Saved</span>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-5 gap-2">
+            {THEMES.map(t => (
+              <ThemeCard
+                key={t.id}
+                themeId={t.id}
+                active={effectivePersonal === t.id}
+                onClick={() => savePersonal(t.id)}
+              />
+            ))}
+          </div>
+          {personalTheme && (
+            <button
+              onClick={async () => {
+                setPersonalTheme(null);
+                applyTheme(orgTheme ?? 'dark');
+                await fetch(`${API}/auth/color-scheme`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+                  body: JSON.stringify({ colorScheme: null }),
+                });
+              }}
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+            >
+              Reset to organisation default
+            </button>
+          )}
+        </div>
+
+        {/* Organisation theme — admin only */}
+        {isAdmin && (
+          <div className="border-t border-border pt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Organisation default theme</p>
+                <p className="text-xs text-muted-foreground">Applies to all users who haven't set a personal theme</p>
+              </div>
+              {savingOrg ? (
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+              ) : orgOk ? (
+                <span className="text-xs text-green-500 flex items-center gap-1"><Check className="w-3 h-3" /> Saved</span>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {THEMES.map(t => (
+                <ThemeCard
+                  key={t.id}
+                  themeId={t.id}
+                  active={(orgTheme ?? 'dark') === t.id}
+                  onClick={() => saveOrg(t.id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ConfigurationView() {
   const { fetchHeaders } = useAuth();
 
@@ -630,6 +742,7 @@ export function ConfigurationView() {
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
           <OrgProfileSection fetchHeaders={fetchHeaders} />
+          <ColourSchemeSection fetchHeaders={fetchHeaders} />
           <SystemPromptSection fetchHeaders={fetchHeaders} />
           {sections.map(s => (
             <ConfigSection

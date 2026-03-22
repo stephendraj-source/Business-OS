@@ -20,6 +20,7 @@ export const tenants = pgTable('tenants', {
   contact2Phone: text('contact2_phone'),
   contact2Email: text('contact2_email'),
   systemPrompt: text('system_prompt'),
+  colorScheme: text('color_scheme'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

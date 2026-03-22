@@ -787,6 +787,30 @@ orgRouter.put('/org/system-prompt', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Tenant Colour Scheme ────────────────────────────────────────────────────────
+
+orgRouter.get('/org/color-scheme', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const [row] = await db.select({ colorScheme: tenants.colorScheme }).from(tenants).where(eq(tenants.id, tenantId));
+    res.json({ colorScheme: row?.colorScheme ?? null });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/color-scheme', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const { colorScheme } = req.body;
+    const [row] = await db.update(tenants)
+      .set({ colorScheme: colorScheme ?? null })
+      .where(eq(tenants.id, tenantId))
+      .returning({ colorScheme: tenants.colorScheme });
+    res.json({ colorScheme: row?.colorScheme ?? null });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Full org tree ──────────────────────────────────────────────────────────────
 
 orgRouter.get('/org/tree', async (req, res) => {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { applyTheme } from '../components/settings-view';
 
 const API = '/api';
 const TOKEN_KEY = 'nonprofit-os-auth-token';
@@ -86,6 +87,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(data => { if (Array.isArray(data)) setUsers(data); })
       .catch(() => {});
   }, [currentUser]);
+
+  // Apply effective colour scheme after login
+  useEffect(() => {
+    if (!currentUser || !token) return;
+    fetch(`${API}/auth/color-scheme`, { headers: getHeaders() })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (!d) return;
+        const effective = d.personal ?? d.org ?? null;
+        if (effective) applyTheme(effective);
+      })
+      .catch(() => {});
+  }, [currentUser?.id]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {

@@ -17,6 +17,7 @@ export const users = pgTable('users', {
   category: text('category').notNull().default(''),
   jobDescription: text('job_description').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
+  colorScheme: text('color_scheme'),
   mustChangePassword: boolean('must_change_password').notNull().default(false),
   createdAt: timestamp('created_at').defaultNow(),
 });

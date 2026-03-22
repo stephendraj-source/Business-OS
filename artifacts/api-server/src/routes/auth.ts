@@ -351,6 +351,31 @@ authRouter.post('/superusers', requireAuth, requireSuperUser, async (req, res) =
   }
 });
 
+// ── User colour scheme preference ──────────────────────────────────────────────
+
+authRouter.get('/color-scheme', requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth!.userId;
+    const tenantId = req.auth!.tenantId ?? null;
+    const [userRow] = await db.select({ colorScheme: users.colorScheme }).from(users).where(eq(users.id, userId));
+    let orgScheme: string | null = null;
+    if (tenantId) {
+      const [t] = await db.select({ colorScheme: tenants.colorScheme }).from(tenants).where(eq(tenants.id, tenantId));
+      orgScheme = t?.colorScheme ?? null;
+    }
+    res.json({ personal: userRow?.colorScheme ?? null, org: orgScheme });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+authRouter.put('/color-scheme', requireAuth, async (req, res) => {
+  try {
+    const userId = req.auth!.userId;
+    const { colorScheme } = req.body;
+    await db.update(users).set({ colorScheme: colorScheme ?? null }).where(eq(users.id, userId));
+    res.json({ ok: true, colorScheme: colorScheme ?? null });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 authRouter.delete('/superusers/:id', requireAuth, requireSuperUser, async (req, res) => {
   try {
     const targetId = parseInt(req.params.id);
