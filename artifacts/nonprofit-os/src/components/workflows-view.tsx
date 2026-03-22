@@ -799,7 +799,7 @@ function FormStepCard({ step, onUpdate, onDelete, forms }: {
               ))}
             </select>
             {forms.length === 0 && (
-              <p className="text-xs text-muted-foreground mt-1">No forms available. Create one in the Forms section.</p>
+              <p className="text-xs text-muted-foreground mt-1">No documents available. Create one in the Documents section.</p>
             )}
           </div>
 

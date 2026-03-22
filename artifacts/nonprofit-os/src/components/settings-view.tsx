@@ -320,7 +320,7 @@ export function SettingsView() {
         `${s.regions} regions`,
         `${s.checklists} checklists`,
         `${s.initiatives} initiatives`,
-        `${s.forms} forms`,
+        `${s.forms} documents`,
         `${s.strategicGoals} strategic goals`,
       ];
       setImportSuccess(`Blueprint imported successfully. Restored: ${parts.join(', ')}.`);
@@ -475,7 +475,7 @@ export function SettingsView() {
                   <h4 className="font-medium text-sm">Export Blueprint</h4>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Downloads all your workspace configuration — processes, workflows, AI agents, forms, strategic goals, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
+                  Downloads all your workspace configuration — processes, workflows, AI agents, documents, strategic goals, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
                 </p>
                 <div className="flex gap-3 items-center">
                   <input

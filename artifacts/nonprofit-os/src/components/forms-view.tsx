@@ -1088,7 +1088,7 @@ function DataEntryFillPanel({ form, fields, getFetchHeaders, currentUserName, ag
             <div className="rounded-2xl border border-dashed border-border p-10 text-center">
               <ClipboardList className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
               <p className="text-sm text-muted-foreground">This template has no fields yet.</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Switch to Forms Templates mode to add fields.</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Switch to Documents mode to add fields.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
@@ -2183,8 +2183,8 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
       <div className="flex-none px-5 py-2 border-b border-border bg-card/60 flex items-center gap-2">
         <span className="text-xs text-muted-foreground font-medium mr-1">Mode:</span>
         {([
-          { key: 'templates', label: 'Forms Templates', icon: <ClipboardList className="w-3.5 h-3.5" /> },
-          { key: 'entry',     label: 'Data Entry',        icon: <PenLine className="w-3.5 h-3.5" /> },
+          { key: 'templates', label: 'Documents', icon: <ClipboardList className="w-3.5 h-3.5" /> },
+          { key: 'entry',     label: 'Data Entry',  icon: <PenLine className="w-3.5 h-3.5" /> },
         ] as const).map(m => (
           <button
             key={m.key}
