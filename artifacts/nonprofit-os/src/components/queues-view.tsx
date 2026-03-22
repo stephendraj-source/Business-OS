@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Plus, Pencil, Trash2, Inbox, AlertTriangle, Loader2, X, Check,
   User, Calendar, Flag, Circle, CheckCircle2, Pause, Ban, RefreshCw,
-  ChevronRight, FileText, Clock, Search, ListPlus,
+  ChevronRight, FileText, Clock, Search, ListPlus, UserCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
 
@@ -320,16 +321,22 @@ function TaskRow({
 function TaskDetailPanel({
   task,
   onClose,
-  onStatusChange,
+  onAccept,
 }: {
   task: Task;
   onClose: () => void;
-  onStatusChange: (id: number, status: string) => void;
+  onAccept: () => Promise<void>;
 }) {
+  const [accepting, setAccepting] = useState(false);
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const priorityCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.normal;
   const isOverdue = task.end_date && task.status !== 'completed' && task.status !== 'cancelled'
     && new Date(task.end_date) < new Date();
+
+  const handleAccept = async () => {
+    setAccepting(true);
+    try { await onAccept(); } finally { setAccepting(false); }
+  };
 
   return (
     <div className="w-80 flex-shrink-0 border-l border-border flex flex-col bg-card overflow-hidden">
@@ -356,19 +363,10 @@ function TaskDetailPanel({
         {/* Status */}
         <div>
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Status</p>
-          <div className={cn('inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium mb-2', statusCfg.className)}>
+          <div className={cn('inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium', statusCfg.className)}>
             {statusCfg.icon}
             {statusCfg.label}
           </div>
-          <select
-            value={task.status}
-            onChange={e => onStatusChange(task.id, e.target.value)}
-            className="block w-full text-xs rounded-lg border border-border bg-secondary text-foreground px-2.5 py-1.5 cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            {STATUS_ORDER.map(s => (
-              <option key={s} value={s}>{STATUS_CONFIG[s].label}</option>
-            ))}
-          </select>
         </div>
 
         {/* Priority */}
@@ -380,17 +378,19 @@ function TaskDetailPanel({
         </div>
 
         {/* Assignee */}
-        {task.assigned_to_name && (
-          <div>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Assigned To</p>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Assigned To</p>
+          {task.assigned_to_name ? (
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
               </div>
               <span className="text-sm text-foreground">{task.assigned_to_name}</span>
             </div>
-          </div>
-        )}
+          ) : (
+            <span className="text-sm text-muted-foreground italic">Unassigned</span>
+          )}
+        </div>
 
         {/* Due date */}
         {task.end_date && (
@@ -423,6 +423,18 @@ function TaskDetailPanel({
             {formatDate(task.created_at, true)}
           </div>
         </div>
+      </div>
+
+      {/* Accept Task button */}
+      <div className="p-4 border-t border-border flex-shrink-0">
+        <button
+          onClick={handleAccept}
+          disabled={accepting}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-sm text-white font-medium transition-colors"
+        >
+          {accepting ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />}
+          Accept Task
+        </button>
       </div>
     </div>
   );
@@ -612,6 +624,7 @@ function AddTasksModal({
 // ── Main View ─────────────────────────────────────────────────────────────────
 
 export function QueuesView() {
+  const { currentUser } = useAuth();
   const [queues, setQueues] = useState<Queue[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -707,6 +720,22 @@ export function QueuesView() {
         method: 'PATCH',
         headers: jsonHeaders(),
         body: JSON.stringify({ status: newStatus }),
+      });
+    } catch {
+      await fetchTasks();
+    }
+  }
+
+  async function handleAcceptTask(taskId: number) {
+    if (!currentUser) return;
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, assigned_to_name: currentUser.name } : t,
+    ));
+    try {
+      await fetch(`${API}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: jsonHeaders(),
+        body: JSON.stringify({ assignedTo: currentUser.id }),
       });
     } catch {
       await fetchTasks();
@@ -1003,7 +1032,7 @@ export function QueuesView() {
           key={selectedTask.id}
           task={selectedTask}
           onClose={() => setSelectedTaskId(null)}
-          onStatusChange={handleStatusChange}
+          onAccept={() => handleAcceptTask(selectedTask.id)}
         />
       )}
 
