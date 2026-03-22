@@ -25,6 +25,7 @@ import { strategyRouter } from "./strategy";
 import { favouritesRouter } from "./favourites";
 import { mindmapsRouter } from "./mindmaps";
 import meetingsRouter from "./meetings";
+import calendarEventsRouter from "./calendar-events";
 import navPreferencesRouter from "./nav-preferences";
 
 const router: IRouter = Router();
@@ -55,6 +56,7 @@ router.use(strategyRouter);
 router.use(favouritesRouter);
 router.use(mindmapsRouter);
 router.use(meetingsRouter);
+router.use(calendarEventsRouter);
 router.use('/nav-preferences', navPreferencesRouter);
 
 export default router;
