@@ -505,21 +505,12 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
 
   const handleNodePointerDown = (e: React.PointerEvent, nodeId: string) => {
     e.stopPropagation();
-    if (editingLabel?.nodeId === nodeId) return;
-    const node = mapData.nodes.find(n => n.id === nodeId)!;
-    dragRef.current = { nodeId, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y, moved: false };
-    svgRef.current!.setPointerCapture(e.pointerId);
-  };
-
-  const handleNodePointerUp = (e: React.PointerEvent, nodeId: string) => {
-    e.stopPropagation();
-    if (dragRef.current?.moved) { dragRef.current = null; return; }
-    dragRef.current = null;
+    // In connect mode: handle the click here (before pointer capture is set) and bail out
     if (connectMode) {
       if (!connectSource) {
         setConnectSource(nodeId);
       } else if (connectSource !== nodeId) {
-        const alreadyExists = mapData.edges.some(
+        const alreadyExists = mapDataRef.current.edges.some(
           ed => (ed.sourceId === connectSource && ed.targetId === nodeId) ||
                 (ed.sourceId === nodeId && ed.targetId === connectSource)
         );
@@ -532,15 +523,26 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         setConnectSource(null);
         setConnectMode(false);
       }
+      return;
+    }
+    if (editingLabel?.nodeId === nodeId) return;
+    const node = mapData.nodes.find(n => n.id === nodeId)!;
+    dragRef.current = { nodeId, startX: e.clientX, startY: e.clientY, origX: node.x, origY: node.y, moved: false };
+    svgRef.current!.setPointerCapture(e.pointerId);
+  };
+
+  const handleNodePointerUp = (e: React.PointerEvent, nodeId: string) => {
+    e.stopPropagation();
+    if (connectMode) return; // already handled in pointerdown
+    if (dragRef.current?.moved) { dragRef.current = null; return; }
+    dragRef.current = null;
+    if (selectedNodeId === nodeId) {
+      // Second click on already-selected node → start inline editing
+      const node = mapData.nodes.find(n => n.id === nodeId);
+      if (node) setEditingLabel({ nodeId, value: node.label });
     } else {
-      if (selectedNodeId === nodeId) {
-        // Second click on already-selected node → start inline editing
-        const node = mapData.nodes.find(n => n.id === nodeId);
-        if (node) setEditingLabel({ nodeId, value: node.label });
-      } else {
-        setSelectedNodeId(nodeId);
-        setSelectedEdgeId(null);
-      }
+      setSelectedNodeId(nodeId);
+      setSelectedEdgeId(null);
     }
   };
 
