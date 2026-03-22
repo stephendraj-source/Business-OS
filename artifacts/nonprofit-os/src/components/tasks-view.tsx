@@ -5,6 +5,7 @@ import {
   User, Flag, RotateCcw, ClipboardCheck, ThumbsUp, ThumbsDown,
   Layers, ListTodo, ShieldCheck, ShieldX, Timer, Trash2, Star,
   LayoutGrid, List, PlayCircle, ChevronDown, Inbox, Network,
+  Kanban, GripVertical,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/contexts/FavouritesContext';
 import { Button } from '@/components/ui/button';
@@ -161,10 +162,14 @@ export function TasksView() {
   const [approvalResult, setApprovalResult] = useState<string | null>(null);
 
   // Queue board state
-  const [viewMode, setViewMode] = useState<'list' | 'queue'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'queue' | 'kanban'>('list');
   const [collapsedQueues, setCollapsedQueues] = useState<Set<string>>(new Set());
   const [pickingUpTask, setPickingUpTask] = useState<number | null>(null);
   const [quickApprovingTask, setQuickApprovingTask] = useState<number | null>(null);
+
+  // Kanban drag-and-drop state
+  const [dragTaskId, setDragTaskId] = useState<number | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<string | null>(null);
 
   const [users, setUsers] = useState<UserItem[]>([]);
   const [agents, setAgents] = useState<AiAgent[]>([]);
@@ -464,6 +469,19 @@ export function TasksView() {
     } finally { setQuickApprovingTask(null); }
   }
 
+  async function handleKanbanDrop(taskId: number, newStatus: string) {
+    const prev = tasks.find(t => t.id === taskId)?.status;
+    if (!prev || prev === newStatus) return;
+    setTasks(all => all.map(t => t.id === taskId ? { ...t, status: newStatus as TaskRow['status'] } : t));
+    try {
+      await fetch(`${API}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch { await loadTasks(); }
+  }
+
   const canEditTask = (t: TaskRow) => isManagerOrAbove || t.created_by === user?.id;
   const canApprove = (t: TaskRow) => isManagerOrAbove && t.approval_status === 'pending';
 
@@ -498,6 +516,12 @@ export function TasksView() {
     }
     return groups.filter(g => g.tasks.length > 0 || g.key !== 'none');
   })();
+
+  // Group filtered tasks by status for Kanban view
+  const kanbanColumns = STATUSES.map(s => ({
+    ...s,
+    tasks: filtered.filter(t => t.status === s.value),
+  }));
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -559,9 +583,16 @@ export function TasksView() {
               <List className="w-3.5 h-3.5" />
             </button>
             <button
+              onClick={() => setViewMode('kanban')}
+              className={cn('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors border-l border-border/60', viewMode === 'kanban' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary/60')}
+              title="Kanban board"
+            >
+              <Kanban className="w-3.5 h-3.5" />
+            </button>
+            <button
               onClick={() => setViewMode('queue')}
               className={cn('flex items-center gap-1 px-2.5 py-1.5 text-xs transition-colors border-l border-border/60', viewMode === 'queue' ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-secondary/60')}
-              title="Queue board view"
+              title="Queue groups view"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
@@ -703,6 +734,123 @@ export function TasksView() {
                 ))}
               </div>
             )
+
+          ) : viewMode === 'kanban' ? (
+
+            /* ── Kanban Board ── */
+            <div className="flex h-full gap-3 p-4 overflow-x-auto">
+              {kanbanColumns.map(({ value, label, icon: StatusIcon, color, tasks: colTasks }) => (
+                <div
+                  key={value}
+                  className={cn(
+                    'flex flex-col flex-shrink-0 rounded-xl border border-border bg-secondary/20 transition-all',
+                    panelOpen ? 'w-52' : 'w-64',
+                    dragOverStatus === value && dragTaskId !== null && 'ring-2 ring-primary/50 bg-primary/5 border-primary/40',
+                  )}
+                  onDragOver={e => { e.preventDefault(); setDragOverStatus(value); }}
+                  onDragLeave={e => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                      setDragOverStatus(null);
+                    }
+                  }}
+                  onDrop={e => {
+                    e.preventDefault();
+                    const id = dragTaskId;
+                    setDragTaskId(null);
+                    setDragOverStatus(null);
+                    if (id !== null) handleKanbanDrop(id, value);
+                  }}
+                >
+                  {/* Column header */}
+                  <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border flex-shrink-0">
+                    <span className={cn('inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium flex-1', color)}>
+                      <StatusIcon className="w-3 h-3" />{label}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums">{colTasks.length}</span>
+                  </div>
+
+                  {/* Cards */}
+                  <div className="flex-1 overflow-y-auto p-2 space-y-2 min-h-[80px]">
+                    {colTasks.length === 0 ? (
+                      <div className={cn(
+                        'flex items-center justify-center h-20 rounded-lg border-2 border-dashed text-xs text-muted-foreground/40 transition-colors',
+                        dragOverStatus === value && dragTaskId !== null ? 'border-primary/40 text-primary/50' : 'border-border/40',
+                      )}>
+                        {dragOverStatus === value && dragTaskId !== null ? 'Drop here' : 'No tasks'}
+                      </div>
+                    ) : colTasks.map(t => {
+                      const p = getPriority(t.priority);
+                      const PIcon = p.icon;
+                      const isOverdue = t.end_date && t.status !== 'done' && t.status !== 'cancelled'
+                        && new Date(t.end_date) < new Date();
+                      return (
+                        <div
+                          key={t.id}
+                          draggable
+                          onDragStart={e => {
+                            setDragTaskId(t.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          onDragEnd={() => { setDragTaskId(null); setDragOverStatus(null); }}
+                          onClick={() => openTask(t)}
+                          className={cn(
+                            'bg-card border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-primary/30 hover:shadow-sm transition-all select-none group/card',
+                            dragTaskId === t.id && 'opacity-40 scale-95',
+                            selected?.id === t.id && 'border-primary/40 bg-primary/5',
+                          )}
+                        >
+                          {/* Card top row */}
+                          <div className="flex items-start justify-between gap-1 mb-2">
+                            <span className="text-[10px] font-mono text-muted-foreground leading-none pt-0.5">
+                              #{String(t.task_number).padStart(3, '0')}
+                            </span>
+                            <GripVertical className="w-3 h-3 text-muted-foreground/30 group-hover/card:text-muted-foreground/60 flex-shrink-0 transition-colors" />
+                          </div>
+
+                          {/* Title */}
+                          <p className="text-xs font-medium leading-snug mb-2 line-clamp-2">
+                            {t.name || <span className="italic text-muted-foreground">Untitled</span>}
+                          </p>
+
+                          {/* Priority */}
+                          <div className="flex items-center gap-1 mb-2">
+                            <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium', p.color)}>
+                              <PIcon className="w-2.5 h-2.5" />{p.label}
+                            </span>
+                            {t.approval_status !== 'none' && (
+                              <ApprovalBadge approvalStatus={t.approval_status} />
+                            )}
+                          </div>
+
+                          {/* Meta */}
+                          {t.assigned_to_name && (
+                            <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                              <User className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{t.assigned_to_name}</span>
+                            </div>
+                          )}
+                          {t.end_date && (
+                            <div className={cn(
+                              'flex items-center gap-1 text-[11px] mt-0.5',
+                              isOverdue ? 'text-red-400' : 'text-muted-foreground',
+                            )}>
+                              <Clock className="w-3 h-3 flex-shrink-0" />
+                              {new Date(t.end_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              {isOverdue && <span className="text-[9px] bg-red-500/15 text-red-400 px-1 rounded">Overdue</span>}
+                            </div>
+                          )}
+                          {t.queue_name && (
+                            <div className="mt-1.5 pt-1.5 border-t border-border/50">
+                              <span className="text-[10px] text-muted-foreground/60 truncate block">{t.queue_name}</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
 
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-3 text-muted-foreground">
