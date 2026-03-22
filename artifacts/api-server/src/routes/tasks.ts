@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, processesTable, activitiesTable, initiatives, workflowsTable, checklistItemsTable } from "@workspace/db";
-import { sql, eq, max } from "drizzle-orm";
+import { sql, eq, max, and } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -388,7 +388,10 @@ async function runWriteTool(name: string, input: Record<string, any>, tenantId: 
     switch (name) {
       case "update_process": {
         const { process_number, kpi, target, achievement, traffic_light, industry_benchmark, included, process_name, process_description, notes } = input;
-        const [proc] = await db.select().from(processesTable).where(eq(processesTable.number, process_number));
+        const procWhere = tenantId
+          ? and(eq(processesTable.number, process_number), eq(processesTable.tenantId, tenantId))
+          : eq(processesTable.number, process_number);
+        const [proc] = await db.select().from(processesTable).where(procWhere);
         if (!proc) return { success: false, message: `Process #${process_number} not found` };
         const updates: Record<string, any> = {};
         if (kpi !== undefined) updates.kpi = kpi;
@@ -401,7 +404,7 @@ async function runWriteTool(name: string, input: Record<string, any>, tenantId: 
         if (process_description !== undefined) updates.processDescription = process_description;
         if (notes !== undefined) updates.notes = notes;
         if (Object.keys(updates).length === 0) return { success: false, message: "No fields to update" };
-        await db.update(processesTable).set(updates).where(eq(processesTable.number, process_number));
+        await db.update(processesTable).set(updates).where(procWhere);
         return { success: true, message: `Process #${process_number} updated`, data: updates };
       }
       case "create_activity": {

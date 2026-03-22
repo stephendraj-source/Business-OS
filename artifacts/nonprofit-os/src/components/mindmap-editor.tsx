@@ -787,72 +787,120 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         {selectedNode && (
           <div className="w-72 border-l border-border bg-card flex flex-col overflow-y-auto flex-shrink-0">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Node Properties</span>
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {selectedNode.type === 'task' ? 'Task' : 'Node Properties'}
+              </span>
               <button onClick={() => setSelectedNodeId(null)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
 
             <div className="p-4 space-y-4">
-              {/* Label */}
-              <div>
-                <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Label</label>
-                <input
-                  className="w-full text-sm bg-secondary border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                  value={selectedNode.label}
-                  onChange={e => {
-                    const val = e.target.value;
-                    updateMapData(prev => ({
-                      ...prev,
-                      nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, label: val } : n),
-                    }));
-                  }}
-                  onBlur={e => {
-                    if (selectedNode.type === 'task' && selectedNode.taskId) {
-                      fetch(`${API}/tasks/${selectedNode.taskId}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-                        body: JSON.stringify({ name: e.target.value }),
-                      }).catch(() => {});
-                    }
-                  }}
-                />
-              </div>
+              {selectedNode.type === 'task' && selectedNode.taskData ? (
+                <>
+                  {/* Task fields shown immediately */}
+                  <div className="space-y-3">
+                    {/* Task Name */}
+                    <Field label="Task Name">
+                      <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                        value={selectedNode.taskData.name}
+                        onChange={e => updateTaskField(selectedNode.id, 'name', e.target.value)} />
+                    </Field>
 
-              {/* Color (normal nodes only) */}
-              {selectedNode.type === 'normal' && (
-                <div>
-                  <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Color</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {DEFAULT_COLORS.map(c => (
-                      <button key={c}
-                        onClick={() => updateMapData(prev => ({
-                          ...prev, nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, color: c } : n),
-                        }))}
-                        className="w-6 h-6 rounded-full border-2 transition-all"
-                        style={{ background: c, borderColor: selectedNode.color === c ? '#fff' : 'transparent' }}
-                      />
-                    ))}
+                    {/* Description */}
+                    <Field label="Description">
+                      <textarea
+                        className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+                        rows={3} value={selectedNode.taskData.description}
+                        onChange={e => updateTaskField(selectedNode.id, 'description', e.target.value)} />
+                    </Field>
+
+                    {/* Priority + Status */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label="Priority">
+                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.priority}
+                          onChange={e => updateTaskField(selectedNode.id, 'priority', e.target.value)}>
+                          <option value="low">Low</option>
+                          <option value="normal">Normal</option>
+                          <option value="high">High</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
+                      </Field>
+                      <Field label="Status">
+                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                          value={selectedNode.taskData.status}
+                          onChange={e => updateTaskField(selectedNode.id, 'status', e.target.value)}>
+                          <option value="open">Open</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="done">Done</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      </Field>
+                    </div>
+
+                    {/* Assigned To */}
+                    <Field label="Assigned To">
+                      <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                        value={selectedNode.taskData.assignedTo ?? ''}
+                        onChange={e => updateTaskField(selectedNode.id, 'assignedTo', e.target.value ? Number(e.target.value) : null)}>
+                        <option value="">Unassigned</option>
+                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </Field>
+
+                    {/* Queue */}
+                    <Field label="Queue">
+                      <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                        value={selectedNode.taskData.queueId ?? ''}
+                        onChange={e => updateTaskField(selectedNode.id, 'queueId', e.target.value ? Number(e.target.value) : null)}>
+                        <option value="">No Queue</option>
+                        {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
+                      </select>
+                    </Field>
+
+                    {/* Due Date */}
+                    <Field label="Due Date">
+                      <input type="date"
+                        className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                        value={selectedNode.taskData.endDate ?? ''}
+                        onChange={e => updateTaskField(selectedNode.id, 'endDate', e.target.value || null)} />
+                    </Field>
+
+                    {/* Approval Status */}
+                    <Field label="Approval Status">
+                      <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                        value={selectedNode.taskData.approvalStatus}
+                        onChange={e => updateTaskField(selectedNode.id, 'approvalStatus', e.target.value)}>
+                        <option value="none">None</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </Field>
+
+                    {/* Source */}
+                    <Field label="Source">
+                      <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
+                        value={selectedNode.taskData.source}
+                        onChange={e => updateTaskField(selectedNode.id, 'source', e.target.value)} />
+                    </Field>
+
+                    {/* AI Instructions */}
+                    <Field label="AI Instructions">
+                      <textarea
+                        className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none resize-none"
+                        rows={2} placeholder="Optional instructions for AI agent…"
+                        value={selectedNode.taskData.aiInstructions}
+                        onChange={e => updateTaskField(selectedNode.id, 'aiInstructions', e.target.value)} />
+                    </Field>
                   </div>
-                </div>
-              )}
 
-              {/* Task conversion */}
-              <div>
-                {selectedNode.type === 'normal' ? (
-                  <button
-                    onClick={() => convertToTask(selectedNode.id)}
-                    disabled={taskLoading}
-                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
-                  >
-                    {taskLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
-                    Convert to Task
-                  </button>
-                ) : (
-                  <div className="space-y-1">
+                  {/* Unlink from task at bottom */}
+                  <div className="border-t border-border pt-3 space-y-1">
                     <div className="flex items-center gap-2 text-xs text-emerald-400">
                       <CheckSquare className="w-3.5 h-3.5" />
-                      <span>Linked to Task #{selectedNode.taskId}</span>
+                      <span>Task #{selectedNode.taskId}</span>
                     </div>
                     <button
                       onClick={() => unlinkTask(selectedNode.id)}
@@ -861,112 +909,50 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
                       <Unlink className="w-3 h-3" /> Unlink from task system
                     </button>
                   </div>
-                )}
-              </div>
-
-              {/* Task fields */}
-              {selectedNode.type === 'task' && selectedNode.taskData && (
+                </>
+              ) : (
                 <>
-                  <div className="border-t border-border pt-3">
-                    <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide mb-3">Task Details</p>
+                  {/* Normal node: Label */}
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1 block">Label</label>
+                    <input
+                      className="w-full text-sm bg-secondary border border-border rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+                      value={selectedNode.label}
+                      onChange={e => {
+                        const val = e.target.value;
+                        updateMapData(prev => ({
+                          ...prev,
+                          nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, label: val } : n),
+                        }));
+                      }}
+                    />
+                  </div>
 
-                    <div className="space-y-3">
-                      {/* Name */}
-                      <Field label="Task Name">
-                        <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
-                          value={selectedNode.taskData.name}
-                          onChange={e => updateTaskField(selectedNode.id, 'name', e.target.value)} />
-                      </Field>
-
-                      {/* Description */}
-                      <Field label="Description">
-                        <textarea
-                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary resize-none"
-                          rows={3} value={selectedNode.taskData.description}
-                          onChange={e => updateTaskField(selectedNode.id, 'description', e.target.value)} />
-                      </Field>
-
-                      {/* Priority + Status */}
-                      <div className="grid grid-cols-2 gap-2">
-                        <Field label="Priority">
-                          <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                            value={selectedNode.taskData.priority}
-                            onChange={e => updateTaskField(selectedNode.id, 'priority', e.target.value)}>
-                            <option value="low">Low</option>
-                            <option value="normal">Normal</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                          </select>
-                        </Field>
-                        <Field label="Status">
-                          <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                            value={selectedNode.taskData.status}
-                            onChange={e => updateTaskField(selectedNode.id, 'status', e.target.value)}>
-                            <option value="open">Open</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="done">Done</option>
-                            <option value="cancelled">Cancelled</option>
-                          </select>
-                        </Field>
-                      </div>
-
-                      {/* Assigned To */}
-                      <Field label="Assigned To">
-                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                          value={selectedNode.taskData.assignedTo ?? ''}
-                          onChange={e => updateTaskField(selectedNode.id, 'assignedTo', e.target.value ? Number(e.target.value) : null)}>
-                          <option value="">Unassigned</option>
-                          {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                        </select>
-                      </Field>
-
-                      {/* Queue */}
-                      <Field label="Queue">
-                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                          value={selectedNode.taskData.queueId ?? ''}
-                          onChange={e => updateTaskField(selectedNode.id, 'queueId', e.target.value ? Number(e.target.value) : null)}>
-                          <option value="">No Queue</option>
-                          {queues.map(q => <option key={q.id} value={q.id}>{q.name}</option>)}
-                        </select>
-                      </Field>
-
-                      {/* Due Date */}
-                      <Field label="Due Date">
-                        <input type="date"
-                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                          value={selectedNode.taskData.endDate ?? ''}
-                          onChange={e => updateTaskField(selectedNode.id, 'endDate', e.target.value || null)} />
-                      </Field>
-
-                      {/* Approval Status */}
-                      <Field label="Approval Status">
-                        <select className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                          value={selectedNode.taskData.approvalStatus}
-                          onChange={e => updateTaskField(selectedNode.id, 'approvalStatus', e.target.value)}>
-                          <option value="none">None</option>
-                          <option value="pending">Pending</option>
-                          <option value="approved">Approved</option>
-                          <option value="rejected">Rejected</option>
-                        </select>
-                      </Field>
-
-                      {/* Source */}
-                      <Field label="Source">
-                        <input className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none"
-                          value={selectedNode.taskData.source}
-                          onChange={e => updateTaskField(selectedNode.id, 'source', e.target.value)} />
-                      </Field>
-
-                      {/* AI Instructions */}
-                      <Field label="AI Instructions">
-                        <textarea
-                          className="w-full text-xs bg-secondary border border-border rounded px-2 py-1.5 focus:outline-none resize-none"
-                          rows={2} placeholder="Optional instructions for AI agent…"
-                          value={selectedNode.taskData.aiInstructions}
-                          onChange={e => updateTaskField(selectedNode.id, 'aiInstructions', e.target.value)} />
-                      </Field>
+                  {/* Color */}
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-1.5 block">Color</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {DEFAULT_COLORS.map(c => (
+                        <button key={c}
+                          onClick={() => updateMapData(prev => ({
+                            ...prev, nodes: prev.nodes.map(n => n.id === selectedNode.id ? { ...n, color: c } : n),
+                          }))}
+                          className="w-6 h-6 rounded-full border-2 transition-all"
+                          style={{ background: c, borderColor: selectedNode.color === c ? '#fff' : 'transparent' }}
+                        />
+                      ))}
                     </div>
                   </div>
+
+                  {/* Convert to Task */}
+                  <button
+                    onClick={() => convertToTask(selectedNode.id)}
+                    disabled={taskLoading}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                  >
+                    {taskLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckSquare className="w-3.5 h-3.5" />}
+                    Convert to Task
+                  </button>
                 </>
               )}
             </div>
