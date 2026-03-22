@@ -3,7 +3,7 @@ import {
   Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
   GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
   AlignLeft, ChevronDown, Calendar, FileDown, Pencil, Copy,
-  GitFork, Palette,
+  GitFork, Palette, LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -275,6 +275,135 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       y: (height - (maxY - minY) * scale) / 2 - minY * scale,
       scale,
     });
+  };
+
+  // ── Auto Arrange ──────────────────────────────────────────────────────────
+
+  const autoArrange = () => {
+    const { nodes, edges } = mapDataRef.current;
+    if (nodes.length === 0) return;
+
+    const H_GAP = 60;  // horizontal gap between levels
+    const V_GAP = 24;  // vertical gap between sibling subtrees
+
+    // Build child/parent maps
+    const childMap = new Map<string, string[]>();
+    const targetIdSet = new Set(edges.map(e => e.targetId));
+
+    nodes.forEach(n => childMap.set(n.id, []));
+    edges.forEach(e => {
+      const list = childMap.get(e.sourceId);
+      if (list) list.push(e.targetId);
+    });
+
+    // Root = node with no incoming edges; fall back to first node
+    const rootNode = nodes.find(n => !targetIdSet.has(n.id)) ?? nodes[0];
+
+    // Compute total pixel height occupied by a subtree
+    function subtreeH(id: string): number {
+      const children = childMap.get(id) ?? [];
+      const selfH = nodeHeight(nodes.find(n => n.id === id)!);
+      if (children.length === 0) return selfH;
+      const totalChildH = children.reduce((s, cid) => s + subtreeH(cid), 0)
+        + (children.length - 1) * V_GAP;
+      return Math.max(selfH, totalChildH);
+    }
+
+    const positions = new Map<string, { x: number; y: number }>();
+    const visited = new Set<string>();
+
+    // Layout a subtree whose root sits at (x, yMid). xDir: +1 right, -1 left
+    function layoutSubtree(id: string, x: number, yMid: number, xDir: 1 | -1) {
+      visited.add(id);
+      const node = nodes.find(n => n.id === id)!;
+      const selfH = nodeHeight(node);
+      positions.set(id, { x, y: yMid - selfH / 2 });
+
+      const children = childMap.get(id) ?? [];
+      if (children.length === 0) return;
+
+      const nextX = x + xDir * (NODE_W + H_GAP);
+      const totalH = children.reduce((s, cid) => s + subtreeH(cid), 0)
+        + (children.length - 1) * V_GAP;
+
+      let cursor = yMid - totalH / 2;
+      for (const cid of children) {
+        const ch = subtreeH(cid);
+        layoutSubtree(cid, nextX, cursor + ch / 2, xDir);
+        cursor += ch + V_GAP;
+      }
+    }
+
+    // Keep root in place
+    visited.add(rootNode.id);
+    const rootSelfH = nodeHeight(rootNode);
+    const rootYMid = rootNode.y + rootSelfH / 2;
+    positions.set(rootNode.id, { x: rootNode.x, y: rootNode.y });
+
+    const directChildren = childMap.get(rootNode.id) ?? [];
+
+    // Split direct children into right-side and left-side based on current x
+    const rightChildren = directChildren.filter(cid => {
+      const c = nodes.find(n => n.id === cid);
+      return c && c.x >= rootNode.x;
+    });
+    const leftChildren = directChildren.filter(cid => {
+      const c = nodes.find(n => n.id === cid);
+      return c && c.x < rootNode.x;
+    });
+
+    // Layout right subtrees
+    if (rightChildren.length > 0) {
+      const totalH = rightChildren.reduce((s, cid) => s + subtreeH(cid), 0)
+        + (rightChildren.length - 1) * V_GAP;
+      let cursor = rootYMid - totalH / 2;
+      for (const cid of rightChildren) {
+        const ch = subtreeH(cid);
+        layoutSubtree(cid, rootNode.x + NODE_W + H_GAP, cursor + ch / 2, 1);
+        cursor += ch + V_GAP;
+      }
+    }
+
+    // Layout left subtrees (x decreases, so node x = rootNode.x - H_GAP - NODE_W)
+    if (leftChildren.length > 0) {
+      const totalH = leftChildren.reduce((s, cid) => s + subtreeH(cid), 0)
+        + (leftChildren.length - 1) * V_GAP;
+      let cursor = rootYMid - totalH / 2;
+      for (const cid of leftChildren) {
+        const ch = subtreeH(cid);
+        layoutSubtree(cid, rootNode.x - H_GAP - NODE_W, cursor + ch / 2, -1);
+        cursor += ch + V_GAP;
+      }
+    }
+
+    // Handle orphan nodes (unreachable from root)
+    const orphans = nodes.filter(n => !visited.has(n.id));
+    if (orphans.length > 0) {
+      let maxY = rootNode.y + rootSelfH;
+      positions.forEach(p => { maxY = Math.max(maxY, p.y + NODE_H); });
+      let ox = rootNode.x;
+      let oy = maxY + 80;
+      let rowH = 0;
+      orphans.forEach((n, i) => {
+        const nh = nodeHeight(n);
+        positions.set(n.id, { x: ox, y: oy });
+        ox += NODE_W + H_GAP;
+        rowH = Math.max(rowH, nh);
+        if ((i + 1) % 5 === 0) { ox = rootNode.x; oy += rowH + V_GAP; rowH = 0; }
+      });
+    }
+
+    // Apply all new positions and then fit the view
+    updateMapData(prev => ({
+      ...prev,
+      nodes: prev.nodes.map(n => {
+        const p = positions.get(n.id);
+        return p ? { ...n, x: p.x, y: p.y } : n;
+      }),
+    }));
+
+    // Fit view after a short tick to let state settle
+    setTimeout(() => fitView(), 50);
   };
 
   // ── Export PDF ───────────────────────────────────────────────────────────
@@ -820,6 +949,13 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           {connectMode
             ? connectSource ? "Click target node…" : "Click source node…"
             : "Connect"}
+        </button>
+        <button
+          onClick={autoArrange}
+          className="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+          title="Auto-arrange nodes into a neat tree layout"
+        >
+          <LayoutDashboard className="w-3.5 h-3.5" /> Auto Arrange
         </button>
         <div className="w-px h-4 bg-border mx-0.5" />
         <button onClick={() => {
