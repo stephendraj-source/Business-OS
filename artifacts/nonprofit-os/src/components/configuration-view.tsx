@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers, Activity } from 'lucide-react';
+import { Settings2, Plus, Pencil, Trash2, Check, X, Building2, Globe, ChevronRight, Loader2, MapPin, Link, Phone, Mail, User, Save, ListTodo, Layers, Activity, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -476,6 +476,90 @@ function OrgProfileSection({ fetchHeaders }: { fetchHeaders: () => Record<string
   );
 }
 
+function SystemPromptSection({ fetchHeaders }: { fetchHeaders: () => Record<string, string> }) {
+  const [prompt, setPrompt] = useState('');
+  const [saved, setSaved] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveOk, setSaveOk] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/org/system-prompt`, { headers: fetchHeaders() })
+      .then(r => r.json())
+      .then(d => { setPrompt(d.systemPrompt ?? ''); setSaved(d.systemPrompt ?? ''); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveOk(false);
+    try {
+      const r = await fetch(`${API}/org/system-prompt`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
+        body: JSON.stringify({ systemPrompt: prompt }),
+      });
+      const d = await r.json();
+      if (r.ok) { setSaved(d.systemPrompt ?? ''); setSaveOk(true); setTimeout(() => setSaveOk(false), 2500); }
+    } catch {}
+    setSaving(false);
+  };
+
+  const dirty = prompt !== saved;
+
+  return (
+    <div className="border border-border rounded-xl bg-card overflow-hidden">
+      <div className="p-4 border-b border-border flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-secondary flex items-center justify-center">
+          <Bot className="w-4 h-4 text-foreground" />
+        </div>
+        <div>
+          <h3 className="font-semibold text-foreground text-sm">AI System Prompt</h3>
+          <p className="text-xs text-muted-foreground">Custom instructions prepended to every AI conversation for this organisation</p>
+        </div>
+      </div>
+      <div className="p-4 space-y-3">
+        {loading ? (
+          <div className="flex items-center gap-2 text-muted-foreground text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <>
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              rows={6}
+              placeholder="Enter custom instructions for the AI assistant — e.g. tone, domain context, rules, or constraints specific to your organisation."
+              className="w-full rounded-lg border border-border bg-background text-foreground text-sm px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-muted-foreground"
+            />
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                Leave blank to use the default AI behaviour.
+              </p>
+              <button
+                onClick={handleSave}
+                disabled={saving || !dirty}
+                className={cn(
+                  'flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-all',
+                  saveOk
+                    ? 'bg-green-500/10 text-green-600'
+                    : dirty
+                    ? 'bg-primary text-primary-foreground hover:opacity-90'
+                    : 'bg-secondary text-muted-foreground cursor-not-allowed'
+                )}
+              >
+                {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : saveOk ? <Check className="w-3 h-3" /> : <Save className="w-3 h-3" />}
+                {saving ? 'Saving…' : saveOk ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ConfigurationView() {
   const { fetchHeaders } = useAuth();
 
@@ -546,6 +630,7 @@ export function ConfigurationView() {
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-3xl mx-auto space-y-6">
           <OrgProfileSection fetchHeaders={fetchHeaders} />
+          <SystemPromptSection fetchHeaders={fetchHeaders} />
           {sections.map(s => (
             <ConfigSection
               key={s.endpoint}

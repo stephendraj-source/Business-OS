@@ -761,6 +761,32 @@ orgRouter.put('/org/profile', async (req, res) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Tenant System Prompt ───────────────────────────────────────────────────────
+
+orgRouter.get('/org/system-prompt', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const [row] = await db.select({ systemPrompt: tenants.systemPrompt }).from(tenants).where(eq(tenants.id, tenantId));
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    res.json({ systemPrompt: row.systemPrompt ?? '' });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+orgRouter.put('/org/system-prompt', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    if (!tenantId) return res.status(400).json({ error: 'No tenant context' });
+    const { systemPrompt } = req.body;
+    const [row] = await db.update(tenants)
+      .set({ systemPrompt: systemPrompt ?? null })
+      .where(eq(tenants.id, tenantId))
+      .returning({ systemPrompt: tenants.systemPrompt });
+    if (!row) return res.status(404).json({ error: 'Tenant not found' });
+    res.json({ systemPrompt: row.systemPrompt ?? '' });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Full org tree ──────────────────────────────────────────────────────────────
 
 orgRouter.get('/org/tree', async (req, res) => {

@@ -12,6 +12,7 @@ import {
   checklistsTable,
   checklistItemsTable,
   users,
+  tenants,
 } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -201,6 +202,7 @@ function isListingQuery(q: string): boolean {
 async function buildSystemPrompt(tenantId: number | null): Promise<string> {
 
   const [
+    tenantRow,
     processes,
     workflows,
     activitiesList,
@@ -211,6 +213,9 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
     checklistItems,
     userList,
   ] = await Promise.all([
+    tenantId
+      ? db.select({ systemPrompt: tenants.systemPrompt }).from(tenants).where(eq(tenants.id, tenantId)).then(r => r[0] ?? null)
+      : Promise.resolve(null),
     db.select().from(processesTable)
       .where(tenantId ? eq(processesTable.tenantId, tenantId) : sql`1=1`)
       .orderBy(processesTable.number),
@@ -308,7 +313,11 @@ async function buildSystemPrompt(tenantId: number | null): Promise<string> {
       return parts.join(" | ");
     }).join("\n");
 
-  return `You are an expert business operations advisor embedded in BusinessOS — a comprehensive multi-tenant operating system. You have READ-ONLY access to the organisation's database.
+  const customPromptBlock = tenantRow?.systemPrompt?.trim()
+    ? `## Custom Organisation Instructions\n\n${tenantRow.systemPrompt.trim()}\n\n---\n\n`
+    : '';
+
+  return `${customPromptBlock}You are an expert business operations advisor embedded in BusinessOS — a comprehensive multi-tenant operating system. You have READ-ONLY access to the organisation's database.
 
 ## Your capabilities
 
