@@ -600,6 +600,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     updateMapData(prev => ({ ...prev, nodes: [...prev.nodes, node] }));
     setSelectedNodeId(node.id);
     setSelectedEdgeId(null);
+    setTimeout(() => autoArrange(), 80);
   };
 
   // ── Add child node ────────────────────────────────────────────────────────
@@ -625,6 +626,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     }));
     setSelectedNodeId(childId);
     setEditingLabel({ nodeId: childId, value: 'New node' });
+    setTimeout(() => autoArrange(), 80);
   };
 
   // ── Add peer (sibling) node ───────────────────────────────────────────────
@@ -654,6 +656,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     }));
     setSelectedNodeId(peerId);
     setEditingLabel({ nodeId: peerId, value: 'New node' });
+    setTimeout(() => autoArrange(), 80);
   };
 
   // ── Delete selected ───────────────────────────────────────────────────────
@@ -858,7 +861,9 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
 
   const handleSvgPointerUp = () => {
     panRef.current = null;
+    const wasDragged = dragRef.current?.moved ?? false;
     dragRef.current = null;
+    if (wasDragged) setTimeout(() => autoArrange(), 80);
   };
 
   const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
