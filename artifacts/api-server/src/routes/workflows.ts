@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db } from "@workspace/db";
-import { workflowsTable } from "@workspace/db";
+import { db, workflowsTable, processLinkedWorkflows, processesTable } from "@workspace/db";
 import { eq, max, and } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -97,6 +96,43 @@ router.delete("/workflows/:id", async (req, res) => {
       ? and(eq(workflowsTable.id, id), eq(workflowsTable.tenantId, auth.tenantId))
       : eq(workflowsTable.id, id);
     await db.delete(workflowsTable).where(cond);
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ── Process Tags ──────────────────────────────────────────────────────────────
+
+router.get("/workflows/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rows = await db
+      .select({
+        id: processesTable.id,
+        processName: processesTable.processName,
+        category: processesTable.category,
+      })
+      .from(processLinkedWorkflows)
+      .innerJoin(processesTable, eq(processLinkedWorkflows.processId, processesTable.id))
+      .where(eq(processLinkedWorkflows.workflowId, id))
+      .orderBy(processesTable.category, processesTable.processName);
+    res.json(rows);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/workflows/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { processIds = [] } = req.body as { processIds: number[] };
+    await db.delete(processLinkedWorkflows).where(eq(processLinkedWorkflows.workflowId, id));
+    if (processIds.length > 0) {
+      await db.insert(processLinkedWorkflows).values(processIds.map(pid => ({ workflowId: id, processId: pid })));
+    }
     res.json({ ok: true });
   } catch (err) {
     req.log.error(err);

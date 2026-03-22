@@ -3,11 +3,12 @@ import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
   Code2, ClipboardList, Bot, ArrowDownToLine, Layers, Split, Pencil, Brain,
-  ArrowRight, FileText, Star,
+  ArrowRight, FileText, Star, Tag,
 } from "lucide-react";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { ProcessTagSelector } from "@/components/process-tag-selector";
 
 const API = '/api';
 
@@ -1844,6 +1845,7 @@ export function WorkflowsView() {
   const { isFavourite, toggleFavourite } = useFavourites();
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [wfTab, setWfTab] = useState<"designer" | "processes">("designer");
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editNumber, setEditNumber] = useState(0);
@@ -2106,6 +2108,36 @@ export function WorkflowsView() {
             </div>
           </div>
 
+          {/* Tab bar */}
+          <div className="flex-none flex items-center gap-1 px-6 pt-3 border-b border-border bg-card/30">
+            {([
+              { id: "designer" as const, label: "Designer", icon: <GitBranch className="w-3.5 h-3.5" /> },
+              { id: "processes" as const, label: "Processes", icon: <Tag className="w-3.5 h-3.5" /> },
+            ]).map(t => (
+              <button
+                key={t.id}
+                onClick={() => setWfTab(t.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 text-sm rounded-t-lg transition-colors border-b-2 -mb-px",
+                  wfTab === t.id
+                    ? "text-primary border-primary font-medium"
+                    : "text-muted-foreground border-transparent hover:text-foreground hover:border-border"
+                )}
+              >
+                {t.icon}{t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Processes tab */}
+          {wfTab === "processes" && (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ProcessTagSelector entityType="workflows" entityId={selectedId!} />
+            </div>
+          )}
+
+          {/* Designer tab content */}
+          {wfTab === "designer" && <>
           {/* Input Sources banner */}
           {(() => {
             const linkedForms = availableForms.filter(f => f.linkedWorkflowId === selectedId);
@@ -2145,6 +2177,7 @@ export function WorkflowsView() {
               workflows={workflows.filter(w => w.id !== selectedId)}
             />
           </div>
+          </>}
         </div>
       )}
     </div>

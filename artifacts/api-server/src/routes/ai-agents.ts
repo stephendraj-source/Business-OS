@@ -8,7 +8,7 @@ import {
   aiAgentsTable, agentKnowledgeUrlsTable, agentKnowledgeFilesTable,
   agentSchedulesTable, agentRunLogsTable,
   agentModuleAccess, agentAllowedCategories, agentAllowedProcesses, agentFieldPermissions,
-  agentShares,
+  agentShares, processLinkedAgents,
 } from "@workspace/db";
 import { userGroups, groupRoles } from "@workspace/db";
 import { eq, desc, max, sql, or, inArray } from "drizzle-orm";
@@ -291,6 +291,37 @@ router.delete("/ai-agents/:id", async (req, res) => {
     req.log.error(err);
     res.status(500).json({ error: "Internal server error" });
   }
+});
+
+// ── Process Tags ──────────────────────────────────────────────────────────────
+
+router.get("/ai-agents/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rows = await db
+      .select({
+        id: processesTable.id,
+        processName: processesTable.processName,
+        category: processesTable.category,
+      })
+      .from(processLinkedAgents)
+      .innerJoin(processesTable, eq(processLinkedAgents.processId, processesTable.id))
+      .where(eq(processLinkedAgents.agentId, id))
+      .orderBy(processesTable.category, processesTable.processName);
+    res.json(rows);
+  } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
+});
+
+router.put("/ai-agents/:id/processes", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { processIds = [] } = req.body as { processIds: number[] };
+    await db.delete(processLinkedAgents).where(eq(processLinkedAgents.agentId, id));
+    if (processIds.length > 0) {
+      await db.insert(processLinkedAgents).values(processIds.map(pid => ({ agentId: id, processId: pid })));
+    }
+    res.json({ ok: true });
+  } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
 // ── Knowledge: URLs ───────────────────────────────────────────────────────────

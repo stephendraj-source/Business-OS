@@ -4,8 +4,9 @@ import {
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
   Shield, Search, Share2, Globe, Server, Webhook, ArrowRight, Star,
-  FlaskConical,
+  FlaskConical, Tag,
 } from "lucide-react";
+import { ProcessTagSelector } from "@/components/process-tag-selector";
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { dispatchCreditsRefresh } from "@/hooks/use-credits";
@@ -1459,7 +1460,7 @@ function AgentPermissionsPanel({ agentId }: { agentId: number }) {
 
 // ── Main AI Agents View ────────────────────────────────────────────────────────
 
-type Tab = "overview" | "knowledge" | "schedule" | "run" | "test" | "permissions" | "shares";
+type Tab = "overview" | "knowledge" | "schedule" | "run" | "test" | "permissions" | "shares" | "processes";
 
 export function AiAgentsView() {
   const { fetchHeaders, currentUser } = useUser();
@@ -1595,6 +1596,7 @@ export function AiAgentsView() {
 
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Overview", icon: <Wrench className="w-3.5 h-3.5" /> },
+    { id: "processes", label: "Processes", icon: <Tag className="w-3.5 h-3.5" /> },
     { id: "knowledge", label: "Knowledge", icon: <FileText className="w-3.5 h-3.5" /> },
     { id: "schedule", label: "Schedule", icon: <Calendar className="w-3.5 h-3.5" /> },
     { id: "run", label: "Run", icon: <Play className="w-3.5 h-3.5" /> },
@@ -1784,8 +1786,13 @@ export function AiAgentsView() {
             ))}
           </div>
 
-          {/* Tab content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          {/* Tab content — Processes tab is full-height, all others scroll */}
+          {tab === "processes" ? (
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <ProcessTagSelector entityType="ai-agents" entityId={selectedAgent.id} />
+            </div>
+          ) : null}
+          <div className={cn("flex-1 overflow-y-auto p-6", tab === "processes" && "hidden")}>
             {tab === "overview" && (
               <div className="max-w-2xl space-y-6">
 
