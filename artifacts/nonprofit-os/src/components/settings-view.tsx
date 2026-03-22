@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Tag } from 'lucide-react';
+import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Tag, Building2, Loader2, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { fetchOrgDisplayName, saveOrgDisplayName } from '@/hooks/use-org-name';
 
 export interface Theme {
   id: string;
@@ -219,14 +220,34 @@ const INDUSTRY_BLUEPRINTS = [
 export function SettingsView() {
   const { currentUser } = useAuth();
   const [activeTheme, setActiveTheme] = useState(() => localStorage.getItem('nonprofit-os-theme') ?? 'dark');
+  const [displayName, setDisplayName] = useState('');
+  const [displayNameSaving, setDisplayNameSaving] = useState(false);
+  const [displayNameSaved, setDisplayNameSaved] = useState(false);
 
   useEffect(() => {
     loadSavedTheme();
   }, []);
 
+  useEffect(() => {
+    fetchOrgDisplayName().then(name => {
+      if (name) setDisplayName(name === 'BusinessOS' ? '' : name);
+    });
+  }, []);
+
   const handleThemeSelect = (themeId: string) => {
     setActiveTheme(themeId);
     applyTheme(themeId);
+  };
+
+  const handleSaveDisplayName = async () => {
+    setDisplayNameSaving(true);
+    try {
+      await saveOrgDisplayName(displayName);
+      setDisplayNameSaved(true);
+      setTimeout(() => setDisplayNameSaved(false), 2500);
+    } finally {
+      setDisplayNameSaving(false);
+    }
   };
 
   return (
@@ -295,6 +316,47 @@ export function SettingsView() {
           <p className="text-xs text-muted-foreground mt-3">
             Your theme preference is saved automatically to this browser.
           </p>
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* Organisation Display Name */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <Building2 className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-semibold text-foreground">Organisation Display Name</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            This name appears in the top-left of the application. Leave blank to use the default.
+          </p>
+          <div className="flex gap-3 items-center">
+            <input
+              type="text"
+              value={displayName}
+              onChange={e => { setDisplayName(e.target.value); setDisplayNameSaved(false); }}
+              placeholder="e.g. Acme Corp"
+              className="flex-1 text-sm bg-secondary/40 border border-border rounded-lg px-3 py-2 focus:outline-none focus:border-primary/50 transition-colors"
+              onKeyDown={e => { if (e.key === 'Enter') handleSaveDisplayName(); }}
+            />
+            <button
+              onClick={handleSaveDisplayName}
+              disabled={displayNameSaving}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-colors border flex-none',
+                displayNameSaved
+                  ? 'bg-green-500/10 text-green-600 border-green-500/20'
+                  : 'bg-primary/10 hover:bg-primary/20 text-primary border-primary/20'
+              )}
+            >
+              {displayNameSaving
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : displayNameSaved
+                ? <Check className="w-3.5 h-3.5" />
+                : <Save className="w-3.5 h-3.5" />}
+              {displayNameSaved ? 'Saved' : 'Save'}
+            </button>
+          </div>
         </section>
 
         {/* Divider */}
