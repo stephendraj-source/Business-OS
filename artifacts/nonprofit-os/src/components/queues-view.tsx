@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Pencil, Trash2, Inbox, AlertTriangle, Loader2, X, Check,
   User, Calendar, Flag, Circle, CheckCircle2, Pause, Ban, RefreshCw,
+  ChevronRight, FileText, Clock,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,12 +36,14 @@ const PRESET_COLORS = [
 ];
 
 const STATUS_CONFIG: Record<string, { label: string; icon: React.ReactNode; className: string }> = {
-  pending:     { label: 'Pending',     icon: <Circle className="w-3.5 h-3.5" />,      className: 'text-muted-foreground' },
-  in_progress: { label: 'In Progress', icon: <RefreshCw className="w-3.5 h-3.5" />,   className: 'text-blue-400' },
-  on_hold:     { label: 'On Hold',     icon: <Pause className="w-3.5 h-3.5" />,       className: 'text-amber-400' },
+  pending:     { label: 'Pending',     icon: <Circle className="w-3.5 h-3.5" />,       className: 'text-muted-foreground' },
+  in_progress: { label: 'In Progress', icon: <RefreshCw className="w-3.5 h-3.5" />,    className: 'text-blue-400' },
+  on_hold:     { label: 'On Hold',     icon: <Pause className="w-3.5 h-3.5" />,        className: 'text-amber-400' },
   completed:   { label: 'Completed',   icon: <CheckCircle2 className="w-3.5 h-3.5" />, className: 'text-emerald-400' },
-  cancelled:   { label: 'Cancelled',   icon: <Ban className="w-3.5 h-3.5" />,         className: 'text-red-400' },
+  cancelled:   { label: 'Cancelled',   icon: <Ban className="w-3.5 h-3.5" />,          className: 'text-red-400' },
 };
+
+const STATUS_ORDER = ['pending', 'in_progress', 'on_hold', 'completed', 'cancelled'];
 
 const PRIORITY_CONFIG: Record<string, { label: string; className: string }> = {
   low:      { label: 'Low',      className: 'bg-slate-500/15 text-slate-400 border-slate-500/25' },
@@ -59,9 +62,13 @@ function jsonHeaders(): Record<string, string> {
   return { 'Content-Type': 'application/json', ...authHeaders() };
 }
 
-function formatDate(d: string | null) {
+function formatDate(d: string | null, long = false) {
   if (!d) return null;
-  try { return new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); } catch { return null; }
+  try {
+    return new Date(d).toLocaleDateString(undefined, long
+      ? { year: 'numeric', month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric' });
+  } catch { return null; }
 }
 
 // ── Color Picker ─────────────────────────────────────────────────────────────
@@ -246,73 +253,191 @@ function DeleteConfirmDialog({ queue, taskCount, onConfirm, onClose, deleting }:
   );
 }
 
-// ── Task Row ──────────────────────────────────────────────────────────────────
+// ── Task Row (clickable, no status button) ────────────────────────────────────
 
-function TaskRow({ task, onStatusChange }: { task: Task; onStatusChange: (id: number, status: string) => void }) {
+function TaskRow({
+  task,
+  isSelected,
+  onClick,
+}: {
+  task: Task;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
   const priorityCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.normal;
   const due = formatDate(task.end_date);
   const isOverdue = task.end_date && task.status !== 'completed' && task.status !== 'cancelled'
     && new Date(task.end_date) < new Date();
 
-  const NEXT_STATUS: Record<string, string> = {
-    pending: 'in_progress',
-    in_progress: 'completed',
-    on_hold: 'in_progress',
-    completed: 'pending',
-    cancelled: 'pending',
-  };
-
   return (
-    <div className="flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-secondary/40 transition-colors group">
-      {/* Status toggle */}
-      <button
-        onClick={() => onStatusChange(task.id, NEXT_STATUS[task.status] ?? 'in_progress')}
-        className={cn('mt-0.5 flex-shrink-0 transition-colors hover:opacity-70', statusCfg.className)}
-        title={`Status: ${statusCfg.label} — click to advance`}
-      >
+    <div
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-3 px-4 py-3 border-b border-border last:border-0 cursor-pointer transition-colors group',
+        isSelected
+          ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500'
+          : 'hover:bg-secondary/40 border-l-2 border-l-transparent',
+      )}
+    >
+      {/* Status icon (read-only indicator, no button) */}
+      <span className={cn('flex-shrink-0', statusCfg.className)}>
         {statusCfg.icon}
-      </button>
+      </span>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-start gap-2 flex-wrap">
+        <div className="flex items-center gap-2">
           <span className={cn(
-            'text-sm font-medium',
+            'text-sm font-medium truncate',
             task.status === 'completed' ? 'line-through text-muted-foreground' : 'text-foreground',
           )}>
             {task.name}
           </span>
-          <span className="text-[10px] text-muted-foreground font-mono mt-0.5">#{task.task_number}</span>
+          <span className="text-[10px] text-muted-foreground font-mono flex-shrink-0">#{task.task_number}</span>
         </div>
 
-        <div className="flex items-center gap-3 mt-1 flex-wrap">
-          {/* Priority */}
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full border font-medium', priorityCfg.className)}>
             {priorityCfg.label}
           </span>
-
-          {/* Status */}
-          <span className={cn('text-[10px] flex items-center gap-1', statusCfg.className)}>
-            {statusCfg.label}
-          </span>
-
-          {/* Assignee */}
           {task.assigned_to_name && (
             <span className="text-[11px] text-muted-foreground flex items-center gap-1">
               <User className="w-3 h-3" />
               {task.assigned_to_name}
             </span>
           )}
-
-          {/* Due date */}
           {due && (
             <span className={cn('text-[11px] flex items-center gap-1', isOverdue ? 'text-red-400' : 'text-muted-foreground')}>
               <Calendar className="w-3 h-3" />
               {due}
-              {isOverdue && ' (overdue)'}
             </span>
           )}
+        </div>
+      </div>
+
+      <ChevronRight className={cn('w-3.5 h-3.5 flex-shrink-0 transition-colors', isSelected ? 'text-indigo-400' : 'text-muted-foreground/40 group-hover:text-muted-foreground')} />
+    </div>
+  );
+}
+
+// ── Task Detail Panel ─────────────────────────────────────────────────────────
+
+function TaskDetailPanel({
+  task,
+  onClose,
+  onStatusChange,
+}: {
+  task: Task;
+  onClose: () => void;
+  onStatusChange: (id: number, status: string) => void;
+}) {
+  const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.pending;
+  const priorityCfg = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.normal;
+  const isOverdue = task.end_date && task.status !== 'completed' && task.status !== 'cancelled'
+    && new Date(task.end_date) < new Date();
+
+  return (
+    <div className="w-80 flex-shrink-0 border-l border-border flex flex-col bg-card overflow-hidden">
+      {/* Detail header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Task Detail</span>
+        <button
+          onClick={onClose}
+          className="w-6 h-6 flex items-center justify-center rounded hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {/* Title + number */}
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] font-mono text-muted-foreground">#{task.task_number}</span>
+          </div>
+          <h2 className="text-sm font-semibold text-foreground leading-snug">{task.name}</h2>
+        </div>
+
+        {/* Status picker */}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Status</p>
+          <div className="flex flex-col gap-1">
+            {STATUS_ORDER.map(s => {
+              const cfg = STATUS_CONFIG[s];
+              const isActive = task.status === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => !isActive && onStatusChange(task.id, s)}
+                  className={cn(
+                    'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors text-left w-full',
+                    isActive
+                      ? 'bg-indigo-500/15 border border-indigo-500/30'
+                      : 'hover:bg-secondary border border-transparent',
+                    cfg.className,
+                  )}
+                >
+                  {cfg.icon}
+                  <span className={cn('text-xs font-medium', isActive ? '' : 'text-foreground/70')}>{cfg.label}</span>
+                  {isActive && <Check className="w-3 h-3 ml-auto text-indigo-400" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Priority */}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Priority</p>
+          <span className={cn('text-xs px-2 py-1 rounded-full border font-medium', priorityCfg.className)}>
+            {priorityCfg.label}
+          </span>
+        </div>
+
+        {/* Assignee */}
+        {task.assigned_to_name && (
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Assigned To</p>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-indigo-500/20 flex items-center justify-center flex-shrink-0">
+                <User className="w-3.5 h-3.5 text-indigo-400" />
+              </div>
+              <span className="text-sm text-foreground">{task.assigned_to_name}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Due date */}
+        {task.end_date && (
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Due Date</p>
+            <div className={cn('flex items-center gap-2 text-sm', isOverdue ? 'text-red-400' : 'text-foreground')}>
+              <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
+              {formatDate(task.end_date, true)}
+              {isOverdue && <span className="text-[10px] bg-red-500/15 text-red-400 px-1.5 py-0.5 rounded-full">Overdue</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Description */}
+        {task.description && (
+          <div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Description</p>
+            <div className="flex gap-2">
+              <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">{task.description}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Created */}
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-2">Created</p>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Clock className="w-3.5 h-3.5 flex-shrink-0" />
+            {formatDate(task.created_at, true)}
+          </div>
         </div>
       </div>
     </div>
@@ -328,6 +453,7 @@ export function QueuesView() {
   const [tasksLoading, setTasksLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedQueueId, setSelectedQueueId] = useState<number | 'unqueued' | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
   const [editQueue, setEditQueue] = useState<Queue | null>(null);
@@ -345,7 +471,6 @@ export function QueuesView() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const qs: Queue[] = await r.json();
       setQueues(qs);
-      // Auto-select first queue
       if (qs.length > 0 && selectedQueueId === null) {
         setSelectedQueueId(qs[0].id);
       }
@@ -363,7 +488,6 @@ export function QueuesView() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       setTasks(await r.json());
     } catch {
-      // silently ignore — queues still usable
     } finally {
       setTasksLoading(false);
     }
@@ -374,14 +498,16 @@ export function QueuesView() {
     fetchTasks();
   }, [fetchQueues, fetchTasks]);
 
-  // Auto-select first queue when queues load
   useEffect(() => {
     if (queues.length > 0 && selectedQueueId === null) {
       setSelectedQueueId(queues[0].id);
     }
   }, [queues, selectedQueueId]);
 
-  // ── Task status update ────────────────────────────────────────────────────
+  // Clear task selection when queue changes
+  useEffect(() => {
+    setSelectedTaskId(null);
+  }, [selectedQueueId]);
 
   async function handleStatusChange(taskId: number, newStatus: string) {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
@@ -395,8 +521,6 @@ export function QueuesView() {
       await fetchTasks();
     }
   }
-
-  // ── Queue CRUD ────────────────────────────────────────────────────────────
 
   async function handleCreate(data: { name: string; color: string; description: string }) {
     setSaving(true);
@@ -468,8 +592,6 @@ export function QueuesView() {
     }
   }
 
-  // ── Derived data ──────────────────────────────────────────────────────────
-
   function tasksForQueue(queueId: number | 'unqueued') {
     if (queueId === 'unqueued') return tasks.filter(t => t.queue_id === null);
     return tasks.filter(t => t.queue_id === queueId);
@@ -482,15 +604,16 @@ export function QueuesView() {
   const selectedTasks = selectedQueueId !== null ? tasksForQueue(selectedQueueId) : [];
   const unqueuedCount = tasks.filter(t => t.queue_id === null).length;
 
-  // Active (non-completed/cancelled) vs done
   const activeTasks = selectedTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled');
   const doneTasks = selectedTasks.filter(t => t.status === 'completed' || t.status === 'cancelled');
+
+  const selectedTask = selectedTaskId !== null ? tasks.find(t => t.id === selectedTaskId) ?? null : null;
 
   return (
     <div className="flex h-full bg-background overflow-hidden">
 
       {/* ── Queue sidebar ── */}
-      <div className="w-64 flex-shrink-0 flex flex-col border-r border-border">
+      <div className="w-60 flex-shrink-0 flex flex-col border-r border-border">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <Inbox className="w-4 h-4 text-indigo-500" />
@@ -590,7 +713,7 @@ export function QueuesView() {
         </div>
       </div>
 
-      {/* ── Task panel ── */}
+      {/* ── Task list panel ── */}
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {selectedQueueId === null ? (
           <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
@@ -600,7 +723,7 @@ export function QueuesView() {
         ) : (
           <>
             {/* Panel header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 {selectedQueue ? (
                   <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: selectedQueue.color }} />
@@ -616,11 +739,9 @@ export function QueuesView() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <span className="text-xs text-muted-foreground">
-                  {activeTasks.length} active · {doneTasks.length} done
-                </span>
-              </div>
+              <span className="text-xs text-muted-foreground flex-shrink-0">
+                {activeTasks.length} active · {doneTasks.length} done
+              </span>
             </div>
 
             {/* Task list */}
@@ -637,23 +758,31 @@ export function QueuesView() {
                 </div>
               ) : (
                 <div>
-                  {/* Active tasks */}
                   {activeTasks.length > 0 && (
                     <div>
                       {activeTasks.map(t => (
-                        <TaskRow key={t.id} task={t} onStatusChange={handleStatusChange} />
+                        <TaskRow
+                          key={t.id}
+                          task={t}
+                          isSelected={selectedTaskId === t.id}
+                          onClick={() => setSelectedTaskId(prev => prev === t.id ? null : t.id)}
+                        />
                       ))}
                     </div>
                   )}
 
-                  {/* Done tasks */}
                   {doneTasks.length > 0 && (
                     <div>
                       <div className="px-4 py-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest bg-secondary/30 border-y border-border">
                         Completed & Cancelled ({doneTasks.length})
                       </div>
                       {doneTasks.map(t => (
-                        <TaskRow key={t.id} task={t} onStatusChange={handleStatusChange} />
+                        <TaskRow
+                          key={t.id}
+                          task={t}
+                          isSelected={selectedTaskId === t.id}
+                          onClick={() => setSelectedTaskId(prev => prev === t.id ? null : t.id)}
+                        />
                       ))}
                     </div>
                   )}
@@ -663,6 +792,16 @@ export function QueuesView() {
           </>
         )}
       </div>
+
+      {/* ── Task detail panel ── */}
+      {selectedTask && (
+        <TaskDetailPanel
+          key={selectedTask.id}
+          task={selectedTask}
+          onClose={() => setSelectedTaskId(null)}
+          onStatusChange={handleStatusChange}
+        />
+      )}
 
       {/* Dialogs */}
       {showCreate && (
