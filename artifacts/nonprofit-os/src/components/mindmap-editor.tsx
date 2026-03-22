@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
   GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
-  AlignLeft, ChevronDown, Calendar, FileDown,
+  AlignLeft, ChevronDown, Calendar, FileDown, Pencil, Copy,
+  GitFork, Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -147,6 +148,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
   const [queues, setQueues] = useState<{ id: number; name: string }[]>([]);
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
+  const [contextMenuColorOpen, setContextMenuColorOpen] = useState(false);
   const [taskModal, setTaskModal] = useState<{ nodeId: string } | null>(null);
   const [taskDraft, setTaskDraft] = useState<TaskData>(defaultTaskData());
 
@@ -448,6 +450,25 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
   };
 
+  // ── Duplicate a node ─────────────────────────────────────────────────────
+
+  const duplicateNode = (nodeId: string) => {
+    const node = mapDataRef.current.nodes.find(n => n.id === nodeId);
+    if (!node) return;
+    const newId = uid();
+    const copy: MapNode = {
+      ...node,
+      id: newId,
+      x: node.x + 30,
+      y: node.y + nodeHeight(node) + 20,
+      type: 'normal',
+      taskId: null,
+      taskData: null,
+    };
+    updateMapData(prev => ({ ...prev, nodes: [...prev.nodes, copy] }));
+    setSelectedNodeId(newId);
+  };
+
   // ── Open the "Create Task" modal pre-filled from node label ───────────────
 
   const openTaskModal = (nodeId: string) => {
@@ -714,7 +735,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   // ── Close context menu on outside click ──────────────────────────────────
 
   useEffect(() => {
-    if (!contextMenu) return;
+    if (!contextMenu) { setContextMenuColorOpen(false); return; }
     const handler = () => setContextMenu(null);
     window.addEventListener('pointerdown', handler);
     return () => window.removeEventListener('pointerdown', handler);
@@ -1257,28 +1278,93 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       )}
 
       {/* Right-click context menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-50 bg-card border border-border rounded-lg shadow-xl py-1 min-w-[160px]"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
-          onPointerDown={e => e.stopPropagation()}
-        >
-          <button
-            onClick={() => { deleteNode(contextMenu.nodeId); setContextMenu(null); }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors text-left"
-          >
-            <Trash2 className="w-3.5 h-3.5 flex-shrink-0" /> Delete
+      {contextMenu && (() => {
+        const ctxNode = mapData.nodes.find(n => n.id === contextMenu.nodeId);
+        if (!ctxNode) return null;
+        const isTask = ctxNode.type === 'task';
+        const sep = <div className="my-1 border-t border-border/60" />;
+        const item = (onClick: () => void, icon: React.ReactNode, label: string, cls = "text-foreground hover:bg-secondary/70") => (
+          <button onClick={onClick}
+            className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors text-left ${cls}`}>
+            <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">{icon}</span>
+            {label}
           </button>
-          {mapData.nodes.find(n => n.id === contextMenu.nodeId)?.type !== 'task' && (
+        );
+        return (
+          <div
+            className="fixed z-50 bg-card border border-border rounded-xl shadow-2xl py-1.5 min-w-[190px] text-sm"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onPointerDown={e => e.stopPropagation()}
+          >
+            {/* Edit / Rename */}
+            {item(() => {
+              setEditingLabel({ nodeId: ctxNode.id, value: ctxNode.label });
+              setContextMenu(null);
+            }, <Pencil className="w-3.5 h-3.5" />, 'Rename')}
+
+            {sep}
+
+            {/* Add child */}
+            {item(() => { addChildNode(ctxNode.id); setContextMenu(null); },
+              <GitFork className="w-3.5 h-3.5" />, 'Add child node', 'text-primary hover:bg-primary/10')}
+
+            {/* Add sibling */}
+            {item(() => { addPeerNode(ctxNode.id); setContextMenu(null); },
+              <Plus className="w-3.5 h-3.5" />, 'Add sibling node', 'text-primary hover:bg-primary/10')}
+
+            {/* Duplicate */}
+            {item(() => { duplicateNode(ctxNode.id); setContextMenu(null); },
+              <Copy className="w-3.5 h-3.5" />, 'Duplicate')}
+
+            {sep}
+
+            {/* Change colour */}
             <button
-              onClick={() => { openTaskModal(contextMenu.nodeId); setContextMenu(null); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-emerald-400 hover:bg-emerald-500/10 transition-colors text-left"
+              onClick={() => setContextMenuColorOpen(v => !v)}
+              className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm transition-colors text-left text-foreground hover:bg-secondary/70"
             >
-              <CheckSquare className="w-3.5 h-3.5 flex-shrink-0" /> Create Task
+              <span className="flex-shrink-0 w-3.5 h-3.5 flex items-center justify-center">
+                <Palette className="w-3.5 h-3.5" />
+              </span>
+              Change colour
+              <span className="ml-auto w-3.5 h-3.5 rounded-full border border-white/30 flex-shrink-0" style={{ background: ctxNode.color }} />
             </button>
-          )}
-        </div>
-      )}
+            {contextMenuColorOpen && (
+              <div className="px-3 pb-2 pt-1 grid grid-cols-5 gap-1.5">
+                {DEFAULT_COLORS.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => {
+                      updateMapData(prev => ({
+                        ...prev,
+                        nodes: prev.nodes.map(n => n.id === ctxNode.id ? { ...n, color: c } : n),
+                      }));
+                      setContextMenu(null);
+                    }}
+                    className="w-6 h-6 rounded-full border-2 transition-transform hover:scale-110"
+                    style={{ background: c, borderColor: ctxNode.color === c ? '#fff' : 'transparent' }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            )}
+
+            {sep}
+
+            {/* Task actions */}
+            {!isTask && item(() => { openTaskModal(ctxNode.id); setContextMenu(null); },
+              <CheckSquare className="w-3.5 h-3.5" />, 'Create task', 'text-emerald-400 hover:bg-emerald-500/10')}
+            {isTask && item(() => { unlinkTask(ctxNode.id); setContextMenu(null); },
+              <Unlink className="w-3.5 h-3.5" />, 'Unlink task', 'text-amber-400 hover:bg-amber-500/10')}
+
+            {sep}
+
+            {/* Delete */}
+            {item(() => { deleteNode(ctxNode.id); setContextMenu(null); },
+              <Trash2 className="w-3.5 h-3.5" />, 'Delete', 'text-red-400 hover:bg-red-500/10')}
+          </div>
+        );
+      })()}
 
       {/* Create Task modal */}
       {taskModal && (
