@@ -403,13 +403,13 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     const { nodes, edges } = mapDataRef.current;
     if (nodes.length === 0) return;
 
-    const H_GAP = 60;  // horizontal gap between levels
-    const V_GAP = 24;  // vertical gap between sibling subtrees
+    const H_GAP = 60;   // horizontal gap between levels
+    const SIBLING_GAP = 8;   // compact gap between sibling node tops
+    const SUBTREE_GAP = 12;  // minimum gap between sibling subtree extents
 
-    // Build child/parent maps
+    // Build child map
     const childMap = new Map<string, string[]>();
     const targetIdSet = new Set(edges.map(e => e.targetId));
-
     nodes.forEach(n => childMap.set(n.id, []));
     edges.forEach(e => {
       const list = childMap.get(e.sourceId);
@@ -419,39 +419,63 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     // Root = node with no incoming edges; fall back to first node
     const rootNode = nodes.find(n => !targetIdSet.has(n.id)) ?? nodes[0];
 
-    // Compute total pixel height occupied by a subtree
-    function subtreeH(id: string): number {
-      const children = childMap.get(id) ?? [];
-      const selfH = nodeHeight(nodes.find(n => n.id === id)!);
-      if (children.length === 0) return selfH;
-      const totalChildH = children.reduce((s, cid) => s + subtreeH(cid), 0)
-        + (children.length - 1) * V_GAP;
-      return Math.max(selfH, totalChildH);
-    }
-
     const positions = new Map<string, { x: number; y: number }>();
     const visited = new Set<string>();
 
-    // Layout a subtree whose root sits at (x, yMid). xDir: +1 right, -1 left
-    function layoutSubtree(id: string, x: number, yMid: number, xDir: 1 | -1) {
+    /**
+     * Lay out the subtree rooted at `id`, centred on `yMid`.
+     * Returns { top, bottom } — the full pixel extent of the subtree after layout.
+     *
+     * Algorithm:
+     *  1. Place sibling nodes compactly (by their own height + SIBLING_GAP).
+     *  2. Recursively lay out each child's subtree.
+     *  3. After each child is placed, check if the next sibling would
+     *     overlap the previous child's subtree; if so, push it down only
+     *     as much as needed (SUBTREE_GAP clearance).
+     */
+    function layoutSubtree(
+      id: string, x: number, yMid: number, xDir: 1 | -1,
+    ): { top: number; bottom: number } {
       visited.add(id);
       const node = nodes.find(n => n.id === id)!;
       const selfH = nodeHeight(node);
-      positions.set(id, { x, y: yMid - selfH / 2 });
+      const nodeTop = yMid - selfH / 2;
+      positions.set(id, { x, y: nodeTop });
 
       const children = childMap.get(id) ?? [];
-      if (children.length === 0) return;
+      if (children.length === 0) return { top: nodeTop, bottom: nodeTop + selfH };
 
       const nextX = x + xDir * (NODE_W + H_GAP);
-      const totalH = children.reduce((s, cid) => s + subtreeH(cid), 0)
-        + (children.length - 1) * V_GAP;
 
-      let cursor = yMid - totalH / 2;
-      for (const cid of children) {
-        const ch = subtreeH(cid);
-        layoutSubtree(cid, nextX, cursor + ch / 2, xDir);
-        cursor += ch + V_GAP;
+      // Step 1 – ideal compact positions (sibling nodes close together)
+      const childSelfHs = children.map(cid => nodeHeight(nodes.find(n => n.id === cid)!));
+      const totalNodeH = childSelfHs.reduce((s, h) => s + h, 0)
+        + (children.length - 1) * SIBLING_GAP;
+      const childYMids: number[] = [];
+      let cursor = yMid - totalNodeH / 2;
+      for (let i = 0; i < children.length; i++) {
+        childYMids[i] = cursor + childSelfHs[i] / 2;
+        cursor += childSelfHs[i] + SIBLING_GAP;
       }
+
+      // Step 2 – layout children and resolve subtree overlaps on the fly
+      const extents: Array<{ top: number; bottom: number }> = [];
+      for (let i = 0; i < children.length; i++) {
+        if (i > 0) {
+          // ensure this child doesn't collide with previous sibling's subtree
+          const prevBottom = extents[i - 1].bottom;
+          const desiredTop = childYMids[i] - childSelfHs[i] / 2;
+          if (desiredTop < prevBottom + SUBTREE_GAP) {
+            const shift = prevBottom + SUBTREE_GAP - desiredTop;
+            for (let j = i; j < children.length; j++) childYMids[j] += shift;
+          }
+        }
+        extents.push(layoutSubtree(children[i], nextX, childYMids[i], xDir));
+      }
+
+      const subtreeTop    = Math.min(nodeTop, ...extents.map(e => e.top));
+      const subtreeBottom = Math.max(nodeTop + selfH, ...extents.map(e => e.bottom));
+      return { top: subtreeTop, bottom: subtreeBottom };
     }
 
     // Keep root in place
@@ -462,7 +486,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
 
     const directChildren = childMap.get(rootNode.id) ?? [];
 
-    // Split direct children into right-side and left-side based on current x
+    // Split root's direct children into right-side and left-side
     const rightChildren = directChildren.filter(cid => {
       const c = nodes.find(n => n.id === cid);
       return c && c.x >= rootNode.x;
@@ -472,29 +496,33 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       return c && c.x < rootNode.x;
     });
 
-    // Layout right subtrees
-    if (rightChildren.length > 0) {
-      const totalH = rightChildren.reduce((s, cid) => s + subtreeH(cid), 0)
-        + (rightChildren.length - 1) * V_GAP;
-      let cursor = rootYMid - totalH / 2;
-      for (const cid of rightChildren) {
-        const ch = subtreeH(cid);
-        layoutSubtree(cid, rootNode.x + NODE_W + H_GAP, cursor + ch / 2, 1);
-        cursor += ch + V_GAP;
+    // Helper: layout a group of root-level children on one side
+    function layoutRootSide(children: string[], xStart: number, xDir: 1 | -1) {
+      const childSelfHs = children.map(cid => nodeHeight(nodes.find(n => n.id === cid)!));
+      const totalNodeH = childSelfHs.reduce((s, h) => s + h, 0)
+        + (children.length - 1) * SIBLING_GAP;
+      const yMids: number[] = [];
+      let cursor = rootYMid - totalNodeH / 2;
+      for (let i = 0; i < children.length; i++) {
+        yMids[i] = cursor + childSelfHs[i] / 2;
+        cursor += childSelfHs[i] + SIBLING_GAP;
+      }
+      const extents: Array<{ top: number; bottom: number }> = [];
+      for (let i = 0; i < children.length; i++) {
+        if (i > 0) {
+          const prevBottom = extents[i - 1].bottom;
+          const desiredTop = yMids[i] - childSelfHs[i] / 2;
+          if (desiredTop < prevBottom + SUBTREE_GAP) {
+            const shift = prevBottom + SUBTREE_GAP - desiredTop;
+            for (let j = i; j < children.length; j++) yMids[j] += shift;
+          }
+        }
+        extents.push(layoutSubtree(children[i], xStart, yMids[i], xDir));
       }
     }
 
-    // Layout left subtrees (x decreases, so node x = rootNode.x - H_GAP - NODE_W)
-    if (leftChildren.length > 0) {
-      const totalH = leftChildren.reduce((s, cid) => s + subtreeH(cid), 0)
-        + (leftChildren.length - 1) * V_GAP;
-      let cursor = rootYMid - totalH / 2;
-      for (const cid of leftChildren) {
-        const ch = subtreeH(cid);
-        layoutSubtree(cid, rootNode.x - H_GAP - NODE_W, cursor + ch / 2, -1);
-        cursor += ch + V_GAP;
-      }
-    }
+    layoutRootSide(rightChildren, rootNode.x + NODE_W + H_GAP,  1);
+    layoutRootSide(leftChildren,  rootNode.x - H_GAP - NODE_W, -1);
 
     // Handle orphan nodes (unreachable from root)
     const orphans = nodes.filter(n => !visited.has(n.id));
@@ -509,7 +537,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         positions.set(n.id, { x: ox, y: oy });
         ox += NODE_W + H_GAP;
         rowH = Math.max(rowH, nh);
-        if ((i + 1) % 5 === 0) { ox = rootNode.x; oy += rowH + V_GAP; rowH = 0; }
+        if ((i + 1) % 5 === 0) { ox = rootNode.x; oy += rowH + SIBLING_GAP; rowH = 0; }
       });
     }
 
