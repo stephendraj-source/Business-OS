@@ -444,6 +444,67 @@ async function runWriteTool(name: string, input: Record<string, any>, tenantId: 
   }
 }
 
+// ── Auto-detect affected processes ───────────────────────────────────────────
+router.post("/tasks/:id/processes/auto-detect", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const tenantId = req.auth?.tenantId ?? null;
+
+    // Get task details
+    const taskResult = await db.execute(sql`SELECT name, description FROM tasks WHERE id = ${id}`);
+    const task = taskResult.rows[0] as any;
+    if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+    // Get all processes for this tenant
+    const processResult = tenantId
+      ? await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes WHERE tenant_id = ${tenantId} ORDER BY number`)
+      : await db.execute(sql`SELECT id, number, process_name, category, purpose FROM processes ORDER BY number`);
+
+    const processes = processResult.rows as any[];
+    if (!processes.length) { res.json({ process_ids: [] }); return; }
+
+    const processList = processes.map(p =>
+      `#${p.number}: ${p.process_name}${p.category ? ` [${p.category}]` : ''}${p.purpose ? ` — ${p.purpose}` : ''}`
+    ).join('\n');
+
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 256,
+      messages: [{
+        role: "user",
+        content: `You are analyzing which organizational processes are affected by a task.
+
+Task: ${task.name}
+Description: ${task.description || '(none)'}
+
+Processes:
+${processList}
+
+Return ONLY a JSON array of process numbers (integers) that are directly affected by or relevant to this task. Return [] if none are clearly relevant. Example: [3, 7, 12]`,
+      }],
+    });
+
+    const text = message.content.map((c: any) => c.type === "text" ? c.text : "").join("");
+    const match = text.match(/\[[\d,\s]*\]/);
+    const numbers: number[] = match ? JSON.parse(match[0]) : [];
+
+    const ids = processes
+      .filter(p => numbers.includes(Number(p.number)))
+      .map(p => Number(p.id));
+
+    // Persist the detected links
+    await db.execute(sql`DELETE FROM task_processes WHERE task_id = ${id}`);
+    for (const pid of ids) {
+      await db.execute(sql`INSERT INTO task_processes (task_id, process_id) VALUES (${id}, ${pid}) ON CONFLICT DO NOTHING`);
+    }
+
+    res.json({ process_ids: ids });
+  } catch (err) {
+    req.log.error(err, "Failed to auto-detect processes");
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // ── Affected processes ────────────────────────────────────────────────────────
 router.get("/tasks/:id/processes", async (req, res) => {
   try {

@@ -171,6 +171,7 @@ export function TasksView() {
   // Affected processes for the open task
   const [linkedProcessIds, setLinkedProcessIds] = useState<number[]>([]);
   const [processSearch, setProcessSearch] = useState('');
+  const [autoDetectingProcesses, setAutoDetectingProcesses] = useState(false);
 
   const isManagerOrAbove = user?.role === 'admin' || user?.role === 'superuser';
 
@@ -234,15 +235,47 @@ export function TasksView() {
     setApprovalResult(null);
   }
 
+  const autoDetectProcesses = useCallback(async (taskId: number, currentAllProcesses: ProcessItem[]) => {
+    setAutoDetectingProcesses(true);
+    try {
+      const r = await fetch(`${API}/tasks/${taskId}/processes/auto-detect`, {
+        method: 'POST',
+        headers: fetchHeaders(),
+      });
+      if (!r.ok) return;
+      const data = await r.json() as { process_ids: number[] };
+      const ids = data.process_ids ?? [];
+      setLinkedProcessIds(ids);
+      if (ids.length > 0) {
+        const linkedNames = currentAllProcesses
+          .filter(p => ids.includes(p.id))
+          .sort((a, b) => a.number - b.number)
+          .map(p => p.process_name)
+          .join(', ');
+        setTasks(prev => prev.map(t => t.id === taskId ? { ...t, process_names: linkedNames || null } : t));
+      }
+    } catch { /* silent */ } finally {
+      setAutoDetectingProcesses(false);
+    }
+  }, [fetchHeaders]);
+
   function openTask(t: TaskRow) {
     setSelected(t);
     setCreating(false);
     populateEdit(t);
     setLinkedProcessIds([]);
     setProcessSearch('');
+    setAutoDetectingProcesses(false);
     fetch(`${API}/tasks/${t.id}/processes`, { headers: fetchHeaders() })
       .then(r => r.ok ? r.json() : [])
-      .then((data: ProcessItem[]) => setLinkedProcessIds(data.map(p => p.id)))
+      .then((data: ProcessItem[]) => {
+        const ids = data.map(p => p.id);
+        setLinkedProcessIds(ids);
+        if (ids.length === 0) {
+          // No processes linked yet — auto-detect using AI
+          autoDetectProcesses(t.id, allProcesses);
+        }
+      })
       .catch(() => {});
   }
 
@@ -893,12 +926,33 @@ export function TasksView() {
             {/* ── Affected Processes ──────────────────────────────────── */}
             {!creating && selected && (
               <div className="space-y-2 border-t border-border/40 pt-4">
-                <label className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
-                  <Network className="w-3.5 h-3.5" />Affected Processes
-                  {linkedProcessIds.length > 0 && (
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{linkedProcessIds.length}</span>
-                  )}
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
+                    <Network className="w-3.5 h-3.5" />Affected Processes
+                    {linkedProcessIds.length > 0 && (
+                      <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">{linkedProcessIds.length}</span>
+                    )}
+                  </label>
+                  <button
+                    onClick={() => autoDetectProcesses(selected.id, allProcesses)}
+                    disabled={autoDetectingProcesses}
+                    title="Auto-detect affected processes with AI"
+                    className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-primary/70 hover:text-primary hover:bg-primary/10 border border-transparent hover:border-primary/20 transition-colors disabled:opacity-50"
+                  >
+                    {autoDetectingProcesses
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <Sparkles className="w-3 h-3" />}
+                    {autoDetectingProcesses ? 'Detecting…' : 'Auto-detect'}
+                  </button>
+                </div>
+
+                {/* Loading state */}
+                {autoDetectingProcesses && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground/60 py-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>AI is analyzing the task to find relevant processes…</span>
+                  </div>
+                )}
 
                 {/* Linked process chips */}
                 {linkedProcessIds.length > 0 && (
