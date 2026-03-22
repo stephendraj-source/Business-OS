@@ -211,13 +211,18 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
 
   const FAV_VIEW_MAP: Record<string, ActiveView> = {
     process: 'table', form: 'forms', agent: 'ai-agents', workflow: 'workflows', task: 'tasks',
+    wiki: 'forms', url: 'forms', document: 'forms', mindmap: 'forms',
   };
   const FAV_TYPE_CONFIG: Record<string, { label: string; cls: string }> = {
     process:  { label: 'PROC', cls: 'bg-blue-500/15 text-blue-400' },
-    form:     { label: 'FORM', cls: 'bg-violet-500/15 text-violet-400' },
+    form:     { label: 'DOC',  cls: 'bg-violet-500/15 text-violet-400' },
     agent:    { label: 'AI',   cls: 'bg-amber-500/15 text-amber-400' },
     workflow: { label: 'WF',   cls: 'bg-green-500/15 text-green-400' },
     task:     { label: 'TASK', cls: 'bg-rose-500/15 text-rose-400' },
+    wiki:     { label: 'WIKI', cls: 'bg-violet-500/15 text-violet-400' },
+    url:      { label: 'URL',  cls: 'bg-sky-500/15 text-sky-400' },
+    document: { label: 'DOC',  cls: 'bg-orange-500/15 text-orange-400' },
+    mindmap:  { label: 'MAP',  cls: 'bg-emerald-500/15 text-emerald-400' },
   };
 
   function handleFavouriteClick(fav: typeof favourites[0]) {

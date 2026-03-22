@@ -471,12 +471,21 @@ function FolderNode({
                 {knowledgeItemIcon(item.type, "w-2.5 h-2.5")}
               </div>
               <span className="flex-1 min-w-0 text-xs truncate">{item.title}</span>
-              <button
-                onClick={e => onDeleteKnowledge(item.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFavourite(item.type, item.id, item.title); }}
+                  className={cn("p-0.5 rounded text-muted-foreground hover:text-amber-400 transition-colors", isFavourite(item.type, item.id) && "!opacity-100 text-amber-400")}
+                  title={isFavourite(item.type, item.id) ? "Remove from favourites" : "Add to favourites"}
+                >
+                  <Star className={cn("w-3 h-3", isFavourite(item.type, item.id) && "fill-amber-400")} />
+                </button>
+                <button
+                  onClick={e => onDeleteKnowledge(item.id, e)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-red-400 transition-all"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           ))}
           {/* Mind maps inside folder */}
@@ -497,12 +506,21 @@ function FolderNode({
                 <GitBranch className="w-2.5 h-2.5 text-violet-400" />
               </div>
               <span className="flex-1 min-w-0 text-xs truncate">{mm.name}</span>
-              <button
-                onClick={e => onDeleteMindmap(mm.id, e)}
-                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={e => { e.stopPropagation(); toggleFavourite('mindmap', mm.id, mm.name); }}
+                  className={cn("p-0.5 rounded text-muted-foreground hover:text-amber-400 transition-colors", isFavourite('mindmap', mm.id) && "!opacity-100 text-amber-400")}
+                  title={isFavourite('mindmap', mm.id) ? "Remove from favourites" : "Add to favourites"}
+                >
+                  <Star className={cn("w-3 h-3", isFavourite('mindmap', mm.id) && "fill-amber-400")} />
+                </button>
+                <button
+                  onClick={e => onDeleteMindmap(mm.id, e)}
+                  className="p-0.5 rounded text-muted-foreground hover:text-red-400 transition-all"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           ))}
           {/* Empty folder hint */}
@@ -1809,6 +1827,7 @@ interface FormsViewProps {
 
 export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps = {}) {
   const { fetchHeaders, currentUser } = useAuth();
+  const { isFavourite, toggleFavourite } = useFavourites();
   const currentUserName = (currentUser as any)?.name || (currentUser as any)?.email || "User";
   const [mode, setMode] = useState<'templates' | 'entry'>('templates');
   const [showAllForms, setShowAllForms] = useState(false);
@@ -1943,7 +1962,14 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
   useEffect(() => {
     function handleOpen(e: Event) {
       const d = (e as CustomEvent).detail;
-      if (d?.type === 'form') setSelectedId(d.id);
+      if (!d) return;
+      if (d.type === 'form') {
+        setSelectedId(d.id); setSelectedKnowledgeId(null); setSelectedMindmapId(null);
+      } else if (d.type === 'wiki' || d.type === 'url' || d.type === 'document') {
+        setSelectedKnowledgeId(d.id); setSelectedId(null); setSelectedMindmapId(null);
+      } else if (d.type === 'mindmap') {
+        setSelectedMindmapId(d.id); setSelectedId(null); setSelectedKnowledgeId(null);
+      }
     }
     window.addEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
     return () => window.removeEventListener(OPEN_FAVOURITE_EVENT, handleOpen);
@@ -2790,7 +2816,7 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                       {uncategorizedKnowledge.map(item => (
                         <div
                           key={`ki-${item.id}`}
-                          onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); }}
+                          onClick={() => { setSelectedKnowledgeId(item.id); setSelectedId(null); setSelectedMindmapId(null); }}
                           role="button"
                           tabIndex={0}
                           onKeyDown={e => e.key === 'Enter' && setSelectedKnowledgeId(item.id)}
@@ -2803,12 +2829,21 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                             {knowledgeItemIcon(item.type, "w-3.5 h-3.5")}
                           </div>
                           <span className="flex-1 min-w-0 text-sm font-medium truncate">{item.title}</span>
-                          <button
-                            onClick={e => deleteKnowledgeItem(item.id, e)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleFavourite(item.type, item.id, item.title); }}
+                              className={cn("p-1 rounded text-muted-foreground hover:text-amber-400 transition-colors", isFavourite(item.type, item.id) && "!opacity-100 text-amber-400")}
+                              title={isFavourite(item.type, item.id) ? "Remove from favourites" : "Add to favourites"}
+                            >
+                              <Star className={cn("w-3.5 h-3.5", isFavourite(item.type, item.id) && "fill-amber-400")} />
+                            </button>
+                            <button
+                              onClick={e => deleteKnowledgeItem(item.id, e)}
+                              className="p-1 rounded text-muted-foreground hover:text-red-400 transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                       {uncategorizedMindmaps.map(mm => (
@@ -2827,12 +2862,21 @@ export function FormsView({ openKnowledgeId, onKnowledgeOpened }: FormsViewProps
                             <GitBranch className="w-3.5 h-3.5 text-violet-400" />
                           </div>
                           <span className="flex-1 min-w-0 text-sm font-medium truncate">{mm.name}</span>
-                          <button
-                            onClick={e => deleteMindmap(mm.id, e)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-red-400 transition-all flex-shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                            <button
+                              onClick={e => { e.stopPropagation(); toggleFavourite('mindmap', mm.id, mm.name); }}
+                              className={cn("p-1 rounded text-muted-foreground hover:text-amber-400 transition-colors", isFavourite('mindmap', mm.id) && "!opacity-100 text-amber-400")}
+                              title={isFavourite('mindmap', mm.id) ? "Remove from favourites" : "Add to favourites"}
+                            >
+                              <Star className={cn("w-3.5 h-3.5", isFavourite('mindmap', mm.id) && "fill-amber-400")} />
+                            </button>
+                            <button
+                              onClick={e => deleteMindmap(mm.id, e)}
+                              className="p-1 rounded text-muted-foreground hover:text-red-400 transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </>

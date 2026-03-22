@@ -9,7 +9,7 @@ export interface FavouriteItem {
   id: number;
   user_id: number;
   tenant_id: number | null;
-  item_type: 'process' | 'form' | 'agent' | 'workflow' | 'task';
+  item_type: 'process' | 'form' | 'agent' | 'workflow' | 'task' | 'wiki' | 'url' | 'document' | 'mindmap';
   item_id: number;
   item_name: string;
   created_at: string;
