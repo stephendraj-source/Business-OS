@@ -1,5 +1,8 @@
-import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, Clock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  ChevronLeft, ChevronRight, Calendar, Loader2, Clock,
+  X, MapPin, User, Flag, CheckCircle2, Circle, RefreshCw, ExternalLink,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const API = '/api';
@@ -15,12 +18,22 @@ type CalView = 'work-week' | 'week' | 'month' | 'year';
 
 interface CalEvent {
   id: string;
+  originalId: number;
   title: string;
   date: Date;
   type: 'meeting' | 'task';
   color: string;
   time?: string;
   hour?: number;
+  // meeting extras
+  location?: string;
+  meetingType?: string;
+  organizerName?: string;
+  // task extras
+  status?: string;
+  priority?: string;
+  assignee?: string;
+  description?: string;
 }
 
 const MONTHS = [
@@ -81,12 +94,170 @@ function fmtHour(h: number) {
   return `${h - 12} PM`;
 }
 
-function EventPill({ evt, compact = false }: { evt: CalEvent; compact?: boolean }) {
+// ── Event Popover ─────────────────────────────────────────────────────────────
+
+interface PopoverProps {
+  event: CalEvent;
+  anchorRect: DOMRect;
+  onClose: () => void;
+}
+
+function EventPopover({ event, anchorRect, onClose }: PopoverProps) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Position: try right of anchor, fall back to left if off-screen
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const pw = el.offsetWidth || 280;
+    const ph = el.offsetHeight || 220;
+    let left = anchorRect.right + 8;
+    let top = anchorRect.top;
+    if (left + pw > W - 12) left = anchorRect.left - pw - 8;
+    if (left < 12) left = 12;
+    if (top + ph > H - 12) top = H - ph - 12;
+    if (top < 12) top = 12;
+    setPos({ top, left });
+  }, [anchorRect]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    setTimeout(() => document.addEventListener('mousedown', handler), 0);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+
+  const isMeeting = event.type === 'meeting';
+  const dateStr = event.date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+  const PRIORITY_LABEL: Record<string, string> = {
+    low: 'Low', normal: 'Normal', medium: 'Medium', high: 'High', critical: 'Critical',
+  };
+  const PRIORITY_COLOR: Record<string, string> = {
+    low: 'text-slate-400', normal: 'text-blue-400', medium: 'text-blue-400',
+    high: 'text-orange-400', critical: 'text-red-400',
+  };
+  const STATUS_ICON: Record<string, React.ReactNode> = {
+    pending:     <Circle className="w-3 h-3" />,
+    in_progress: <RefreshCw className="w-3 h-3" />,
+    completed:   <CheckCircle2 className="w-3 h-3 text-emerald-400" />,
+  };
+
   return (
     <div
+      ref={ref}
+      className="fixed z-[9999] w-72 bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
+      style={{ top: pos.top, left: pos.left }}
+    >
+      {/* Header bar */}
+      <div className="flex items-start gap-2 p-4 pb-3" style={{ borderBottom: `2px solid ${event.color}30` }}>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span
+              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase tracking-wide"
+              style={{ backgroundColor: event.color + '20', color: event.color }}
+            >
+              {isMeeting ? (event.meetingType ?? 'Meeting') : 'Task'}
+            </span>
+          </div>
+          <h3 className="text-sm font-semibold text-foreground leading-snug">{event.title}</h3>
+        </div>
+        <button
+          onClick={onClose}
+          className="flex-shrink-0 p-1 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors -mt-0.5"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Body */}
+      <div className="p-4 space-y-2.5">
+        {/* Date / time */}
+        <div className="flex items-start gap-2 text-sm">
+          <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-foreground text-xs">{dateStr}</p>
+            {event.time && <p className="text-muted-foreground text-[11px] mt-0.5">{event.time}</p>}
+          </div>
+        </div>
+
+        {/* Meeting: location */}
+        {isMeeting && event.location && (
+          <div className="flex items-center gap-2 text-xs">
+            <MapPin className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-foreground">{event.location}</span>
+          </div>
+        )}
+
+        {/* Meeting: organiser */}
+        {isMeeting && event.organizerName && (
+          <div className="flex items-center gap-2 text-xs">
+            <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-foreground">{event.organizerName}</span>
+          </div>
+        )}
+
+        {/* Task: priority */}
+        {!isMeeting && event.priority && (
+          <div className="flex items-center gap-2 text-xs">
+            <Flag className={cn('w-3.5 h-3.5 flex-shrink-0', PRIORITY_COLOR[event.priority] ?? 'text-muted-foreground')} />
+            <span className={PRIORITY_COLOR[event.priority] ?? 'text-foreground'}>
+              {PRIORITY_LABEL[event.priority] ?? event.priority} priority
+            </span>
+          </div>
+        )}
+
+        {/* Task: status */}
+        {!isMeeting && event.status && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="flex-shrink-0">{STATUS_ICON[event.status] ?? <Circle className="w-3 h-3" />}</span>
+            <span className="capitalize text-foreground">{event.status.replace(/_/g, ' ')}</span>
+          </div>
+        )}
+
+        {/* Task: assignee */}
+        {!isMeeting && event.assignee && (
+          <div className="flex items-center gap-2 text-xs">
+            <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            <span className="text-foreground">{event.assignee}</span>
+          </div>
+        )}
+
+        {/* Description snippet */}
+        {event.description && (
+          <p className="text-[11px] text-muted-foreground line-clamp-2 pt-1 border-t border-border">
+            {event.description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Event Pills / Blocks ──────────────────────────────────────────────────────
+
+function EventPill({
+  evt, compact = false, onClick,
+}: {
+  evt: CalEvent;
+  compact?: boolean;
+  onClick: (evt: CalEvent, e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
       title={evt.title}
+      onClick={e => onClick(evt, e)}
+      onKeyDown={e => e.key === 'Enter' && onClick(evt, e as any)}
       className={cn(
-        'rounded font-medium truncate leading-tight',
+        'rounded font-medium truncate leading-tight cursor-pointer transition-opacity hover:opacity-80 select-none',
         compact ? 'text-[10px] px-1 py-0.5' : 'text-xs px-1.5 py-0.5'
       )}
       style={{ backgroundColor: evt.color + '22', color: evt.color, borderLeft: `2px solid ${evt.color}` }}
@@ -99,11 +270,18 @@ function EventPill({ evt, compact = false }: { evt: CalEvent; compact?: boolean 
   );
 }
 
-function EventBlock({ evt }: { evt: CalEvent }) {
+function EventBlock({
+  evt, onClick,
+}: {
+  evt: CalEvent;
+  onClick: (evt: CalEvent, e: React.MouseEvent) => void;
+}) {
   const top = ((evt.hour ?? 0) - 6) * ROW_H;
   return (
     <div
-      className="absolute left-1 right-1 rounded px-1.5 py-0.5 text-[11px] font-medium truncate z-10 shadow-sm"
+      role="button"
+      tabIndex={0}
+      className="absolute left-1 right-1 rounded px-1.5 py-0.5 text-[11px] font-medium truncate z-10 shadow-sm cursor-pointer hover:opacity-80 transition-opacity select-none"
       style={{
         top,
         height: ROW_H - 2,
@@ -112,12 +290,16 @@ function EventBlock({ evt }: { evt: CalEvent }) {
         borderLeft: `3px solid ${evt.color}`,
       }}
       title={evt.title}
+      onClick={e => onClick(evt, e)}
+      onKeyDown={e => e.key === 'Enter' && onClick(evt, e as any)}
     >
       {evt.title}
       {evt.time && <span className="ml-1 opacity-60">{evt.time}</span>}
     </div>
   );
 }
+
+// ── CalendarView ──────────────────────────────────────────────────────────────
 
 export function CalendarView() {
   const [view, setView] = useState<CalView>('month');
@@ -128,6 +310,24 @@ export function CalendarView() {
   });
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Popover state
+  const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  function handleEventClick(evt: CalEvent, e: React.MouseEvent) {
+    e.stopPropagation();
+    setAnchorRect((e.currentTarget as HTMLElement).getBoundingClientRect());
+    setSelectedEvent(prev => prev?.id === evt.id ? null : evt);
+  }
+
+  // Close popover on background click
+  useEffect(() => {
+    if (!selectedEvent) return;
+    function handler() { setSelectedEvent(null); }
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [selectedEvent]);
 
   useEffect(() => {
     const h = fetchHeaders();
@@ -144,12 +344,16 @@ export function CalendarView() {
           if (isNaN(d.getTime())) continue;
           evts.push({
             id: `meeting-${m.id}`,
+            originalId: m.id,
             title: m.title || 'Meeting',
             date: d,
             type: 'meeting',
             color: '#3b82f6',
             time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
             hour: d.getHours(),
+            location: m.location || undefined,
+            meetingType: m.meeting_type || undefined,
+            organizerName: m.organizer_name || m.organizer_user_name || undefined,
           });
         }
       }
@@ -160,14 +364,23 @@ export function CalendarView() {
           if (!dateStr) continue;
           const d = new Date(dateStr);
           if (isNaN(d.getTime())) continue;
-          const color = t.priority === 'urgent' ? '#ef4444' : t.priority === 'high' ? '#f59e0b' : '#8b5cf6';
+          const priority = t.priority ?? 'normal';
+          const color = priority === 'critical' ? '#ef4444'
+            : priority === 'high' ? '#f59e0b'
+            : priority === 'urgent' ? '#ef4444'
+            : '#8b5cf6';
           evts.push({
             id: `task-${t.id}`,
+            originalId: t.id,
             title: t.name || 'Task',
             date: d,
             type: 'task',
             color,
             hour: 9,
+            status: t.status || undefined,
+            priority,
+            assignee: t.assigned_to_name || undefined,
+            description: t.description || undefined,
           });
         }
       }
@@ -292,11 +505,13 @@ export function CalendarView() {
                         <div className="flex-1 h-px bg-red-400/70" />
                       </div>
                     )}
-                    {dayEvts.map(evt => <EventBlock key={evt.id} evt={evt} />)}
+                    {dayEvts.map(evt => (
+                      <EventBlock key={evt.id} evt={evt} onClick={handleEventClick} />
+                    ))}
                     {allDayEvts.length > 0 && (
                       <div className="absolute top-1 left-1 right-1 space-y-0.5">
                         {allDayEvts.map(evt => (
-                          <EventPill key={evt.id} evt={evt} compact />
+                          <EventPill key={evt.id} evt={evt} compact onClick={handleEventClick} />
                         ))}
                       </div>
                     )}
@@ -328,8 +543,7 @@ export function CalendarView() {
     const gridStart = startOfWeekMon(firstDay);
     const allDays = datesInRange(gridStart, 42);
     const rows = [0,1,2,3,4,5].map(r => allDays.slice(r * 7, r * 7 + 7));
-    const filteredRows = rows
-      .filter(week => week.some(d => d.getMonth() === month));
+    const filteredRows = rows.filter(week => week.some(d => d.getMonth() === month));
 
     return (
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
@@ -368,7 +582,7 @@ export function CalendarView() {
 
                     <div className="flex-1 space-y-0.5 overflow-hidden">
                       {dayEvts.slice(0, 3).map(evt => (
-                        <EventPill key={evt.id} evt={evt} compact />
+                        <EventPill key={evt.id} evt={evt} compact onClick={handleEventClick} />
                       ))}
                       {dayEvts.length > 3 && (
                         <p className="text-[9px] text-muted-foreground pl-1">+{dayEvts.length - 3} more</p>
@@ -481,8 +695,10 @@ export function CalendarView() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
-
+    <div
+      className="flex flex-col h-full bg-background text-foreground overflow-hidden"
+      onClick={() => setSelectedEvent(null)}
+    >
       {/* Top bar */}
       <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border flex-shrink-0">
 
@@ -495,19 +711,19 @@ export function CalendarView() {
         {/* Center: nav + date label */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate(-1)}
+            onClick={e => { e.stopPropagation(); navigate(-1); }}
             className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
-            onClick={() => setCurrentDate(new Date())}
+            onClick={e => { e.stopPropagation(); setCurrentDate(new Date()); }}
             className="px-3 py-1 text-xs rounded-lg border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors font-medium"
           >
             Today
           </button>
           <button
-            onClick={() => navigate(1)}
+            onClick={e => { e.stopPropagation(); navigate(1); }}
             className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
           >
             <ChevronRight className="w-4 h-4" />
@@ -532,7 +748,7 @@ export function CalendarView() {
             ] as const).map(v => (
               <button
                 key={v.key}
-                onClick={() => setView(v.key)}
+                onClick={e => { e.stopPropagation(); setView(v.key); }}
                 className={cn(
                   'px-3 py-1.5 text-xs rounded-md transition-colors font-medium whitespace-nowrap',
                   view === v.key
@@ -552,6 +768,15 @@ export function CalendarView() {
       {view === 'week'      && <WeekView days={fullWeek} />}
       {view === 'month'     && <MonthView />}
       {view === 'year'      && <YearView />}
+
+      {/* Event detail popover */}
+      {selectedEvent && anchorRect && (
+        <EventPopover
+          event={selectedEvent}
+          anchorRect={anchorRect}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
     </div>
   );
 }
