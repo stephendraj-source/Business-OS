@@ -522,6 +522,12 @@ export function TasksView() {
                                   {t.assigned_to_name
                                     ? <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="w-3 h-3" />{t.assigned_to_name}</span>
                                     : <span className="text-xs text-muted-foreground/50 italic">Unassigned</span>}
+                                  {t.created_by_name && (
+                                    <span className="text-[11px] text-muted-foreground/55 flex items-center gap-1">
+                                      <span className="text-muted-foreground/40">·</span>
+                                      by {t.created_by_name}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
@@ -593,6 +599,7 @@ export function TasksView() {
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Approval</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Queue</th>
                   <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Assigned To</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground text-xs">Created By</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -632,6 +639,11 @@ export function TasksView() {
                       {t.assigned_to_name
                         ? <span className="inline-flex items-center gap-1 text-xs"><User className="w-3 h-3 text-muted-foreground" />{t.assigned_to_name}</span>
                         : <span className="text-xs text-muted-foreground/40">Unassigned</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {t.created_by_name
+                        ? <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">{t.created_by_name}</span>
+                        : <span className="text-xs text-muted-foreground/40">—</span>}
                     </td>
                     <td className="px-2 py-2.5">
                       <div className="flex items-center gap-0.5">
