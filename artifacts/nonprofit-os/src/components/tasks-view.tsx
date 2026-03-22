@@ -492,7 +492,8 @@ export function TasksView() {
     const matchStatus = filterStatus === 'all' || t.status === filterStatus;
     const matchApproval = filterApproval === 'all' || t.approval_status === filterApproval;
     const matchQueue = filterQueue === 'all' || String(t.queue_id) === filterQueue;
-    return matchSearch && matchPriority && matchStatus && matchApproval && matchQueue;
+    const matchOwnership = !t.assigned_to || t.assigned_to === user?.id;
+    return matchSearch && matchPriority && matchStatus && matchApproval && matchQueue && matchOwnership;
   });
 
   const pendingCount = tasks.filter(t => t.approval_status === 'pending').length;
