@@ -153,7 +153,7 @@ usersRouter.patch('/:id', requireAuth, async (req, res) => {
     const cond = tid !== null && !isSelf
       ? and(eq(users.id, id), eq(users.tenantId, tid))
       : eq(users.id, id);
-    const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope, category, jobDescription } = req.body;
+    const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope, category, jobDescription, privilegeMode } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (firstName !== undefined) updates.firstName = firstName;
@@ -168,6 +168,7 @@ usersRouter.patch('/:id', requireAuth, async (req, res) => {
     if (dataScope !== undefined) updates.dataScope = dataScope;
     if (category !== undefined) updates.category = category;
     if (jobDescription !== undefined) updates.jobDescription = jobDescription;
+    if (privilegeMode !== undefined) updates.privilegeMode = privilegeMode;
     const [row] = await db.update(users).set(updates).where(cond).returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(safeUser(row));

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, User,
+  Users, Plus, Trash2, Edit2, X, Check, Loader2, Shield, ShieldCheck, User,
   ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Search,
   Database, Layers, Lock, Mail, Copy, KeyRound, Eye, EyeOff,
   Building2, Tag, FolderOpen, Network, ChevronRight, Pencil, Globe, Briefcase,
@@ -89,6 +89,7 @@ interface UserRow {
   category: string;
   isActive: boolean;
   dataScope: string;
+  privilegeMode: string;
   createdAt: string;
 }
 
@@ -389,8 +390,23 @@ function UserDetailPanel({
   const [tab, setTab] = useState<Tab>('profile');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [privilegeMode, setPrivilegeMode] = useState<string>(user.privilegeMode || 'user');
+
+  useEffect(() => { setPrivilegeMode(user.privilegeMode || 'user'); }, [user.id]);
 
   const showSave = (msg: string) => { setSaveMsg(msg); setTimeout(() => setSaveMsg(''), 2000); };
+
+  const handlePrivilegeModeChange = async (mode: string) => {
+    setPrivilegeMode(mode);
+    await authedFetch(`${API}/users/${user.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ privilegeMode: mode }),
+    });
+    await onSaved();
+    showSave('Saved ✓');
+  };
+
+  const isRoleMode = privilegeMode === 'role';
 
   return (
     <div className="flex-1 min-w-0 flex flex-col h-full border-l border-border bg-card/40">
@@ -422,36 +438,41 @@ function UserDetailPanel({
           { key: 'data-access', label: 'Data Access', icon: Database },
           { key: 'fields', label: 'Fields', icon: Lock },
           { key: 'org', label: 'Org', icon: Network },
-        ] as { key: Tab; label: string; icon: React.ElementType }[]).map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
-              tab === t.key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            )}
-          >
-            <t.icon className="w-3.5 h-3.5" />
-            {t.label}
-          </button>
-        ))}
+        ] as { key: Tab; label: string; icon: React.ElementType }[]).map(t => {
+          const isLocked = isRoleMode && (t.key === 'modules' || t.key === 'data-access' || t.key === 'fields');
+          return (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cn(
+                'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors',
+                tab === t.key
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
+                isLocked && 'opacity-50'
+              )}
+            >
+              <t.icon className="w-3.5 h-3.5" />
+              {t.label}
+              {isLocked && <Lock className="w-2.5 h-2.5 ml-0.5 opacity-60" />}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
         {tab === 'profile' && (
-          <ProfileTab user={user} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
+          <ProfileTab user={user} privilegeMode={privilegeMode} onPrivilegeModeChange={handlePrivilegeModeChange} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
         )}
         {tab === 'modules' && (
-          <ModulesTab user={user} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
+          <ModulesTab user={user} privilegeMode={privilegeMode} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
         )}
         {tab === 'data-access' && (
-          <DataAccessTab user={user} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
+          <DataAccessTab user={user} privilegeMode={privilegeMode} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
         )}
         {tab === 'fields' && (
-          <FieldPermissionsTab user={user} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
+          <FieldPermissionsTab user={user} privilegeMode={privilegeMode} onSaved={async () => { await onSaved(); showSave('Saved ✓'); }} />
         )}
         {tab === 'org' && (
           <OrgTab userId={user.id} />
@@ -463,7 +484,7 @@ function UserDetailPanel({
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
-function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
+function ProfileTab({ user, privilegeMode, onPrivilegeModeChange, onSaved }: { user: UserDetail; privilegeMode: string; onPrivilegeModeChange: (mode: string) => Promise<void>; onSaved: () => Promise<void> }) {
   const initForm = () => ({
     name: user.name,
     firstName: (user as any).firstName ?? '',
@@ -649,6 +670,58 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
         </button>
       </div>
 
+      {/* ── Privilege Mode ── */}
+      <div className="border-t border-border pt-5 space-y-3">
+        <div>
+          <div className="text-sm font-semibold flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+            Access Privilege Source
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Choose whether this user's access privileges are managed individually or inherited from their assigned role.
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            {
+              key: 'user',
+              label: 'User Privileges',
+              desc: 'Privileges are set individually for this user in the Modules, Data Access, and Fields tabs.',
+              icon: User,
+            },
+            {
+              key: 'role',
+              label: 'Role Privileges',
+              desc: 'Privileges are inherited from the user\'s assigned role. Individual settings are locked.',
+              icon: Shield,
+            },
+          ] as { key: string; label: string; desc: string; icon: React.ElementType }[]).map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => onPrivilegeModeChange(opt.key)}
+              className={cn(
+                'relative text-left rounded-xl border-2 p-4 transition-all',
+                privilegeMode === opt.key
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border bg-background hover:border-border/80 hover:bg-secondary/40'
+              )}
+            >
+              <div className={cn('flex items-center gap-2 font-semibold text-sm mb-1', privilegeMode === opt.key ? 'text-primary' : 'text-foreground')}>
+                <opt.icon className="w-4 h-4 shrink-0" />
+                {opt.label}
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">{opt.desc}</p>
+              {privilegeMode === opt.key && (
+                <span className="absolute top-3 right-3 w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-primary-foreground" />
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="border-t border-border pt-5 space-y-3">
         <div>
           <div className="text-sm font-semibold flex items-center gap-2">
@@ -689,7 +762,7 @@ function ProfileTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
 
 // ── Modules Tab ───────────────────────────────────────────────────────────────
 
-function ModulesTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
+function ModulesTab({ user, privilegeMode, onSaved }: { user: UserDetail; privilegeMode: string; onSaved: () => Promise<void> }) {
   const initAccess = () => {
     if (!user.modules.length) {
       return Object.fromEntries(MODULES.map(m => [m.key, true]));
@@ -720,6 +793,24 @@ function ModulesTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
       setSaving(false);
     }
   };
+
+  if (privilegeMode === 'role') {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 rounded-2xl border-2 border-dashed border-border bg-secondary/20 text-center">
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+            <Shield className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm">Controlled by Role</div>
+            <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+              This user's module access is inherited from their assigned role. Switch to <span className="font-medium text-foreground">User Privileges</span> in the Profile tab to configure individual access.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-5">
@@ -760,7 +851,7 @@ function ModulesTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promis
 
 // ── Data Access Tab ───────────────────────────────────────────────────────────
 
-function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
+function DataAccessTab({ user, privilegeMode, onSaved }: { user: UserDetail; privilegeMode: string; onSaved: () => Promise<void> }) {
   const [scope, setScope] = useState<string>(user.dataScope || 'all');
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
     new Set(user.categories.map(c => c.category))
@@ -828,6 +919,24 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
     const matchesCategory = selectedCategories.size === 0 || selectedCategories.has(p.category);
     return matchesSearch && matchesCategory;
   });
+
+  if (privilegeMode === 'role') {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 rounded-2xl border-2 border-dashed border-border bg-secondary/20 text-center">
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+            <Shield className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm">Controlled by Role</div>
+            <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+              This user's data access is inherited from their assigned role. Switch to <span className="font-medium text-foreground">User Privileges</span> in the Profile tab to configure individual access.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -982,7 +1091,7 @@ function DataAccessTab({ user, onSaved }: { user: UserDetail; onSaved: () => Pro
 
 // ── Field Permissions Tab ─────────────────────────────────────────────────────
 
-function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () => Promise<void> }) {
+function FieldPermissionsTab({ user, privilegeMode, onSaved }: { user: UserDetail; privilegeMode: string; onSaved: () => Promise<void> }) {
   const initPerms = () => {
     const map: Record<string, { canView: boolean; canEdit: boolean }> = {};
     for (const ct of ['master', 'process']) {
@@ -1037,6 +1146,24 @@ function FieldPermissionsTab({ user, onSaved }: { user: UserDetail; onSaved: () 
       setSaving(false);
     }
   };
+
+  if (privilegeMode === 'role') {
+    return (
+      <div className="p-6">
+        <div className="flex flex-col items-center justify-center gap-3 py-12 px-6 rounded-2xl border-2 border-dashed border-border bg-secondary/20 text-center">
+          <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+            <Shield className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <div>
+            <div className="font-semibold text-sm">Controlled by Role</div>
+            <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+              This user's field permissions are inherited from their assigned role. Switch to <span className="font-medium text-foreground">User Privileges</span> in the Profile tab to configure individual access.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

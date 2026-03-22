@@ -14,6 +14,7 @@ export const users = pgTable('users', {
   designation: text('designation').notNull().default(''),
   phone: text('phone').notNull().default(''),
   dataScope: text('data_scope').notNull().default('categories'),
+  privilegeMode: text('privilege_mode').notNull().default('user'),
   category: text('category').notNull().default(''),
   jobDescription: text('job_description').notNull().default(''),
   isActive: boolean('is_active').notNull().default(true),
