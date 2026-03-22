@@ -150,7 +150,7 @@ export function TasksView() {
   const [editStatus, setEditStatus] = useState<string>('open');
   const [editAgentId, setEditAgentId] = useState<number | ''>('');
   const [editAiResult, setEditAiResult] = useState('');
-  const [editSource, setEditSource] = useState<string>('Employees');
+  const [editSource, setEditSource] = useState<string>('Users');
   const [editQueueId, setEditQueueId] = useState<number | ''>('');
   const [editWorkflowId, setEditWorkflowId] = useState<number | ''>('');
   const [editAiInstructions, setEditAiInstructions] = useState('');
@@ -247,7 +247,7 @@ export function TasksView() {
     setEditStatus(t.status);
     setEditAgentId(t.ai_agent_id ?? '');
     setEditAiResult(t.ai_result ?? '');
-    setEditSource(t.source ?? 'Employees');
+    setEditSource(t.source ?? 'Users');
     setEditQueueId(t.queue_id ?? '');
     setEditWorkflowId(t.workflow_id ?? '');
     setEditAiInstructions(t.ai_instructions ?? '');
@@ -306,7 +306,7 @@ export function TasksView() {
     setEditStartDate(''); setEditEndDate(''); setEditRevisedEnd('');
     setEditAssignedTo(''); setEditPriority('normal'); setEditStatus('open');
     setEditAgentId(''); setEditAiResult('');
-    setEditSource('Employees'); setEditQueueId(''); setEditWorkflowId(''); setEditAiInstructions('');
+    setEditSource('Users'); setEditQueueId(''); setEditWorkflowId(''); setEditAiInstructions('');
     setDirty(false); setAgentError(null); setApprovalResult(null);
   }
 

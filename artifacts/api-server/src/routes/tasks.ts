@@ -103,7 +103,7 @@ router.post("/tasks", async (req, res) => {
         ${createdBy},
         ${priority ?? 'normal'},
         ${aiAgentId ?? null},
-        ${source ?? 'Employees'},
+        ${source ?? 'Users'},
         ${queueId ?? null},
         ${workflowId ?? null},
         ${approvalStatus ?? 'none'},

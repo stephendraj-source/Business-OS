@@ -829,7 +829,7 @@ orgRouter.delete('/org/user-categories/:id', async (req, res) => {
 // ── Task Sources (configurable) ───────────────────────────────────────────────
 
 const DEFAULT_TASK_SOURCES = [
-  { name: 'Employees',  color: '#3b82f6', description: 'Tasks created by employees' },
+  { name: 'Users',  color: '#3b82f6', description: 'Tasks created by users' },
   { name: 'AI Agents',  color: '#8b5cf6', description: 'Tasks created by AI agents requiring human approval' },
 ];
 
