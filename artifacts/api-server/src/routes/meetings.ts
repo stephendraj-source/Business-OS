@@ -1,8 +1,160 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import multer from "multer";
+import mammoth from "mammoth";
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
+const pdfParse: (buf: Buffer) => Promise<{ text: string }> = _require("pdf-parse");
 
 const router: IRouter = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// ── Helpers for document parsing ──────────────────────────────────────────────
+
+function extractDate(text: string): string {
+  const patterns = [
+    /\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/,
+    /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})\b/i,
+    /\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b/i,
+    /\b(\d{4})[\/\-](\d{2})[\/\-](\d{2})\b/,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      try {
+        const d = new Date(m[0]);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 16);
+      } catch {}
+    }
+  }
+  return "";
+}
+
+
+function extractSection(text: string, keywords: string[]): string[] {
+  const lines = text.split(/\r?\n/);
+  const results: string[] = [];
+  let inSection = false;
+  for (const line of lines) {
+    const lower = line.toLowerCase().trim();
+    if (keywords.some(k => lower.startsWith(k))) {
+      inSection = true;
+      const afterColon = line.indexOf(":") >= 0 ? line.slice(line.indexOf(":") + 1).trim() : "";
+      if (afterColon) results.push(afterColon);
+      continue;
+    }
+    if (inSection) {
+      if (/^[A-Z][A-Z\s]{3,}:/.test(line.trim()) && line.trim().endsWith(":")) { inSection = false; continue; }
+      const cleaned = line.replace(/^[\s\-\•\*\d+\.]+/, "").trim();
+      if (cleaned) results.push(cleaned);
+    }
+  }
+  return results.filter(Boolean);
+}
+
+function parseMeetingText(text: string): Record<string, any> {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // Title: first substantial non-date line
+  let title = "";
+  for (const line of lines.slice(0, 10)) {
+    if (line.length > 4 && line.length < 120 && !/^\d/.test(line) && !extractDate(line)) {
+      title = line.replace(/^(meeting minutes?|minutes of meeting|minutes|meeting):?\s*/i, "").trim();
+      if (title) break;
+    }
+  }
+
+  // Date
+  let meetingDate = "";
+  for (const line of lines.slice(0, 20)) {
+    const d = extractDate(line);
+    if (d) { meetingDate = d; break; }
+  }
+
+  // Meeting type
+  let meetingType = "physical";
+  const fullLower = text.toLowerCase();
+  if (fullLower.includes("zoom") || fullLower.includes("teams") || fullLower.includes("google meet") || fullLower.includes("webex") || fullLower.includes("virtual") || fullLower.includes("online") || fullLower.includes("video call")) {
+    if (fullLower.includes("in-person") || fullLower.includes("on-site") || fullLower.includes("conference room") || fullLower.includes("office")) {
+      meetingType = "hybrid";
+    } else {
+      meetingType = "virtual";
+    }
+  }
+
+  // Location
+  const locationLines = extractSection(text, ["location:", "venue:", "held at:", "place:", "room:", "address:"]);
+  let location = locationLines[0] || "";
+  if (!location) {
+    for (const line of lines.slice(0, 15)) {
+      if (/^(room|venue|location|place|address|held at)[\s:]/i.test(line)) {
+        location = line.replace(/^[^:]+:\s*/, "").trim();
+        break;
+      }
+    }
+  }
+
+  // Organizer / Chair
+  const chairLines = extractSection(text, ["chair:", "chairperson:", "facilitator:", "organizer:", "organiser:", "led by:", "chaired by:"]);
+  const organizer = chairLines[0] || "";
+
+  // Attendees / Participants
+  const attendeeLines = extractSection(text, ["attendees:", "attendance:", "participants:", "present:", "in attendance:", "members present:"]);
+  const attendees = attendeeLines.map(l => {
+    const parts = l.split(/[,\-–]/).map(p => p.trim()).filter(Boolean);
+    return parts.map(name => ({ id: Math.random().toString(36).slice(2, 9), name }));
+  }).flat().filter(a => a.name.length > 1 && a.name.length < 80);
+
+  // Agenda
+  const agendaLines = extractSection(text, ["agenda:", "agenda items:", "items for discussion:"]);
+  const agenda = agendaLines.slice(0, 20).map(text => ({ id: Math.random().toString(36).slice(2, 9), text }));
+
+  // Discussions / Minutes
+  const discussionLines = extractSection(text, ["discussions:", "discussion:", "minutes:", "notes:", "key discussions:", "proceedings:", "matters arising:"]);
+  const discussions = discussionLines.join("\n");
+
+  // Action items
+  const actionLines = extractSection(text, ["action items:", "actions:", "next steps:", "follow-up:", "action points:"]);
+  const actions = actionLines.slice(0, 30).map(text => ({
+    id: Math.random().toString(36).slice(2, 9),
+    text,
+    status: "open" as const,
+  }));
+
+  return { title: title || "Imported Meeting", meetingDate, meetingType, location, organizer, attendees, agenda, discussions, actions };
+}
+
+// ── Parse file endpoint ───────────────────────────────────────────────────────
+
+router.post("/meetings/parse-file", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+    const mime = req.file.mimetype;
+    const name = req.file.originalname.toLowerCase();
+    let text = "";
+
+    if (mime === "application/pdf" || name.endsWith(".pdf")) {
+      const data = await pdfParse(req.file.buffer);
+      text = data.text;
+    } else if (
+      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mime === "application/msword" ||
+      name.endsWith(".docx") || name.endsWith(".doc")
+    ) {
+      const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+      text = result.value;
+    } else {
+      return res.status(400).json({ error: "Unsupported file type. Please upload a PDF or Word document." });
+    }
+
+    const parsed = parseMeetingText(text);
+    res.json(parsed);
+  } catch (err) {
+    req.log.error(err);
+    res.status(500).json({ error: "Failed to parse file" });
+  }
+});
 
 // ── List meetings ─────────────────────────────────────────────────────────────
 router.get("/meetings", async (req, res) => {

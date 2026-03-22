@@ -4,6 +4,7 @@ import {
   ChevronRight, Check, Clock, X, ChevronDown, ChevronUp, ExternalLink, User,
   ListChecks, MessageSquare, Link2, Cpu, GitBranch, Briefcase, ArrowRight,
   AlertCircle, FileText, Loader2, Save, Circle, CheckCircle2, ClipboardList,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -103,6 +104,8 @@ export function MeetingsView() {
   const [typeFilter, setTypeFilter] = useState<MeetingType | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Reference lists
   const [processes, setProcesses] = useState<Process[]>([]);
@@ -153,6 +156,64 @@ export function MeetingsView() {
     setMeetings(prev => prev.map(m => m.id === updated.id ? { ...m, ...updated } : m));
   };
 
+  const importFile = async (file: File) => {
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const parseRes = await fetch(`${API}/meetings/parse-file`, {
+        method: "POST",
+        headers: (() => {
+          const token = localStorage.getItem('nonprofit-os-auth-token');
+          return token ? { Authorization: `Bearer ${token}` } : {};
+        })(),
+        body: formData,
+      });
+      if (!parseRes.ok) {
+        const err = await parseRes.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to parse file");
+      }
+      const parsed = await parseRes.json();
+
+      // Create new meeting
+      const createRes = await fetch(`${API}/meetings`, {
+        method: "POST", headers: fetchHeaders(),
+        body: JSON.stringify({ title: parsed.title || "Imported Meeting", meeting_type: parsed.meetingType || "physical" }),
+      });
+      const newMeeting: Meeting = await createRes.json();
+
+      // Patch with all parsed fields
+      const patch: Record<string, any> = {};
+      if (parsed.meetingDate) patch.meeting_date = parsed.meetingDate;
+      if (parsed.location) patch.location = parsed.location;
+      if (parsed.organizer) patch.organizer_name = parsed.organizer;
+      if (parsed.attendees?.length) patch.attendees = JSON.stringify(parsed.attendees);
+      if (parsed.agenda?.length) patch.agenda = JSON.stringify(parsed.agenda);
+      if (parsed.discussions) patch.discussions = parsed.discussions;
+      if (parsed.actions?.length) patch.actions = JSON.stringify(parsed.actions);
+
+      if (Object.keys(patch).length > 0) {
+        const patchRes = await fetch(`${API}/meetings/${newMeeting.id}`, {
+          method: "PATCH", headers: fetchHeaders(),
+          body: JSON.stringify(patch),
+        });
+        const updated: Meeting = await patchRes.json();
+        setMeetings(prev => [updated, ...prev]);
+        setSelectedId(updated.id);
+      } else {
+        setMeetings(prev => [newMeeting, ...prev]);
+        setSelectedId(newMeeting.id);
+      }
+
+      toast({ title: "Meeting imported", description: `Fields pre-populated from "${file.name}"` });
+    } catch (err: any) {
+      toast({ title: "Import failed", description: err.message || "Could not read file", variant: "destructive" });
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   const filtered = meetings.filter(m => {
     if (typeFilter !== 'all' && m.meeting_type !== typeFilter) return false;
     if (search && !m.title.toLowerCase().includes(search.toLowerCase())) return false;
@@ -173,13 +234,30 @@ export function MeetingsView() {
               <span className="font-semibold text-sm">Meetings</span>
               <span className="text-xs text-white/40 bg-white/8 px-1.5 py-0.5 rounded-full">{meetings.length}</span>
             </div>
-            <button
-              onClick={createMeeting} disabled={creating}
-              className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
-            >
-              {creating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
-              New
-            </button>
+            <div className="flex items-center gap-1.5">
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) importFile(f); }}
+              />
+              <button
+                onClick={() => importInputRef.current?.click()} disabled={importing || creating}
+                title="Import from PDF or Word document"
+                className="flex items-center gap-1 text-xs bg-white/8 hover:bg-white/12 border border-white/15 text-white/70 hover:text-white px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+              >
+                {importing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                Import
+              </button>
+              <button
+                onClick={createMeeting} disabled={creating || importing}
+                className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 text-white px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}
+                New
+              </button>
+            </div>
           </div>
           <div className="relative mb-2">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/40" />
