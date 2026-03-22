@@ -16,12 +16,13 @@ import { FormsView } from '@/components/forms-view';
 import { UsersView } from '@/components/users-view';
 import { InitiativesView } from '@/components/initiatives-view';
 import { StrategyView } from '@/components/strategy-view';
+import { StrategicPlanningView } from '@/components/strategic-planning-view';
 import { ConfigurationView } from '@/components/configuration-view';
 import { ActivitiesView } from '@/components/activities-view';
 import { TasksView } from '@/components/tasks-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'strategy';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'workflows' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'strategy' | 'strategic-planning';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -154,6 +155,11 @@ export default function Dashboard() {
         {activeView === 'strategy' && (
           <motion.div key="strategy" {...fadeSlide} className="w-full h-full">
             <StrategyView />
+          </motion.div>
+        )}
+        {activeView === 'strategic-planning' && (
+          <motion.div key="strategic-planning" {...fadeSlide} className="w-full h-full">
+            <StrategicPlanningView />
           </motion.div>
         )}
         {activeView === 'configuration' && (
