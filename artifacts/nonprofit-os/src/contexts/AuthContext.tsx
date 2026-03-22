@@ -14,6 +14,7 @@ export interface AppUser {
   role: string;
   designation: string;
   isActive: boolean;
+  orgRoles: string[];
 }
 
 interface AuthContextValue {

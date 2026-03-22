@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, users, tenants, groups, userGroups } from '@workspace/db';
+import { db, users, tenants, groups, userGroups, userRoles, roles } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
@@ -117,7 +117,13 @@ authRouter.get('/me', requireAuth, async (req, res) => {
   try {
     const [user] = await db.select().from(users).where(eq(users.id, req.auth!.userId));
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json(safeUser(user));
+    const orgRoleRows = await db
+      .select({ roleName: roles.name })
+      .from(userRoles)
+      .innerJoin(roles, eq(userRoles.roleId, roles.id))
+      .where(eq(userRoles.userId, user.id));
+    const orgRoles = orgRoleRows.map(r => r.roleName);
+    res.json({ ...safeUser(user), orgRoles });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

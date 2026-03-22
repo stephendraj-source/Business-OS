@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame } from 'lucide-react';
+import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -300,19 +300,57 @@ export function SettingsView() {
         {/* Divider */}
         <div className="border-t border-border" />
 
-        {/* Profile (placeholder) */}
+        {/* Profile */}
         <section>
           <h3 className="text-base font-semibold text-foreground mb-4">Profile</h3>
-          <div className="flex items-center gap-4 p-5 bg-secondary/30 rounded-xl border border-border">
-            <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary border-2 border-primary/30">
-              {currentUser?.name?.charAt(0)?.toUpperCase() ?? 'U'}
+          <div className="bg-secondary/30 rounded-xl border border-border p-5 space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-primary/20 flex items-center justify-center text-sm font-bold text-primary border-2 border-primary/30 flex-shrink-0">
+                {currentUser?.name?.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() ?? 'U'}
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-foreground truncate">{currentUser?.name ?? 'User'}</div>
+                <div className="text-sm text-muted-foreground truncate">{currentUser?.email ?? ''}</div>
+                {currentUser?.designation && (
+                  <div className="text-xs text-muted-foreground/70 italic truncate">{currentUser.designation}</div>
+                )}
+              </div>
             </div>
-            <div>
-              <div className="font-semibold text-foreground">{currentUser?.name ?? 'User'}</div>
-              <div className="text-sm text-muted-foreground capitalize">{currentUser?.role ?? 'Member'}</div>
-            </div>
+            {((currentUser?.orgRoles?.length ?? 0) > 0) && (
+              <div className="border-t border-border/50 pt-4">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                  <Tag className="w-3 h-3" />
+                  <span>Roles</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {currentUser!.orgRoles.map(r => (
+                    <span
+                      key={r}
+                      className={cn(
+                        'text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide',
+                        r.toLowerCase().includes('administrators')
+                          ? 'bg-primary/15 text-primary border border-primary/20'
+                          : 'bg-secondary text-muted-foreground border border-border'
+                      )}
+                    >
+                      {r}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {((currentUser?.orgRoles?.length ?? 0) === 0) && (
+              <div className="border-t border-border/50 pt-4">
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
+                  <Tag className="w-3 h-3" />
+                  <span>Roles</span>
+                </div>
+                <span className="text-[10px] px-2.5 py-1 rounded-full font-semibold uppercase tracking-wide bg-secondary text-muted-foreground border border-border">
+                  All Users
+                </span>
+              </div>
+            )}
           </div>
-          <p className="text-xs text-muted-foreground mt-3">Profile editing coming soon.</p>
         </section>
 
       </div>
