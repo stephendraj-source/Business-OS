@@ -1,33 +1,45 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
 import { auditLogsTable } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth.js";
 
 const router: IRouter = Router();
 
-router.get("/audit-logs", async (req, res) => {
+function tenantWhere(auth: any) {
+  if (!auth) return null;
+  if (auth.role === 'superuser') return null;
+  return auth.tenantId ?? null;
+}
+
+router.get("/audit-logs", requireAuth, async (req, res) => {
   try {
     const limit = Math.min(parseInt(String(req.query.limit ?? "200"), 10), 500);
-    const role = req.auth?.role;
-    const userId = req.auth?.userId;
-
-    if (!req.auth) {
-      return res.json([]);
-    }
+    const auth = req.auth!;
+    const tid = tenantWhere(auth);
 
     let logs;
-    if (role === 'admin' || role === 'superuser') {
+    if (auth.role === 'superuser') {
       logs = await db
         .select()
         .from(auditLogsTable)
         .orderBy(desc(auditLogsTable.timestamp))
         .limit(limit);
-    } else {
+    } else if (auth.role === 'admin') {
+      const cond = tid !== null ? eq(auditLogsTable.tenantId, tid) : undefined;
       logs = await db
         .select()
         .from(auditLogsTable)
-        .where(eq(auditLogsTable.userId, userId!))
+        .where(cond)
+        .orderBy(desc(auditLogsTable.timestamp))
+        .limit(limit);
+    } else {
+      const conditions = [eq(auditLogsTable.userId, auth.userId)];
+      if (tid !== null) conditions.push(eq(auditLogsTable.tenantId, tid));
+      logs = await db
+        .select()
+        .from(auditLogsTable)
+        .where(and(...conditions))
         .orderBy(desc(auditLogsTable.timestamp))
         .limit(limit);
     }
@@ -39,8 +51,10 @@ router.get("/audit-logs", async (req, res) => {
   }
 });
 
-router.post("/audit-logs", async (req, res) => {
+router.post("/audit-logs", requireAuth, async (req, res) => {
   try {
+    const auth = req.auth!;
+    const tenantId = auth.role === 'superuser' ? null : (auth.tenantId ?? null);
     const body = req.body as {
       action: string;
       entityType: string;
@@ -53,6 +67,7 @@ router.post("/audit-logs", async (req, res) => {
       description?: string;
     };
     const [log] = await db.insert(auditLogsTable).values({
+      tenantId,
       action: body.action,
       entityType: body.entityType,
       entityId: body.entityId,
@@ -62,7 +77,7 @@ router.post("/audit-logs", async (req, res) => {
       newValue: body.newValue,
       user: body.user ?? "System",
       description: body.description,
-      userId: req.auth?.userId ?? null,
+      userId: auth.userId ?? null,
     }).returning();
     res.status(201).json(log);
   } catch (err) {

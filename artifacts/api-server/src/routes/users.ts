@@ -2,6 +2,13 @@ import { Router } from 'express';
 import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions } from '@workspace/db';
 import { eq, and } from 'drizzle-orm';
 import crypto from 'crypto';
+import { requireAuth } from '../middleware/auth.js';
+
+function getTenantId(req: any): number | null {
+  const auth = req.auth;
+  if (!auth || auth.role === 'superuser') return null;
+  return auth.tenantId ?? null;
+}
 
 export const usersRouter = Router();
 
@@ -97,10 +104,12 @@ usersRouter.post('/:id/send-password-reset', async (req, res) => {
   }
 });
 
-usersRouter.get('/:id', async (req, res) => {
+usersRouter.get('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const [row] = await db.select().from(users).where(eq(users.id, id));
+    const tid = getTenantId(req);
+    const cond = tid !== null ? and(eq(users.id, id), eq(users.tenantId, tid)) : eq(users.id, id);
+    const [row] = await db.select().from(users).where(cond);
     if (!row) return res.status(404).json({ error: 'Not found' });
     const modules = await db.select().from(userModuleAccess).where(eq(userModuleAccess.userId, id));
     const categories = await db.select().from(userAllowedCategories).where(eq(userAllowedCategories.userId, id));
@@ -112,9 +121,15 @@ usersRouter.get('/:id', async (req, res) => {
   }
 });
 
-usersRouter.patch('/:id', async (req, res) => {
+usersRouter.patch('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const tid = getTenantId(req);
+    const auth = req.auth!;
+    const isSelf = auth.userId === id;
+    const cond = tid !== null && !isSelf
+      ? and(eq(users.id, id), eq(users.tenantId, tid))
+      : eq(users.id, id);
     const { name, firstName, lastName, preferredName, email, password, role, designation, phone, isActive, dataScope, category, jobDescription } = req.body;
     const updates: Partial<typeof users.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
@@ -130,7 +145,7 @@ usersRouter.patch('/:id', async (req, res) => {
     if (dataScope !== undefined) updates.dataScope = dataScope;
     if (category !== undefined) updates.category = category;
     if (jobDescription !== undefined) updates.jobDescription = jobDescription;
-    const [row] = await db.update(users).set(updates).where(eq(users.id, id)).returning();
+    const [row] = await db.update(users).set(updates).where(cond).returning();
     if (!row) return res.status(404).json({ error: 'Not found' });
     res.json(safeUser(row));
   } catch (e: any) {
@@ -139,10 +154,12 @@ usersRouter.patch('/:id', async (req, res) => {
   }
 });
 
-usersRouter.delete('/:id', async (req, res) => {
+usersRouter.delete('/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await db.delete(users).where(eq(users.id, id));
+    const tid = getTenantId(req);
+    const cond = tid !== null ? and(eq(users.id, id), eq(users.tenantId, tid)) : eq(users.id, id);
+    await db.delete(users).where(cond);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

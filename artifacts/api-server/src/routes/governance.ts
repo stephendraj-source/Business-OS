@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, governanceStandardsTable, governanceDocumentsTable, processGovernanceTable } from "@workspace/db";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -8,8 +8,15 @@ import crypto from "crypto";
 import { sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { useCredit } from "../lib/credits";
+import { requireAuth } from "../middleware/auth.js";
 import { embed, vecToSql } from "../lib/embeddings.js";
 import { extractTextFromFile } from "../lib/extract-text.js";
+
+function getTenantId(req: any): number | null {
+  const auth = req.auth;
+  if (!auth || auth.role === 'superuser') return null;
+  return auth.tenantId ?? null;
+}
 
 const router: IRouter = Router();
 
@@ -73,20 +80,7 @@ async function embedGovDoc(docId: number, standardName: string, text: string): P
   }
 }
 
-async function seedIfEmpty() {
-  const existing = await db.select().from(governanceStandardsTable).limit(1);
-  if (existing.length > 0) return;
-  const seeds = [
-    { complianceName: "PDPA", complianceAuthority: "Personal Data Protection Commission (PDPC)", referenceUrl: "https://www.pdpc.gov.sg" },
-    { complianceName: "Code of Governance", complianceAuthority: "Charity Council Singapore", referenceUrl: "https://www.charitycouncil.org.sg/code-of-governance" },
-    { complianceName: "ACRA", complianceAuthority: "Accounting and Corporate Regulatory Authority", referenceUrl: "https://www.acra.gov.sg" },
-  ];
-  await db.insert(governanceStandardsTable).values(seeds);
-}
-
-seedIfEmpty().catch(console.error);
-
-router.post("/governance/ai-populate", async (req, res) => {
+router.post("/governance/ai-populate", requireAuth, async (req, res) => {
   try {
     const { complianceName } = req.body as { complianceName: string };
     if (!complianceName?.trim()) { res.status(400).json({ error: "complianceName required" }); return; }
@@ -124,9 +118,14 @@ Return ONLY the JSON object. Be precise — if you recognise the standard, use a
   }
 });
 
-router.get("/governance", async (_req, res) => {
-  const standards = await db.select().from(governanceStandardsTable).orderBy(governanceStandardsTable.id);
-  const docs = await db.select().from(governanceDocumentsTable);
+router.get("/governance", requireAuth, async (req, res) => {
+  const tid = getTenantId(req);
+  const cond = tid !== null ? eq(governanceStandardsTable.tenantId, tid) : undefined;
+  const standards = await db.select().from(governanceStandardsTable).where(cond).orderBy(governanceStandardsTable.id);
+  const govIds = standards.map(s => s.id);
+  const docs = govIds.length > 0
+    ? await db.select().from(governanceDocumentsTable).where(inArray(governanceDocumentsTable.governanceId, govIds))
+    : [];
   const withDocs = standards.map(s => ({
     ...s,
     documents: docs.filter(d => d.governanceId === s.id),
@@ -134,10 +133,12 @@ router.get("/governance", async (_req, res) => {
   res.json(withDocs);
 });
 
-router.post("/governance", async (req, res) => {
+router.post("/governance", requireAuth, async (req, res) => {
+  const tid = getTenantId(req);
   const { complianceName, complianceAuthority, referenceUrl } = req.body;
   if (!complianceName) { res.status(400).json({ error: "complianceName required" }); return; }
   const [created] = await db.insert(governanceStandardsTable).values({
+    tenantId: tid,
     complianceName,
     complianceAuthority: complianceAuthority ?? "",
     referenceUrl: referenceUrl ?? "",
@@ -145,26 +146,32 @@ router.post("/governance", async (req, res) => {
   res.status(201).json({ ...created, documents: [] });
 });
 
-router.put("/governance/:id", async (req, res) => {
+router.put("/governance/:id", requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
+  const tid = getTenantId(req);
   const { complianceName, complianceAuthority, referenceUrl } = req.body;
   const updates: Record<string, string> = {};
   if (complianceName !== undefined) updates.complianceName = complianceName;
   if (complianceAuthority !== undefined) updates.complianceAuthority = complianceAuthority;
   if (referenceUrl !== undefined) updates.referenceUrl = referenceUrl;
-  const [updated] = await db.update(governanceStandardsTable).set(updates).where(eq(governanceStandardsTable.id, id)).returning();
+  const cond = tid !== null ? and(eq(governanceStandardsTable.id, id), eq(governanceStandardsTable.tenantId, tid)) : eq(governanceStandardsTable.id, id);
+  const [updated] = await db.update(governanceStandardsTable).set(updates).where(cond).returning();
   if (!updated) { res.status(404).json({ error: "Not found" }); return; }
   const docs = await db.select().from(governanceDocumentsTable).where(eq(governanceDocumentsTable.governanceId, id));
   res.json({ ...updated, documents: docs });
 });
 
-router.delete("/governance/:id", async (req, res) => {
+router.delete("/governance/:id", requireAuth, async (req, res) => {
   const id = parseInt(req.params.id);
+  const tid = getTenantId(req);
+  const cond = tid !== null ? and(eq(governanceStandardsTable.id, id), eq(governanceStandardsTable.tenantId, tid)) : eq(governanceStandardsTable.id, id);
+  const [existing] = await db.select().from(governanceStandardsTable).where(cond);
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
   const docs = await db.select().from(governanceDocumentsTable).where(eq(governanceDocumentsTable.governanceId, id));
   for (const doc of docs) {
     try { fs.unlinkSync(doc.filePath); } catch {}
   }
-  await db.delete(governanceStandardsTable).where(eq(governanceStandardsTable.id, id));
+  await db.delete(governanceStandardsTable).where(cond);
   res.status(204).send();
 });
 

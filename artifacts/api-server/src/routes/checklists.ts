@@ -7,9 +7,16 @@ import {
   db, checklistsTable, checklistItemsTable,
   evidenceItemsTable, evidenceUrlsTable, evidenceFilesTable,
 } from "@workspace/db";
-import { eq, asc, count } from "drizzle-orm";
+import { eq, asc, count, and } from "drizzle-orm";
+import { requireAuth } from "../middleware/auth.js";
 
 const router: IRouter = Router();
+
+function getTenantId(req: any): number | null {
+  const auth = req.auth;
+  if (!auth || auth.role === 'superuser') return null;
+  return auth.tenantId ?? null;
+}
 
 const UPLOAD_DIR = path.join(process.cwd(), "uploads", "evidence");
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -23,50 +30,18 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
-// ── Full nested fetch helper ──────────────────────────────────────────────────
-
-async function getChecklistsFull(processId: number) {
-  const lists = await db.select().from(checklistsTable)
-    .where(eq(checklistsTable.processId, processId))
-    .orderBy(asc(checklistsTable.createdAt));
-
-  const result = [];
-  for (const list of lists) {
-    const items = await db.select().from(checklistItemsTable)
-      .where(eq(checklistItemsTable.checklistId, list.id))
-      .orderBy(asc(checklistItemsTable.sortOrder), asc(checklistItemsTable.createdAt));
-
-    const itemsWithEvidence = [];
-    for (const item of items) {
-      const evItems = await db.select().from(evidenceItemsTable)
-        .where(eq(evidenceItemsTable.checklistItemId, item.id))
-        .orderBy(asc(evidenceItemsTable.createdAt));
-
-      const evWithLinks = [];
-      for (const ev of evItems) {
-        const urls = await db.select().from(evidenceUrlsTable)
-          .where(eq(evidenceUrlsTable.evidenceItemId, ev.id))
-          .orderBy(asc(evidenceUrlsTable.createdAt));
-        const files = await db.select().from(evidenceFilesTable)
-          .where(eq(evidenceFilesTable.evidenceItemId, ev.id))
-          .orderBy(asc(evidenceFilesTable.uploadedAt));
-        evWithLinks.push({ ...ev, urls, files });
-      }
-      itemsWithEvidence.push({ ...item, evidenceItems: evWithLinks });
-    }
-    result.push({ ...list, items: itemsWithEvidence });
-  }
-  return result;
-}
 
 // ── Checklist counts per process ──────────────────────────────────────────────
 
-router.get("/checklists/counts", async (req, res) => {
+router.get("/checklists/counts", requireAuth, async (req, res) => {
   try {
+    const tid = getTenantId(req);
+    const tenantCond = tid !== null ? eq(checklistsTable.tenantId, tid) : undefined;
     const rows = await db
       .select({ processId: checklistsTable.processId, itemCount: count(checklistItemsTable.id) })
       .from(checklistsTable)
       .leftJoin(checklistItemsTable, eq(checklistItemsTable.checklistId, checklistsTable.id))
+      .where(tenantCond)
       .groupBy(checklistsTable.processId);
     const map: Record<number, number> = {};
     for (const row of rows) map[row.processId] = row.itemCount;
@@ -76,35 +51,65 @@ router.get("/checklists/counts", async (req, res) => {
 
 // ── Checklists ────────────────────────────────────────────────────────────────
 
-router.get("/checklists", async (req, res) => {
+router.get("/checklists", requireAuth, async (req, res) => {
   try {
+    const tid = getTenantId(req);
     const processId = Number(req.query.processId);
     if (!processId) return res.status(400).json({ error: "processId required" });
-    res.json(await getChecklistsFull(processId));
+    const cond = tid !== null
+      ? and(eq(checklistsTable.processId, processId), eq(checklistsTable.tenantId, tid))
+      : eq(checklistsTable.processId, processId);
+    const lists = await db.select().from(checklistsTable).where(cond).orderBy(asc(checklistsTable.createdAt));
+    const result = [];
+    for (const list of lists) {
+      const items = await db.select().from(checklistItemsTable)
+        .where(eq(checklistItemsTable.checklistId, list.id))
+        .orderBy(asc(checklistItemsTable.sortOrder), asc(checklistItemsTable.createdAt));
+      const itemsWithEvidence = [];
+      for (const item of items) {
+        const evItems = await db.select().from(evidenceItemsTable)
+          .where(eq(evidenceItemsTable.checklistItemId, item.id))
+          .orderBy(asc(evidenceItemsTable.createdAt));
+        const evWithLinks = [];
+        for (const ev of evItems) {
+          const urls = await db.select().from(evidenceUrlsTable).where(eq(evidenceUrlsTable.evidenceItemId, ev.id)).orderBy(asc(evidenceUrlsTable.createdAt));
+          const files = await db.select().from(evidenceFilesTable).where(eq(evidenceFilesTable.evidenceItemId, ev.id)).orderBy(asc(evidenceFilesTable.uploadedAt));
+          evWithLinks.push({ ...ev, urls, files });
+        }
+        itemsWithEvidence.push({ ...item, evidenceItems: evWithLinks });
+      }
+      result.push({ ...list, items: itemsWithEvidence });
+    }
+    res.json(result);
   } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
-router.post("/checklists", async (req, res) => {
+router.post("/checklists", requireAuth, async (req, res) => {
   try {
+    const tid = getTenantId(req);
     const { processId, name = "", description = "" } = req.body as Record<string, any>;
     if (!processId) return res.status(400).json({ error: "processId required" });
-    const [cl] = await db.insert(checklistsTable).values({ processId: Number(processId), name, description }).returning();
+    const [cl] = await db.insert(checklistsTable).values({ tenantId: tid, processId: Number(processId), name, description }).returning();
     res.status(201).json({ ...cl, items: [] });
   } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
-router.put("/checklists/:id", async (req, res) => {
+router.put("/checklists/:id", requireAuth, async (req, res) => {
   try {
+    const tid = getTenantId(req);
     const { name, description } = req.body as Record<string, string>;
+    const cond = tid !== null
+      ? and(eq(checklistsTable.id, Number(req.params.id)), eq(checklistsTable.tenantId, tid))
+      : eq(checklistsTable.id, Number(req.params.id));
     const [cl] = await db.update(checklistsTable)
       .set({ name, description, updatedAt: new Date() })
-      .where(eq(checklistsTable.id, Number(req.params.id)))
+      .where(cond)
       .returning();
     res.json(cl);
   } catch (err) { req.log.error(err); res.status(500).json({ error: "Internal server error" }); }
 });
 
-router.delete("/checklists/:id", async (req, res) => {
+router.delete("/checklists/:id", requireAuth, async (req, res) => {
   try {
     const clId = Number(req.params.id);
     const items = await db.select().from(checklistItemsTable).where(eq(checklistItemsTable.checklistId, clId));
