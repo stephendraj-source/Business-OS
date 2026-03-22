@@ -50,28 +50,47 @@ function getModeInfo(value: string) {
   return MODES.find(m => m.value === value) ?? MODES[MODES.length - 1];
 }
 
+function parseModes(mode: string): string[] {
+  return mode ? mode.split(',').map(s => s.trim()).filter(Boolean) : [];
+}
+
 function ModeBadge({ mode }: { mode: string }) {
-  const info = getModeInfo(mode);
-  const Icon = info.icon;
+  const modes = parseModes(mode);
+  if (modes.length === 0) return null;
   return (
-    <span className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', info.color)}>
-      <Icon className="w-3 h-3" />
-      {info.label}
+    <span className="inline-flex flex-wrap gap-1">
+      {modes.map(mv => {
+        const info = getModeInfo(mv);
+        const Icon = info.icon;
+        return (
+          <span key={mv} className={cn('inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium', info.color)}>
+            <Icon className="w-3 h-3" />
+            {info.label}
+          </span>
+        );
+      })}
     </span>
   );
 }
 
-function ModeSelector({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ModeSelector({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  function toggle(mv: string) {
+    if (value.includes(mv)) {
+      onChange(value.filter(v => v !== mv));
+    } else {
+      onChange([...value, mv]);
+    }
+  }
   return (
     <div className="grid grid-cols-3 gap-2">
       {MODES.map(m => {
         const Icon = m.icon;
-        const selected = value === m.value;
+        const selected = value.includes(m.value);
         return (
           <button
             key={m.value}
             type="button"
-            onClick={() => onChange(m.value)}
+            onClick={() => toggle(m.value)}
             className={cn(
               'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all',
               selected
@@ -97,7 +116,7 @@ export function ActivitiesView() {
   const [creating, setCreating] = useState(false);
 
   const [editName, setEditName] = useState('');
-  const [editMode, setEditMode] = useState<string>('others');
+  const [editMode, setEditMode] = useState<string[]>(['others']);
   const [editDesc, setEditDesc] = useState('');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -125,7 +144,7 @@ export function ActivitiesView() {
     setSelected(a);
     setCreating(false);
     setEditName(a.name);
-    setEditMode(a.mode);
+    setEditMode(parseModes(a.mode));
     setEditDesc(a.description);
     setDirty(false);
     setLinkingOpen(false);
@@ -136,7 +155,7 @@ export function ActivitiesView() {
     setSelected(null);
     setCreating(true);
     setEditName('');
-    setEditMode('others');
+    setEditMode([]);
     setEditDesc('');
     setDirty(false);
     setLinkingOpen(false);
@@ -167,7 +186,7 @@ export function ActivitiesView() {
         const r = await fetch(`${API}/activities`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-          body: JSON.stringify({ name: editName, mode: editMode, description: editDesc }),
+          body: JSON.stringify({ name: editName, mode: editMode.join(','), description: editDesc }),
         });
         const newA = await r.json();
         await loadActivities();
@@ -177,10 +196,10 @@ export function ActivitiesView() {
         await fetch(`${API}/activities/${selected.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-          body: JSON.stringify({ name: editName, mode: editMode, description: editDesc }),
+          body: JSON.stringify({ name: editName, mode: editMode.join(','), description: editDesc }),
         });
         await loadActivities();
-        setSelected(prev => prev ? { ...prev, name: editName, mode: editMode, description: editDesc } : null);
+        setSelected(prev => prev ? { ...prev, name: editName, mode: editMode.join(','), description: editDesc } : null);
         setDirty(false);
       }
     } finally {
