@@ -18,6 +18,10 @@ import {
 import { useFavourites, OPEN_FAVOURITE_EVENT } from "@/contexts/FavouritesContext";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { MindmapEditor } from "@/components/mindmap-editor";
+import {
+  Document, Packer, Paragraph, TextRun, HeadingLevel,
+  AlignmentType, UnderlineType, ThematicBreak,
+} from "docx";
 import { useAuth } from "@/contexts/AuthContext";
 import { PhoneInput } from "@/components/phone-input";
 import { useEditor, EditorContent } from "@tiptap/react";
@@ -1257,6 +1261,114 @@ function TbSep() {
   return <div className="w-px h-4 bg-border mx-0.5 shrink-0" />;
 }
 
+// ── Wiki export helpers ────────────────────────────────────────────────────────
+
+interface RunFmt { bold?: boolean; italics?: boolean; underline?: boolean; strike?: boolean; code?: boolean; }
+
+function extractRuns(node: Node, fmt: RunFmt = {}): TextRun[] {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent || "";
+    if (!text) return [];
+    return [new TextRun({
+      text,
+      bold: fmt.bold,
+      italics: fmt.italics,
+      underline: fmt.underline ? { type: UnderlineType.SINGLE } : undefined,
+      strike: fmt.strike,
+      font: fmt.code ? { name: "Courier New" } : undefined,
+      size: fmt.code ? 18 : undefined,
+    })];
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return [];
+  const el = node as Element;
+  const tag = el.tagName.toLowerCase();
+  const nf: RunFmt = { ...fmt };
+  if (tag === "strong" || tag === "b") nf.bold = true;
+  if (tag === "em" || tag === "i") nf.italics = true;
+  if (tag === "u") nf.underline = true;
+  if (tag === "s" || tag === "del") nf.strike = true;
+  if (tag === "code") nf.code = true;
+  return Array.from(el.childNodes).flatMap(c => extractRuns(c, nf));
+}
+
+function htmlBlockToParagraphs(el: Element): Paragraph[] {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "hr") return [new Paragraph({ children: [new ThematicBreak()] })];
+  if (tag === "ul" || tag === "ol") {
+    const items: Paragraph[] = [];
+    el.querySelectorAll("li").forEach((li, i) => {
+      const runs = extractRuns(li);
+      const prefix = tag === "ol" ? new TextRun({ text: `${i + 1}. ` }) : new TextRun({ text: "• " });
+      items.push(new Paragraph({
+        children: [prefix, ...(runs.length ? runs : [new TextRun({ text: li.textContent || "" })])],
+        indent: { left: 360 },
+      }));
+    });
+    return items;
+  }
+  const runs = extractRuns(el);
+  if (!runs.length && el.textContent?.trim()) runs.push(new TextRun({ text: el.textContent.trim() }));
+  const styleAttr = el.getAttribute("style") || "";
+  const textAlign = styleAttr.match(/text-align:\s*(\w+)/)?.[1];
+  const alignment = textAlign === "center" ? AlignmentType.CENTER : textAlign === "right" ? AlignmentType.RIGHT : textAlign === "justify" ? AlignmentType.BOTH : undefined;
+  if (tag === "h1") return [new Paragraph({ children: runs, heading: HeadingLevel.HEADING_1, alignment })];
+  if (tag === "h2") return [new Paragraph({ children: runs, heading: HeadingLevel.HEADING_2, alignment })];
+  if (tag === "h3") return [new Paragraph({ children: runs, heading: HeadingLevel.HEADING_3, alignment })];
+  if (tag === "blockquote") return [new Paragraph({ children: runs, indent: { left: 720 }, alignment })];
+  if (tag === "pre" || tag === "code") {
+    return [new Paragraph({ children: [new TextRun({ text: el.textContent || "", font: { name: "Courier New" }, size: 18 })], alignment })];
+  }
+  return [new Paragraph({ children: runs, alignment })];
+}
+
+async function exportWikiAsDocx(title: string, html: string) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, "text/html");
+  const paragraphs: Paragraph[] = [
+    new Paragraph({ children: [new TextRun({ text: title, bold: true, size: 48 })], heading: HeadingLevel.TITLE }),
+    new Paragraph({ children: [] }),
+  ];
+  doc.body.childNodes.forEach(node => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      paragraphs.push(...htmlBlockToParagraphs(node as Element));
+    }
+  });
+  const wordDoc = new Document({
+    sections: [{ children: paragraphs }],
+  });
+  const blob = await Packer.toBlob(wordDoc);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${title.replace(/[^a-z0-9]/gi, "_")}.docx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportWikiAsPdf(title: string, html: string) {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${title}</title><style>
+    @page { size: A4; margin: 2cm; }
+    body { font-family: Georgia, "Times New Roman", serif; font-size: 12pt; line-height: 1.7; color: #111; max-width: 100%; }
+    h1 { font-size: 22pt; margin: 0 0 6pt; } h2 { font-size: 17pt; margin: 18pt 0 4pt; }
+    h3 { font-size: 14pt; margin: 14pt 0 4pt; }
+    p { margin: 0 0 8pt; } ul, ol { margin: 0 0 8pt 20pt; }
+    blockquote { border-left: 3px solid #ccc; margin: 8pt 0 8pt 16pt; padding-left: 12pt; color: #444; }
+    hr { border: none; border-top: 1px solid #ccc; margin: 14pt 0; }
+    code, pre { font-family: "Courier New", monospace; font-size: 10pt; background: #f4f4f4; padding: 2pt 4pt; border-radius: 3pt; }
+    pre { display: block; padding: 10pt; white-space: pre-wrap; }
+    strong { font-weight: bold; } em { font-style: italic; }
+    .title-block { border-bottom: 2px solid #333; padding-bottom: 8pt; margin-bottom: 18pt; }
+    .title-block h1 { font-size: 26pt; margin-bottom: 0; }
+  </style></head><body>
+  <div class="title-block"><h1>${title}</h1></div>
+  ${html}
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => { win.focus(); win.print(); }, 400);
+}
+
 function WikiEditor({ item, onSave, saving }: {
   item: KnowledgeItem;
   onSave: (title: string, content: string) => Promise<void>;
@@ -1267,7 +1379,17 @@ function WikiEditor({ item, onSave, saving }: {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const handler = (e: MouseEvent) => { if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [exportOpen]);
 
   const editor = useEditor({
     extensions: [
@@ -1352,6 +1474,40 @@ function WikiEditor({ item, onSave, saving }: {
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
           {dirty ? "Save" : "Saved"}
         </button>
+        {/* Export dropdown */}
+        <div ref={exportRef} className="relative">
+          <button
+            onClick={() => setExportOpen(v => !v)}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border border-border bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors shrink-0"
+          >
+            {exporting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+            Export<ChevronDown className="w-3 h-3" />
+          </button>
+          {exportOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg py-1 min-w-[160px]">
+              <button
+                onClick={async () => {
+                  setExportOpen(false); setExporting(true);
+                  try { await exportWikiAsDocx(title, editor?.getHTML() || ""); }
+                  finally { setExporting(false); }
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-secondary transition-colors"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-400" />Word (.docx)
+              </button>
+              <button
+                onClick={() => {
+                  setExportOpen(false);
+                  exportWikiAsPdf(title, editor?.getHTML() || "");
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-secondary transition-colors"
+              >
+                <File className="w-3.5 h-3.5 text-red-400" />PDF
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Toolbar */}

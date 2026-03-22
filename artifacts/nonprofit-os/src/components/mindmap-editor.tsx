@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
   GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
-  AlignLeft, ChevronDown, Calendar,
+  AlignLeft, ChevronDown, Calendar, FileDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -274,6 +274,66 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
       scale,
     });
   };
+
+  // ── Export PDF ───────────────────────────────────────────────────────────
+
+  const exportAsPdf = useCallback(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+
+    const nodes = mapDataRef.current.nodes;
+    const pad = 60;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + NODE_W);
+      maxY = Math.max(maxY, n.y + nodeHeight(n));
+    }
+    if (!nodes.length) { minX = 0; minY = 0; maxX = 800; maxY = 600; }
+
+    const vx = minX - pad, vy = minY - pad;
+    const vw = (maxX - minX) + pad * 2;
+    const vh = (maxY - minY) + pad * 2;
+
+    // Clone SVG and fix it up for export
+    const clone = svgEl.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.setAttribute("viewBox", `${vx} ${vy} ${vw} ${vh}`);
+    clone.setAttribute("width", String(vw));
+    clone.setAttribute("height", String(vh));
+    // Reset the transform group to identity so content aligns with viewBox
+    const gEl = clone.querySelector("g");
+    if (gEl) gEl.setAttribute("transform", "translate(0,0) scale(1)");
+    // Remove foreignObject (inline editor inputs)
+    clone.querySelectorAll("foreignObject").forEach(fo => fo.remove());
+    // Add white background
+    const bg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    bg.setAttribute("x", String(vx)); bg.setAttribute("y", String(vy));
+    bg.setAttribute("width", String(vw)); bg.setAttribute("height", String(vh));
+    bg.setAttribute("fill", "white");
+    clone.insertBefore(bg, clone.firstChild);
+
+    const svgStr = new XMLSerializer().serializeToString(clone);
+    const svgDataUrl = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgStr);
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/>
+    <title>${mindmapName}</title>
+    <style>
+      @page { size: A4 landscape; margin: 1cm; }
+      @media print { body { margin: 0; } }
+      body { margin: 0; padding: 0; background: white; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
+      h2 { font-size: 14pt; color: #333; margin: 8pt 0 4pt; }
+      img { max-width: 100%; max-height: calc(100vh - 40pt); object-fit: contain; }
+    </style></head><body>
+    <h2>${mindmapName}</h2>
+    <img src="${svgDataUrl}" alt="${mindmapName}" />
+    </body></html>`);
+    win.document.close();
+    setTimeout(() => { win.focus(); win.print(); }, 500);
+  }, [mindmapName]);
 
   // ── Rename mindmap ────────────────────────────────────────────────────────
 
@@ -773,6 +833,14 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         </button>
         <div className="text-[10px] text-muted-foreground ml-1">{Math.round(transform.scale * 100)}%</div>
         <div className="flex-1" />
+        <button
+          onClick={exportAsPdf}
+          title="Export as PDF"
+          className="flex items-center gap-1 px-2.5 py-1 rounded text-xs border border-border bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+        >
+          <FileDown className="w-3.5 h-3.5" /> Export PDF
+        </button>
+        <div className="w-px h-4 bg-border mx-0.5" />
         {(selectedNodeId || selectedEdgeId) && (
           <button onClick={deleteSelected}
             className="flex items-center gap-1 px-2.5 py-1 rounded text-xs bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-colors">
