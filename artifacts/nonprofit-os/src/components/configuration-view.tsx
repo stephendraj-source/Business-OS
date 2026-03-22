@@ -74,7 +74,7 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
     try {
       const res = await fetch(`${API}${endpoint}`, {
         method: 'POST',
-        headers: fetchHeaders(),
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
         body: JSON.stringify({ name: newName.trim(), description: newDesc.trim(), color: newColor }),
       });
       if (res.ok) {
@@ -103,7 +103,7 @@ function ConfigSection({ title, icon, description, endpoint, fetchHeaders }: Sec
     try {
       const res = await fetch(`${API}${endpoint}/${editingId}`, {
         method: 'PATCH',
-        headers: fetchHeaders(),
+        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
         body: JSON.stringify({ name: editName.trim(), description: editDesc.trim(), color: editColor }),
       });
       if (res.ok) {
