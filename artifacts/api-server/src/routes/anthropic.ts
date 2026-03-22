@@ -34,7 +34,7 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
     const embStr = vecToSql(queryVec);
     const tenantCond = tenantId ? sql`ki.tenant_id = ${tenantId}` : sql`ki.tenant_id IS NULL`;
 
-    const vecRows = await db.execute(
+    const vecResult = await db.execute(
       sql`SELECT ki.id, ki.title, ki.content, ki.type, ki.url, ki.file_name,
                ff.name AS folder_name,
                1 - (ki.embedding_vec <=> ${embStr}::vector) AS similarity
@@ -43,14 +43,15 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
             WHERE ki.embedding_vec IS NOT NULL AND ${tenantCond}
             ORDER BY ki.embedding_vec <=> ${embStr}::vector
             LIMIT ${limit}`
-    ) as any[];
+    );
+    const vecRows: any[] = vecResult.rows as any[];
 
     // 2. Full-text keyword fallback for docs without embeddings
     const words = query.split(/\s+/).filter(w => w.length > 2).slice(0, 3);
     const ftRows: any[] = [];
     if (words.length > 0) {
       const pattern = `%${words.join("%")}%`;
-      const ft = await db.execute(
+      const ftResult = await db.execute(
         sql`SELECT ki.id, ki.title, ki.content, ki.type, ki.url, ki.file_name,
                    ff.name AS folder_name, 0.0 AS similarity
               FROM knowledge_items ki
@@ -58,8 +59,9 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
               WHERE ${tenantCond}
                 AND (lower(ki.title) LIKE lower(${pattern}) OR lower(ki.content) LIKE lower(${pattern}))
               LIMIT 4`
-      ) as any[];
-      for (const r of ft) {
+      );
+      const ftResult2: any[] = ftResult.rows as any[];
+      for (const r of ftResult2) {
         if (!vecRows.find((v: any) => v.id === r.id)) ftRows.push(r);
       }
     }
@@ -94,14 +96,15 @@ async function searchKnowledgeBase(query: string, tenantId: number | null, limit
 
 async function getAllKnowledgeSummary(tenantId: number | null): Promise<string> {
   try {
-    const rows = await db.execute(
+    const result = await db.execute(
       sql`SELECT ki.id, ki.title, ki.type, ki.url, ki.file_name,
                  ff.name AS folder_name
             FROM knowledge_items ki
             LEFT JOIN form_folders ff ON ff.id = ki.folder_id
             WHERE ${tenantId ? sql`ki.tenant_id = ${tenantId}` : sql`ki.tenant_id IS NULL`}
             ORDER BY ki.id`
-    ) as any[];
+    );
+    const rows: any[] = result.rows as any[];
 
     if (rows.length === 0) return "## Knowledge Base\nNo documents stored yet.\n";
 
