@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box, TableProperties, Network, Settings, Bell, LayoutDashboard, Briefcase,
-  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, Home, Bot,
+  Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, ChevronDown, Home, Bot,
   GitBranch, Users, Flag, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
   Star, Calendar,
@@ -124,8 +124,9 @@ function getIcon(id: ActiveView) {
 // ── Storage helpers ────────────────────────────────────────────────────────────
 
 const API = '/api';
-const STORAGE_SECTIONS = 'bos-nav-sections-v1';
-const STORAGE_ITEMS    = 'bos-nav-items-v1';
+const STORAGE_SECTIONS  = 'bos-nav-sections-v1';
+const STORAGE_ITEMS     = 'bos-nav-items-v1';
+const STORAGE_COLLAPSED = 'bos-nav-collapsed-v1';
 
 function defaultSectionOrder(): string[] {
   return SECTIONS_DEF.map(s => s.id);
@@ -224,6 +225,24 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         }));
       }, 100);
     }
+  }
+
+  // ── Section collapsed state ───────────────────────────────────────────────────
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_COLLAPSED);
+      return raw ? new Set<string>(JSON.parse(raw)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  function toggleSection(sectionId: string) {
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(sectionId)) next.delete(sectionId);
+      else next.add(sectionId);
+      localStorage.setItem(STORAGE_COLLAPSED, JSON.stringify([...next]));
+      return next;
+    });
   }
 
   // ── Nav reorder state ────────────────────────────────────────────────────────
@@ -542,7 +561,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   </div>
                 )}
 
-                {/* Section header — draggable */}
+                {/* Section header — draggable + collapse toggle */}
                 <div
                   className="group flex items-center gap-1 mb-1.5 px-2"
                   draggable
@@ -559,9 +578,21 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   <div className="opacity-0 group-hover:opacity-50 cursor-grab active:cursor-grabbing transition-opacity mr-0.5">
                     <GripVertical className="w-3 h-3 text-sidebar-foreground/50" />
                   </div>
-                  <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider select-none">
-                    {section.label}
-                  </span>
+                  <button
+                    onClick={() => toggleSection(sectionId)}
+                    className="flex items-center gap-1 flex-1 min-w-0 text-left"
+                    title={collapsedSections.has(sectionId) ? 'Expand section' : 'Collapse section'}
+                  >
+                    <span className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider select-none truncate">
+                      {section.label}
+                    </span>
+                    <ChevronDown
+                      className={cn(
+                        'w-3 h-3 text-sidebar-foreground/30 flex-shrink-0 transition-transform duration-200',
+                        collapsedSections.has(sectionId) && '-rotate-90'
+                      )}
+                    />
+                  </button>
                 </div>
 
                 {/* Drop indicator when item dragged onto section header */}
@@ -569,8 +600,11 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
                   <div className="mx-2 mb-1 h-0.5 bg-primary/60 rounded-full" />
                 )}
 
-                {/* Items */}
-                <div className="space-y-0.5">
+                {/* Items — hidden when section is collapsed */}
+                <div className={cn(
+                  'space-y-0.5 overflow-hidden transition-all duration-200',
+                  collapsedSections.has(sectionId) ? 'max-h-0 opacity-0' : 'max-h-[2000px] opacity-100'
+                )}>
                   {items.map(item => {
                     const isDragging  = draggingItemId === item.id;
                     const isDropBefore = dropTarget?.kind === 'item' && dropTarget.id === item.id && dropTarget.pos === 'before';
