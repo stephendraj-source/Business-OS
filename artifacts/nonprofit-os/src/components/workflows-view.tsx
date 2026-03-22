@@ -3,6 +3,7 @@ import {
   GitBranch, Plus, Trash2, Save, Edit2, Loader2, Hash,
   Play, X, Check,
   Code2, ClipboardList, Bot, ArrowDownToLine, Layers, Split, Pencil, Brain,
+  ArrowRight, FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,8 +45,8 @@ export interface WStep {
   callAgentName?: string;
 }
 
-interface FormOption { id: number; name: string; formNumber: number; }
-interface AgentOption { id: number; name: string; agentNumber: number; }
+interface FormOption { id: number; name: string; formNumber: number; linkedWorkflowId?: number | null; }
+interface AgentOption { id: number; name: string; agentNumber: number; outputDestType?: string | null; outputDestId?: number | null; }
 
 interface WorkflowSummary {
   id: number;
@@ -1874,7 +1875,7 @@ export function WorkflowsView() {
     const r = await fetch(`${API}/forms`, { headers: fetchHeaders() });
     if (r.ok) {
       const data = await r.json();
-      if (Array.isArray(data)) setAvailableForms(data.map((f: any) => ({ id: f.id, name: f.name, formNumber: f.formNumber })));
+      if (Array.isArray(data)) setAvailableForms(data.map((f: any) => ({ id: f.id, name: f.name, formNumber: f.formNumber, linkedWorkflowId: f.linkedWorkflowId ?? null })));
     }
   }, [fetchHeaders]);
 
@@ -1882,7 +1883,7 @@ export function WorkflowsView() {
     const r = await fetch(`${API}/ai-agents`, { headers: fetchHeaders() });
     if (r.ok) {
       const data = await r.json();
-      if (Array.isArray(data)) setAvailableAgents(data.map((a: any) => ({ id: a.id, name: a.name, agentNumber: a.agentNumber })));
+      if (Array.isArray(data)) setAvailableAgents(data.map((a: any) => ({ id: a.id, name: a.name, agentNumber: a.agentNumber, outputDestType: a.outputDestType ?? null, outputDestId: a.outputDestId ?? null })));
     }
   }, [fetchHeaders]);
 
@@ -2084,6 +2085,33 @@ export function WorkflowsView() {
               )}
             </div>
           </div>
+
+          {/* Input Sources banner */}
+          {(() => {
+            const linkedForms = availableForms.filter(f => f.linkedWorkflowId === selectedId);
+            const linkedAgents = availableAgents.filter(a => a.outputDestType === "workflow" && a.outputDestId === selectedId);
+            if (linkedForms.length === 0 && linkedAgents.length === 0) return null;
+            return (
+              <div className="flex-none px-4 py-2 border-b border-border bg-emerald-500/5 flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400 font-medium flex-shrink-0">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Input Sources:
+                </div>
+                {linkedForms.map(f => (
+                  <span key={`form-${f.id}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-400">
+                    <FileText className="w-3 h-3" />
+                    Form #{f.formNumber} {f.name}
+                  </span>
+                ))}
+                {linkedAgents.map(a => (
+                  <span key={`agent-${a.id}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs text-violet-700 dark:text-violet-400">
+                    <Bot className="w-3 h-3" />
+                    Agent #{a.agentNumber} {a.name}
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* Designer */}
           <div className="flex-1 min-h-0">

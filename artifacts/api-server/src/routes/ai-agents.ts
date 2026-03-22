@@ -258,7 +258,7 @@ router.post("/ai-agents", async (req, res) => {
 router.put("/ai-agents/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { agentNumber, name, description, instructions, runMode, trigger, tools } = req.body as Record<string, any>;
+    const { agentNumber, name, description, instructions, runMode, trigger, tools, outputDestType, outputDestId } = req.body as Record<string, any>;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (agentNumber !== undefined) updates.agentNumber = Number(agentNumber);
     if (name !== undefined) updates.name = name;
@@ -267,6 +267,8 @@ router.put("/ai-agents/:id", async (req, res) => {
     if (runMode !== undefined) updates.runMode = runMode;
     if (trigger !== undefined) updates.trigger = trigger;
     if (tools !== undefined) updates.tools = typeof tools === "string" ? tools : JSON.stringify(tools);
+    if (outputDestType !== undefined) updates.outputDestType = outputDestType || null;
+    if (outputDestId !== undefined) updates.outputDestId = outputDestId ? Number(outputDestId) : null;
     const [agent] = await db.update(aiAgentsTable).set(updates).where(eq(aiAgentsTable.id, id)).returning();
     if (!agent) return res.status(404).json({ error: "Not found" });
     res.json(agent);

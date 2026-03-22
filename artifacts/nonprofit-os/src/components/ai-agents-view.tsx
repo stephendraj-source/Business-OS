@@ -3,7 +3,7 @@ import {
   Bot, Plus, Trash2, Play, Clock, Link2, FileText, ChevronDown, ChevronRight,
   Upload, X, RefreshCw, Check, AlertCircle, Loader2, Cpu, Zap, Calendar,
   ToggleLeft, ToggleRight, Edit2, Save, Hash, Wrench, GitBranch, ArrowLeft,
-  Shield, Search, Share2, Globe, Server, Webhook,
+  Shield, Search, Share2, Globe, Server, Webhook, ArrowRight,
 } from "lucide-react";
 import { cn, copyToClipboard } from "@/lib/utils";
 import { dispatchCreditsRefresh } from "@/hooks/use-credits";
@@ -25,6 +25,8 @@ interface Agent {
   runMode: RunMode;
   trigger: string;
   tools: string;
+  outputDestType?: string | null;
+  outputDestId?: number | null;
   createdAt: string;
   updatedAt: string;
   urlCount?: number;
@@ -1277,6 +1279,8 @@ export function AiAgentsView() {
   const [editTools, setEditTools] = useState<string[]>([]);
   const [editNumber, setEditNumber] = useState(0);
   const [editingId, setEditingId] = useState(false);
+  const [editOutputDestType, setEditOutputDestType] = useState<string>("");
+  const [editOutputDestId, setEditOutputDestId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
 
@@ -1312,6 +1316,8 @@ export function AiAgentsView() {
       setEditTrigger(selectedAgent.trigger ?? "");
       setEditInstructions(selectedAgent.instructions);
       setEditNumber(selectedAgent.agentNumber);
+      setEditOutputDestType(selectedAgent.outputDestType ?? "");
+      setEditOutputDestId(selectedAgent.outputDestId ?? null);
       try { setEditTools(JSON.parse(selectedAgent.tools)); } catch { setEditTools([]); }
       setDirty(false);
     }
@@ -1354,6 +1360,8 @@ export function AiAgentsView() {
           trigger: editTrigger,
           instructions: editInstructions,
           tools: JSON.stringify(editTools),
+          outputDestType: editOutputDestType || null,
+          outputDestId: editOutputDestId || null,
         }),
       });
       await fetchAgents();
@@ -1674,6 +1682,73 @@ export function AiAgentsView() {
                   </label>
                   <ToolsPicker tools={editTools} onChange={markDirty(setEditTools)} />
                 </div>
+
+                {/* Output Destination */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-medium flex items-center gap-2">
+                    <ArrowRight className="w-4 h-4 text-emerald-500" />
+                    Output Destination
+                    <span className="text-xs font-normal text-muted-foreground">— where this agent sends its results</span>
+                  </label>
+                  <div className="rounded-xl border border-border bg-secondary/20 p-4 space-y-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      {(["none", "workflow", "form"] as const).map(t => (
+                        <button
+                          key={t}
+                          onClick={() => { markDirty(setEditOutputDestType)(t === "none" ? "" : t); if (t === "none") markDirty(setEditOutputDestId)(null); }}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all",
+                            (editOutputDestType === t || (t === "none" && !editOutputDestType))
+                              ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                              : "border-border bg-background hover:bg-secondary/60 text-muted-foreground"
+                          )}
+                        >
+                          {t === "none" && <X className="w-3.5 h-3.5" />}
+                          {t === "workflow" && <GitBranch className="w-3.5 h-3.5" />}
+                          {t === "form" && <FileText className="w-3.5 h-3.5" />}
+                          {t === "none" ? "None" : t === "workflow" ? "Workflow" : "Form"}
+                        </button>
+                      ))}
+                    </div>
+                    {editOutputDestType === "workflow" && (
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1.5 block">Select Workflow</label>
+                        <select
+                          value={editOutputDestId ?? ""}
+                          onChange={e => markDirty(setEditOutputDestId)(e.target.value ? Number(e.target.value) : null)}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                        >
+                          <option value="">— choose a workflow —</option>
+                          {workflows.map(w => (
+                            <option key={w.id} value={w.id}>#{w.workflowNumber} {w.name}</option>
+                          ))}
+                        </select>
+                        {editOutputDestId && (
+                          <p className="mt-1.5 text-xs text-muted-foreground flex items-center gap-1.5">
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            Agent output will trigger the selected workflow
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {editOutputDestType === "form" && (
+                      <div>
+                        <label className="text-xs text-muted-foreground mb-1.5 block">
+                          Route output to a form — the agent's result will be pre-filled into the form
+                        </label>
+                        <p className="text-xs text-muted-foreground italic">
+                          Form-based output routing is configured from the Forms view.
+                        </p>
+                      </div>
+                    )}
+                    {!editOutputDestType && (
+                      <p className="text-xs text-muted-foreground">
+                        Agent output is returned inline. Select a destination to route results automatically.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
                 <div className="bg-secondary/30 border border-border rounded-xl p-4 text-xs text-muted-foreground space-y-1">
                   <div>Created: {formatDate(selectedAgent.createdAt)}</div>
                   <div>Last updated: {formatDate(selectedAgent.updatedAt)}</div>
