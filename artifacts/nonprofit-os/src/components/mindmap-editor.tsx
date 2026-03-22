@@ -908,8 +908,18 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const handleSvgPointerUp = () => {
     panRef.current = null;
     const wasDragged = dragRef.current?.moved ?? false;
+    const clickedNodeId = (!wasDragged && !connectMode) ? (dragRef.current?.nodeId ?? null) : null;
     dragRef.current = null;
-    if (wasDragged) setTimeout(() => autoArrange(), 80);
+
+    if (wasDragged) {
+      setTimeout(() => autoArrange(), 80);
+    } else if (clickedNodeId) {
+      // Simple click on a node → select and enter edit mode immediately
+      setSelectedNodeId(clickedNodeId);
+      setSelectedEdgeId(null);
+      const node = mapDataRef.current.nodes.find(n => n.id === clickedNodeId);
+      if (node) setEditingLabel({ nodeId: clickedNodeId, value: node.label });
+    }
   };
 
   const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
