@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const API = '/api';
@@ -11,8 +11,6 @@ function fetchHeaders(): Record<string, string> {
     : { 'Content-Type': 'application/json' };
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────────
-
 type CalView = 'work-week' | 'week' | 'month' | 'year';
 
 interface CalEvent {
@@ -22,14 +20,14 @@ interface CalEvent {
   type: 'meeting' | 'task';
   color: string;
   time?: string;
+  hour?: number;
 }
-
-// ── Date helpers ───────────────────────────────────────────────────────────────
 
 const MONTHS = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ];
+const DAYS_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 function startOfWeekMon(d: Date): Date {
   const day = d.getDay();
@@ -47,16 +45,12 @@ function addDays(d: Date, n: number): Date {
 }
 
 function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
+  return a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
+    a.getDate() === b.getDate();
 }
 
-function isToday(d: Date): boolean {
-  return isSameDay(d, new Date());
-}
+function isToday(d: Date): boolean { return isSameDay(d, new Date()); }
 
 function datesInRange(start: Date, count: number): Date[] {
   return Array.from({ length: count }, (_, i) => addDays(start, i));
@@ -73,17 +67,26 @@ function formatDateRange(days: Date[]): string {
   if (first.getMonth() === last.getMonth()) {
     return `${MONTHS[first.getMonth()]} ${first.getDate()}–${last.getDate()}, ${first.getFullYear()}`;
   }
-  return `${MONTHS[first.getMonth()]} ${first.getDate()} – ${MONTHS[last.getMonth()]} ${last.getDate()}, ${last.getFullYear()}`;
+  return `${MONTHS[first.getMonth()]} ${first.getDate()} – ${MONTHS[last.getMonth()]} ${last.getDate()}, ${first.getFullYear()}`;
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────────
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const VISIBLE_HOURS = HOURS.slice(6, 22); // 6am–10pm
+const ROW_H = 48; // px per hour slot
+
+function fmtHour(h: number) {
+  if (h === 0) return '12 AM';
+  if (h < 12) return `${h} AM`;
+  if (h === 12) return '12 PM';
+  return `${h - 12} PM`;
+}
 
 function EventPill({ evt, compact = false }: { evt: CalEvent; compact?: boolean }) {
   return (
     <div
       title={evt.title}
       className={cn(
-        'rounded font-medium truncate',
+        'rounded font-medium truncate leading-tight',
         compact ? 'text-[10px] px-1 py-0.5' : 'text-xs px-1.5 py-0.5'
       )}
       style={{ backgroundColor: evt.color + '22', color: evt.color, borderLeft: `2px solid ${evt.color}` }}
@@ -96,7 +99,25 @@ function EventPill({ evt, compact = false }: { evt: CalEvent; compact?: boolean 
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+function EventBlock({ evt }: { evt: CalEvent }) {
+  const top = ((evt.hour ?? 0) - 6) * ROW_H;
+  return (
+    <div
+      className="absolute left-1 right-1 rounded px-1.5 py-0.5 text-[11px] font-medium truncate z-10 shadow-sm"
+      style={{
+        top,
+        height: ROW_H - 2,
+        backgroundColor: evt.color + '28',
+        color: evt.color,
+        borderLeft: `3px solid ${evt.color}`,
+      }}
+      title={evt.title}
+    >
+      {evt.title}
+      {evt.time && <span className="ml-1 opacity-60">{evt.time}</span>}
+    </div>
+  );
+}
 
 export function CalendarView() {
   const [view, setView] = useState<CalView>('month');
@@ -108,7 +129,6 @@ export function CalendarView() {
   const [events, setEvents] = useState<CalEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch meetings + tasks
   useEffect(() => {
     const h = fetchHeaders();
     Promise.all([
@@ -129,6 +149,7 @@ export function CalendarView() {
             type: 'meeting',
             color: '#3b82f6',
             time: d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
+            hour: d.getHours(),
           });
         }
       }
@@ -139,16 +160,14 @@ export function CalendarView() {
           if (!dateStr) continue;
           const d = new Date(dateStr);
           if (isNaN(d.getTime())) continue;
-          const color =
-            t.priority === 'urgent' ? '#ef4444'
-            : t.priority === 'high'   ? '#f59e0b'
-            : '#8b5cf6';
+          const color = t.priority === 'urgent' ? '#ef4444' : t.priority === 'high' ? '#f59e0b' : '#8b5cf6';
           evts.push({
             id: `task-${t.id}`,
             title: t.name || 'Task',
             date: d,
             type: 'task',
             color,
+            hour: 9,
           });
         }
       }
@@ -157,7 +176,6 @@ export function CalendarView() {
     }).finally(() => setLoading(false));
   }, []);
 
-  // Navigation
   function navigate(dir: 1 | -1) {
     setCurrentDate(prev => {
       const d = new Date(prev);
@@ -168,180 +186,224 @@ export function CalendarView() {
     });
   }
 
-  // Day ranges for week views
   const weekStart = startOfWeekMon(currentDate);
-  const workDays  = datesInRange(weekStart, 5);
-  const fullWeek  = datesInRange(weekStart, 7);
+  const workDays = datesInRange(weekStart, 5);
+  const fullWeek = datesInRange(weekStart, 7);
 
   function headerLabel(): string {
     if (view === 'work-week') return formatDateRange(workDays);
-    if (view === 'week')      return formatDateRange(fullWeek);
-    if (view === 'month')     return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+    if (view === 'week') return formatDateRange(fullWeek);
+    if (view === 'month') return `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
     return String(currentDate.getFullYear());
   }
 
-  // ── Work Week / Week view ──────────────────────────────────────────────────
-
+  // ── Week view with time grid ─────────────────────────────────────────────────
   function WeekView({ days }: { days: Date[] }) {
-    return (
-      <div className="flex-1 flex flex-col overflow-auto min-h-0">
-        {/* Day header row */}
-        <div
-          className="grid flex-shrink-0 border-b border-white/10"
-          style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
-        >
-          {days.map(day => (
-            <div
-              key={day.toISOString()}
-              className={cn(
-                'px-3 py-2 text-center border-r border-white/8 last:border-r-0',
-                isToday(day) && 'bg-primary/8'
-              )}
-            >
-              <p className="text-[11px] text-white/40 uppercase tracking-wide font-medium">
-                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][day.getDay()]}
-              </p>
-              <p className={cn(
-                'text-xl font-semibold mt-0.5',
-                isToday(day) ? 'text-primary' : 'text-white'
-              )}>
-                {day.getDate()}
-              </p>
-              <p className="text-[10px] text-white/30">
-                {MONTHS[day.getMonth()].slice(0, 3)}
-              </p>
-            </div>
-          ))}
-        </div>
+    const nowHour = new Date().getHours() + new Date().getMinutes() / 60;
+    const nowTop = (nowHour - 6) * ROW_H;
 
-        {/* Events row */}
-        <div
-          className="flex-1 grid overflow-auto"
-          style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
-        >
-          {days.map(day => {
-            const dayEvts = eventsOnDay(events, day);
-            const meetings = dayEvts.filter(e => e.type === 'meeting');
-            const tasks    = dayEvts.filter(e => e.type === 'task');
-            return (
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        {/* Day header row */}
+        <div className="flex flex-shrink-0 border-b border-white/10">
+          {/* Time gutter label */}
+          <div className="w-14 flex-shrink-0" />
+          <div className="flex flex-1">
+            {days.map(day => (
               <div
                 key={day.toISOString()}
                 className={cn(
-                  'p-2 border-r border-white/8 last:border-r-0 space-y-1 min-h-40',
-                  isToday(day) && 'bg-primary/5'
+                  'flex-1 py-2 text-center border-l border-white/8',
+                  isToday(day) && 'bg-blue-500/5'
                 )}
               >
-                {dayEvts.length === 0 && (
-                  <p className="text-[11px] text-white/20 mt-2 text-center">—</p>
-                )}
-                {meetings.map(evt => <EventPill key={evt.id} evt={evt} />)}
-                {tasks.length > 0 && meetings.length > 0 && (
-                  <div className="h-px bg-white/8 my-1" />
-                )}
-                {tasks.map(evt => <EventPill key={evt.id} evt={evt} />)}
+                <p className="text-[10px] text-white/40 uppercase tracking-widest font-medium">
+                  {DAYS_SHORT[day.getDay()]}
+                </p>
+                <div className={cn(
+                  'w-8 h-8 mx-auto mt-1 flex items-center justify-center rounded-full text-sm font-semibold',
+                  isToday(day)
+                    ? 'bg-blue-500 text-white'
+                    : 'text-white/80'
+                )}>
+                  {day.getDate()}
+                </div>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+
+        {/* Time grid */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="flex" style={{ height: VISIBLE_HOURS.length * ROW_H }}>
+            {/* Hour labels */}
+            <div className="w-14 flex-shrink-0 relative">
+              {VISIBLE_HOURS.map(h => (
+                <div
+                  key={h}
+                  className="absolute w-full pr-2 text-right"
+                  style={{ top: (h - 6) * ROW_H - 7 }}
+                >
+                  <span className="text-[10px] text-white/30 leading-none">{fmtHour(h)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Day columns */}
+            <div className="flex flex-1 relative">
+              {/* Horizontal hour lines */}
+              <div className="absolute inset-0 pointer-events-none">
+                {VISIBLE_HOURS.map(h => (
+                  <div
+                    key={h}
+                    className="absolute left-0 right-0 border-t border-white/6"
+                    style={{ top: (h - 6) * ROW_H }}
+                  />
+                ))}
+                {/* Half-hour lines */}
+                {VISIBLE_HOURS.map(h => (
+                  <div
+                    key={`half-${h}`}
+                    className="absolute left-0 right-0 border-t border-white/3"
+                    style={{ top: (h - 6) * ROW_H + ROW_H / 2 }}
+                  />
+                ))}
+              </div>
+
+              {days.map((day, di) => {
+                const dayEvts = eventsOnDay(events, day).filter(
+                  e => e.hour !== undefined && e.hour >= 6 && e.hour < 22
+                );
+                const allDayEvts = eventsOnDay(events, day).filter(
+                  e => e.hour === undefined || e.hour < 6 || e.hour >= 22
+                );
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={cn(
+                      'flex-1 border-l border-white/8 relative',
+                      isToday(day) && 'bg-blue-500/3'
+                    )}
+                  >
+                    {/* Current time line */}
+                    {isToday(day) && nowTop >= 0 && nowTop <= VISIBLE_HOURS.length * ROW_H && (
+                      <div
+                        className="absolute left-0 right-0 z-20 flex items-center"
+                        style={{ top: nowTop }}
+                      >
+                        <div className="w-2 h-2 rounded-full bg-red-400 -ml-1 flex-shrink-0" />
+                        <div className="flex-1 h-px bg-red-400/70" />
+                      </div>
+                    )}
+                    {dayEvts.map(evt => <EventBlock key={evt.id} evt={evt} />)}
+                    {allDayEvts.length > 0 && (
+                      <div className="absolute top-1 left-1 right-1 space-y-0.5">
+                        {allDayEvts.map(evt => (
+                          <EventPill key={evt.id} evt={evt} compact />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Legend */}
         <div className="flex items-center gap-4 px-5 py-2 border-t border-white/8 flex-shrink-0">
           <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Meetings
+            <span className="w-2 h-2 rounded-full bg-blue-500" /> Meetings
           </span>
           <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2.5 h-2.5 rounded-full bg-violet-500" /> Tasks
+            <span className="w-2 h-2 rounded-full bg-violet-500" /> Tasks
           </span>
         </div>
       </div>
     );
   }
 
-  // ── Month view ─────────────────────────────────────────────────────────────
-
+  // ── Month view ───────────────────────────────────────────────────────────────
   function MonthView() {
-    const year  = currentDate.getFullYear();
+    const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1);
-    const lastDay  = new Date(year, month + 1, 0);
     const gridStart = startOfWeekMon(firstDay);
-
-    // Always show 6 rows × 7 = 42 cells
     const allDays = datesInRange(gridStart, 42);
     const rows = [0,1,2,3,4,5].map(r => allDays.slice(r * 7, r * 7 + 7));
+    const filteredRows = rows.filter((week, ri) =>
+      week.some(d => d.getMonth() === month) || ri < 5
+    ).filter(week => week.some(d => d.getMonth() === month));
 
     return (
-      <div className="flex-1 flex flex-col min-h-0">
-        {/* Day name headers */}
-        <div className="grid grid-cols-7 border-b border-white/10 flex-shrink-0">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* Day of week header */}
+        <div className="grid grid-cols-7 flex-shrink-0 border-b border-white/10">
           {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
-            <div key={d} className="py-2 text-center text-[11px] font-semibold text-white/40 uppercase tracking-wide border-r border-white/8 last:border-r-0">
+            <div key={d} className="py-2 text-center text-[11px] font-semibold text-white/35 uppercase tracking-wider border-r border-white/6 last:border-r-0">
               {d}
             </div>
           ))}
         </div>
 
-        {/* Calendar grid */}
-        <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-          {rows.map((week, ri) => {
-            // Hide the row if all days are outside current month and it's the 6th row
-            const hasCurrentMonth = week.some(d => d.getMonth() === month);
-            if (!hasCurrentMonth && ri === 5) return null;
-            return (
-              <div key={ri} className="grid grid-cols-7 flex-1 border-b border-white/8 last:border-b-0" style={{ minHeight: 90 }}>
-                {week.map(day => {
-                  const inMonth = day.getMonth() === month;
-                  const today   = isToday(day);
-                  const dayEvts = eventsOnDay(events, day);
-                  return (
-                    <div
-                      key={day.toISOString()}
-                      className={cn(
-                        'p-1.5 border-r border-white/8 last:border-r-0',
-                        !inMonth && 'opacity-30',
-                        today && 'bg-primary/6'
-                      )}
-                    >
-                      <div className={cn(
-                        'w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold mb-1',
-                        today ? 'bg-primary text-white' : 'text-white/70'
-                      )}>
-                        {day.getDate()}
-                      </div>
-                      <div className="space-y-0.5">
-                        {dayEvts.slice(0, 3).map(evt => (
-                          <EventPill key={evt.id} evt={evt} compact />
-                        ))}
-                        {dayEvts.length > 3 && (
-                          <p className="text-[9px] text-white/35 pl-1">+{dayEvts.length - 3} more</p>
-                        )}
-                      </div>
+        {/* Calendar rows */}
+        <div className="flex-1 grid overflow-hidden" style={{ gridTemplateRows: `repeat(${filteredRows.length}, 1fr)` }}>
+          {filteredRows.map((week, ri) => (
+            <div key={ri} className="grid grid-cols-7 border-b border-white/6 last:border-b-0">
+              {week.map(day => {
+                const inMonth = day.getMonth() === month;
+                const today = isToday(day);
+                const dayEvts = eventsOnDay(events, day);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={cn(
+                      'border-r border-white/6 last:border-r-0 p-1.5 flex flex-col min-h-0',
+                      !inMonth && 'opacity-25',
+                      today && 'bg-blue-500/5'
+                    )}
+                  >
+                    {/* Date number */}
+                    <div className={cn(
+                      'w-6 h-6 flex items-center justify-center rounded-full text-xs font-semibold mb-1 flex-shrink-0',
+                      today ? 'bg-blue-500 text-white' : 'text-white/60'
+                    )}>
+                      {day.getDate()}
                     </div>
-                  );
-                })}
-              </div>
-            );
-          })}
+
+                    {/* Events */}
+                    <div className="flex-1 space-y-0.5 overflow-hidden">
+                      {dayEvts.slice(0, 3).map(evt => (
+                        <EventPill key={evt.id} evt={evt} compact />
+                      ))}
+                      {dayEvts.length > 3 && (
+                        <p className="text-[9px] text-white/35 pl-1">+{dayEvts.length - 3} more</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     );
   }
 
-  // ── Year view ──────────────────────────────────────────────────────────────
-
+  // ── Year view ────────────────────────────────────────────────────────────────
   function YearView() {
     const year = currentDate.getFullYear();
     const today = new Date();
 
     return (
-      <div className="flex-1 overflow-auto p-6">
-        <div className="grid grid-cols-4 gap-5">
+      <div className="flex-1 overflow-auto p-5">
+        <div className="grid grid-cols-4 gap-4">
           {Array.from({ length: 12 }, (_, mi) => {
-            const firstDay  = new Date(year, mi, 1);
-            const lastDay   = new Date(year, mi + 1, 0);
+            const firstDay = new Date(year, mi, 1);
+            const lastDay = new Date(year, mi + 1, 0);
             const gridStart = startOfWeekMon(firstDay);
             const totalSlots = Math.ceil(
-              (addDays(lastDay, 1).getTime() - gridStart.getTime()) / (86400000)
+              (addDays(lastDay, 1).getTime() - gridStart.getTime()) / 86400000
             );
             const days = datesInRange(gridStart, Math.max(totalSlots, 35));
             const isCurrentMonth = mi === today.getMonth() && year === today.getFullYear();
@@ -350,52 +412,42 @@ export function CalendarView() {
               <div
                 key={mi}
                 className={cn(
-                  'bg-white/3 rounded-xl p-3 border',
-                  isCurrentMonth ? 'border-primary/50' : 'border-white/8'
+                  'rounded-xl p-3 border transition-colors',
+                  isCurrentMonth
+                    ? 'border-blue-500/40 bg-blue-500/5'
+                    : 'border-white/8 bg-white/2 hover:bg-white/4'
                 )}
               >
                 <h3 className={cn(
-                  'text-xs font-semibold text-center mb-2 uppercase tracking-wide',
-                  isCurrentMonth ? 'text-primary' : 'text-white/70'
+                  'text-xs font-semibold text-center mb-2.5 uppercase tracking-widest',
+                  isCurrentMonth ? 'text-blue-400' : 'text-white/50'
                 )}>
-                  {MONTHS[mi]}
+                  {MONTHS[mi].slice(0, 3)}
                 </h3>
 
-                {/* Mini day-of-week header */}
                 <div className="grid grid-cols-7 mb-1">
                   {['M','T','W','T','F','S','S'].map((d, i) => (
-                    <div key={i} className="text-[9px] text-center text-white/25 font-medium">{d}</div>
+                    <div key={i} className="text-[8px] text-center text-white/20 font-medium">{d}</div>
                   ))}
                 </div>
 
-                {/* Mini days */}
                 <div className="grid grid-cols-7">
                   {days.slice(0, 42).map(day => {
                     const inMonth = day.getMonth() === mi;
                     const dayEvts = eventsOnDay(events, day);
-                    const isT    = isToday(day);
+                    const isT = isToday(day);
                     return (
-                      <div
-                        key={day.toISOString()}
-                        className={cn(
-                          'flex flex-col items-center py-0.5',
-                          !inMonth && 'opacity-20'
-                        )}
-                      >
+                      <div key={day.toISOString()} className={cn('flex flex-col items-center py-0.5', !inMonth && 'opacity-15')}>
                         <span className={cn(
-                          'text-[9px] leading-none w-5 h-5 flex items-center justify-center rounded-full',
-                          isT ? 'bg-primary text-white font-bold' : 'text-white/60'
+                          'text-[9px] leading-none w-4 h-4 flex items-center justify-center rounded-full',
+                          isT ? 'bg-blue-500 text-white font-bold' : 'text-white/50'
                         )}>
                           {day.getDate()}
                         </span>
                         {dayEvts.length > 0 && inMonth && !isT && (
-                          <div className="flex gap-0.5 mt-0.5">
+                          <div className="flex gap-[2px] mt-[2px]">
                             {dayEvts.slice(0, 3).map(e => (
-                              <span
-                                key={e.id}
-                                className="w-1 h-1 rounded-full"
-                                style={{ backgroundColor: e.color }}
-                              />
+                              <span key={e.id} className="w-[3px] h-[3px] rounded-full" style={{ backgroundColor: e.color }} />
                             ))}
                           </div>
                         )}
@@ -408,26 +460,23 @@ export function CalendarView() {
           })}
         </div>
 
-        {/* Legend */}
-        <div className="flex items-center gap-4 mt-4">
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2 h-2 rounded-full bg-blue-500" /> Meetings
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2 h-2 rounded-full bg-violet-500" /> Tasks (normal)
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2 h-2 rounded-full bg-yellow-500" /> Tasks (high)
-          </span>
-          <span className="flex items-center gap-1.5 text-xs text-white/40">
-            <span className="w-2 h-2 rounded-full bg-red-500" /> Tasks (urgent)
-          </span>
+        <div className="flex items-center gap-5 mt-5">
+          {[
+            { color: 'bg-blue-500', label: 'Meetings' },
+            { color: 'bg-violet-500', label: 'Tasks (normal)' },
+            { color: 'bg-yellow-500', label: 'Tasks (high)' },
+            { color: 'bg-red-500', label: 'Tasks (urgent)' },
+          ].map(({ color, label }) => (
+            <span key={label} className="flex items-center gap-1.5 text-xs text-white/35">
+              <span className={cn('w-2 h-2 rounded-full', color)} /> {label}
+            </span>
+          ))}
         </div>
       </div>
     );
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -440,21 +489,17 @@ export function CalendarView() {
   return (
     <div className="flex flex-col h-full bg-[hsl(var(--background))] text-white overflow-hidden">
 
-      {/* ── Top bar ──────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between gap-4 px-5 py-3 border-b border-white/10 flex-shrink-0">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-white/10 flex-shrink-0">
 
-        {/* Title */}
-        <div className="flex items-center gap-2.5">
-          <Calendar className="w-4 h-4 text-blue-400" />
-          <h1 className="text-sm font-semibold">Calendar</h1>
-          <span className="text-xs text-white/30">
-            {events.filter(e => e.type === 'meeting').length} meetings ·{' '}
-            {events.filter(e => e.type === 'task').length} tasks with due dates
-          </span>
+        {/* Left: title */}
+        <div className="flex items-center gap-2 w-40 flex-shrink-0">
+          <Calendar className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          <span className="text-sm font-semibold">Calendar</span>
         </div>
 
-        {/* Nav controls */}
-        <div className="flex items-center gap-1.5">
+        {/* Center: nav + date label */}
+        <div className="flex items-center gap-2">
           <button
             onClick={() => navigate(-1)}
             className="p-1.5 rounded-lg hover:bg-white/8 text-white/50 hover:text-white transition-colors"
@@ -463,7 +508,7 @@ export function CalendarView() {
           </button>
           <button
             onClick={() => setCurrentDate(new Date())}
-            className="px-3 py-1 text-xs rounded-lg border border-white/15 text-white/60 hover:bg-white/5 hover:text-white transition-colors"
+            className="px-3 py-1 text-xs rounded-lg border border-white/15 text-white/60 hover:bg-white/5 hover:text-white transition-colors font-medium"
           >
             Today
           </button>
@@ -473,36 +518,42 @@ export function CalendarView() {
           >
             <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="text-sm font-semibold text-white ml-1 min-w-56 text-center">
+          <span className="text-sm font-semibold text-white ml-1 min-w-52 text-center">
             {headerLabel()}
           </span>
         </div>
 
-        {/* View switcher */}
-        <div className="flex items-center bg-white/5 rounded-lg p-0.5 gap-0.5">
-          {([
-            { key: 'work-week', label: 'Work Week' },
-            { key: 'week',      label: 'Week' },
-            { key: 'month',     label: 'Month' },
-            { key: 'year',      label: 'Year' },
-          ] as const).map(v => (
-            <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              className={cn(
-                'px-3 py-1.5 text-xs rounded-md transition-colors font-medium whitespace-nowrap',
-                view === v.key
-                  ? 'bg-white/15 text-white shadow-sm'
-                  : 'text-white/45 hover:text-white/80'
-              )}
-            >
-              {v.label}
-            </button>
-          ))}
+        {/* Right: view switcher + stats */}
+        <div className="flex items-center gap-3 w-auto flex-shrink-0">
+          <span className="text-[11px] text-white/30 hidden xl:block">
+            <Clock className="w-3 h-3 inline mr-1" />
+            {events.filter(e => e.type === 'meeting').length}m · {events.filter(e => e.type === 'task').length}t
+          </span>
+          <div className="flex items-center bg-white/5 rounded-lg p-0.5">
+            {([
+              { key: 'work-week', label: 'Work Week' },
+              { key: 'week',      label: 'Week' },
+              { key: 'month',     label: 'Month' },
+              { key: 'year',      label: 'Year' },
+            ] as const).map(v => (
+              <button
+                key={v.key}
+                onClick={() => setView(v.key)}
+                className={cn(
+                  'px-3 py-1.5 text-xs rounded-md transition-colors font-medium whitespace-nowrap',
+                  view === v.key
+                    ? 'bg-white/15 text-white shadow-sm'
+                    : 'text-white/40 hover:text-white/70'
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* ── Calendar body ─────────────────────────────────────────────── */}
+      {/* Calendar body */}
       {view === 'work-week' && <WeekView days={workDays} />}
       {view === 'week'      && <WeekView days={fullWeek} />}
       {view === 'month'     && <MonthView />}
