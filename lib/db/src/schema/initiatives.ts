@@ -12,6 +12,7 @@ export const initiatives = pgTable('initiatives', {
   achievement: text('achievement').notNull().default(''),
   startDate: date('start_date'),
   endDate: date('end_date'),
+  goalId: integer('goal_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

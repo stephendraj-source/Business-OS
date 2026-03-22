@@ -12,18 +12,32 @@ const API = '/api';
 
 interface InitiativeRow {
   id: number;
-  initiativeId: string;
+  initiative_id: string;
+  initiativeId?: string;
   name: string;
   goals: string;
   achievement: string;
-  startDate: string | null;
-  endDate: string | null;
-  createdAt: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  createdAt?: string;
+  created_at?: string;
+  goal_id: number | null;
+  goal_title: string | null;
+  goal_color: string | null;
+  goal_number: number | null;
 }
+
+function ini_id(ini: InitiativeRow) { return ini.initiativeId ?? ini.initiative_id; }
+function ini_start(ini: InitiativeRow) { return ini.startDate ?? ini.start_date ?? null; }
+function ini_end(ini: InitiativeRow) { return ini.endDate ?? ini.end_date ?? null; }
 
 interface InitiativeUrl { id?: number; label: string; url: string; }
 interface InitiativeAssignee { id: number; name: string; email: string; designation: string; }
 interface InitiativeProcess { id: number; processName: string; processDescription: string; category: string; number: number; }
+
+interface StrategicGoalRef { id: number; goal_number: number; title: string; color: string; status: string; }
 
 interface InitiativeDetail extends InitiativeRow {
   urls: InitiativeUrl[];
@@ -42,20 +56,20 @@ function fmtDate(d: string | null) {
 }
 
 function statusColor(ini: InitiativeRow) {
-  if (!ini.startDate || !ini.endDate) return 'bg-muted text-muted-foreground';
+  const s = ini_start(ini); const e = ini_end(ini);
+  if (!s || !e) return 'bg-muted text-muted-foreground';
   const now = new Date();
-  const end = new Date(ini.endDate);
-  const start = new Date(ini.startDate);
-  if (now > end) return 'bg-muted/60 text-muted-foreground';
-  if (now < start) return 'bg-blue-500/15 text-blue-400';
+  if (now > new Date(e)) return 'bg-muted/60 text-muted-foreground';
+  if (now < new Date(s)) return 'bg-blue-500/15 text-blue-400';
   return 'bg-green-500/15 text-green-400';
 }
 
 function statusLabel(ini: InitiativeRow) {
-  if (!ini.startDate || !ini.endDate) return 'No Dates';
+  const s = ini_start(ini); const e = ini_end(ini);
+  if (!s || !e) return 'No Dates';
   const now = new Date();
-  if (now > new Date(ini.endDate)) return 'Completed';
-  if (now < new Date(ini.startDate)) return 'Upcoming';
+  if (now > new Date(e)) return 'Completed';
+  if (now < new Date(s)) return 'Upcoming';
   return 'Active';
 }
 
@@ -95,8 +109,20 @@ export function InitiativesView() {
 
   const filtered = initiatives.filter(i =>
     i.name.toLowerCase().includes(search.toLowerCase()) ||
-    i.initiativeId.toLowerCase().includes(search.toLowerCase())
+    ini_id(i).toLowerCase().includes(search.toLowerCase())
   );
+
+  // Group by goal
+  const groupedByGoal: { goalId: number | null; goalTitle: string | null; goalColor: string | null; goalNumber: number | null; items: InitiativeRow[] }[] = [];
+  const seen = new Map<number | null, number>();
+  for (const ini of filtered) {
+    const key = ini.goal_id;
+    if (!seen.has(key)) {
+      seen.set(key, groupedByGoal.length);
+      groupedByGoal.push({ goalId: key, goalTitle: ini.goal_title, goalColor: ini.goal_color, goalNumber: ini.goal_number, items: [] });
+    }
+    groupedByGoal[seen.get(key)!].items.push(ini);
+  }
 
   return (
     <div className="flex h-full">
@@ -106,7 +132,7 @@ export function InitiativesView() {
         <div className="flex-none flex items-center justify-between px-6 py-5 border-b border-border">
           <div>
             <h1 className="text-2xl font-display font-bold">Initiatives</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Strategic initiatives linked to processes</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Strategic initiatives linked to goals</p>
           </div>
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20">
@@ -133,41 +159,65 @@ export function InitiativesView() {
               <p className="text-sm">{search ? 'No initiatives match your search' : 'No initiatives yet — click Add Initiative'}</p>
             </div>
           ) : (
-            <div className="divide-y divide-border">
-              {filtered.map(ini => (
-                <div
-                  key={ini.id}
-                  role="button" tabIndex={0}
-                  onKeyDown={e => { if (e.key === 'Enter') openDetail(ini); }}
-                  onClick={() => openDetail(ini)}
-                  className={cn('group flex items-start gap-4 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors', selected?.id === ini.id && 'bg-primary/5')}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-[10px] font-mono font-semibold text-muted-foreground">{ini.initiativeId}</span>
-                      <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-semibold', statusColor(ini))}>{statusLabel(ini)}</span>
-                    </div>
-                    <div className="text-sm font-medium truncate">{ini.name}</div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      <span>{fmtDate(ini.startDate)}</span>
-                      <ChevronRight className="w-3 h-3" />
-                      <span>{fmtDate(ini.endDate)}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                    {confirmDelete === ini.id ? (
+            <div>
+              {groupedByGoal.map(group => (
+                <div key={group.goalId ?? 'ungrouped'}>
+                  {/* Goal group header */}
+                  <div className="flex items-center gap-2 px-6 py-2 bg-secondary/30 border-b border-border sticky top-0 z-10">
+                    {group.goalId ? (
                       <>
-                        <button onClick={e => handleDelete(ini.id, e)}
-                          className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
-                        <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
-                          className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: group.goalColor ?? '#6366f1' }} />
+                        <span className="text-[10px] font-mono text-muted-foreground">GOAL-{String(group.goalNumber).padStart(3, '0')}</span>
+                        <span className="text-xs font-semibold text-foreground truncate">{group.goalTitle}</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">{group.items.length} initiative{group.items.length !== 1 ? 's' : ''}</span>
                       </>
                     ) : (
-                      <button onClick={e => handleDelete(ini.id, e)}
-                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <>
+                        <Flag className="w-3 h-3 text-muted-foreground/50" />
+                        <span className="text-xs font-semibold text-muted-foreground/60">No Goal Assigned</span>
+                        <span className="ml-auto text-[10px] text-muted-foreground">{group.items.length}</span>
+                      </>
                     )}
+                  </div>
+                  {/* Initiatives in this goal */}
+                  <div className="divide-y divide-border">
+                    {group.items.map(ini => (
+                      <div
+                        key={ini.id}
+                        role="button" tabIndex={0}
+                        onKeyDown={e => { if (e.key === 'Enter') openDetail(ini); }}
+                        onClick={() => openDetail(ini)}
+                        className={cn('group flex items-start gap-4 px-6 py-4 cursor-pointer hover:bg-secondary/40 transition-colors', selected?.id === ini.id && 'bg-primary/5')}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[10px] font-mono font-semibold text-muted-foreground">{ini_id(ini)}</span>
+                            <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-semibold', statusColor(ini))}>{statusLabel(ini)}</span>
+                          </div>
+                          <div className="text-sm font-medium truncate">{ini.name}</div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            <span>{fmtDate(ini_start(ini))}</span>
+                            <ChevronRight className="w-3 h-3" />
+                            <span>{fmtDate(ini_end(ini))}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                          {confirmDelete === ini.id ? (
+                            <>
+                              <button onClick={e => handleDelete(ini.id, e)}
+                                className="px-2 py-1 text-[10px] rounded bg-red-500/20 text-red-400 hover:bg-red-500/30 font-semibold">Confirm</button>
+                              <button onClick={e => { e.stopPropagation(); setConfirmDelete(null); }}
+                                className="px-2 py-1 text-[10px] rounded bg-secondary text-muted-foreground font-semibold">Cancel</button>
+                            </>
+                          ) : (
+                            <button onClick={e => handleDelete(ini.id, e)}
+                              className="p-1.5 rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-400 transition-colors">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -219,16 +269,22 @@ function InitiativeDetail({ initiative, onClose, onSaved }: {
       {/* Header */}
       <div className="flex-none flex items-start justify-between px-6 py-4 border-b border-border gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <span className="text-xs font-mono font-semibold text-muted-foreground">{initiative.initiativeId}</span>
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+            <span className="text-xs font-mono font-semibold text-muted-foreground">{ini_id(initiative)}</span>
             <span className={cn('text-[10px] px-1.5 py-0.5 rounded-full font-semibold', statusColor(initiative))}>{statusLabel(initiative)}</span>
+            {initiative.goal_id && (
+              <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-secondary text-muted-foreground">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: initiative.goal_color ?? '#6366f1' }} />
+                {initiative.goal_title}
+              </span>
+            )}
           </div>
           <div className="font-semibold text-base leading-tight truncate">{initiative.name}</div>
           <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
             <CalendarDays className="w-3 h-3" />
-            <span>{fmtDate(initiative.startDate)}</span>
+            <span>{fmtDate(ini_start(initiative))}</span>
             <span>—</span>
-            <span>{fmtDate(initiative.endDate)}</span>
+            <span>{fmtDate(ini_end(initiative))}</span>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -274,20 +330,25 @@ function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; on
     name: initiative.name,
     goals: initiative.goals,
     achievement: initiative.achievement,
-    startDate: initiative.startDate ?? '',
-    endDate: initiative.endDate ?? '',
+    startDate: ini_start(initiative) ?? '',
+    endDate: ini_end(initiative) ?? '',
+    goalId: initiative.goal_id ?? '',
   });
   const [form, setForm] = useState(init);
   const [saving, setSaving] = useState(false);
+  const [allGoals, setAllGoals] = useState<StrategicGoalRef[]>([]);
 
   useEffect(() => { setForm(init()); }, [initiative.id]);
+  useEffect(() => {
+    fetch(`${API}/strategic-goals`).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
+  }, []);
 
   const save = async () => {
     setSaving(true);
     try {
       await fetch(`${API}/initiatives/${initiative.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, goals: form.goals, achievement: form.achievement, startDate: form.startDate || null, endDate: form.endDate || null }),
+        body: JSON.stringify({ name: form.name, goals: form.goals, achievement: form.achievement, startDate: form.startDate || null, endDate: form.endDate || null, goalId: form.goalId || null }),
       });
       await onSaved();
     } finally { setSaving(false); }
@@ -309,11 +370,30 @@ function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; on
   return (
     <div className="p-6 space-y-5 max-w-xl">
       {field('Initiative Name', 'name')}
+      {/* Strategic Goal selector */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+          <Flag className="w-3 h-3" /> Strategic Goal
+        </label>
+        <select
+          value={form.goalId ?? ''}
+          onChange={e => setForm(f => ({ ...f, goalId: e.target.value ? Number(e.target.value) : '' }))}
+          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">— No goal —</option>
+          {allGoals.map(g => (
+            <option key={g.id} value={g.id}>
+              GOAL-{String(g.goal_number).padStart(3, '0')} · {g.title}
+            </option>
+          ))}
+        </select>
+        {allGoals.length === 0 && <p className="text-xs text-muted-foreground italic">No strategic goals defined yet. Create goals in Strategic Planning.</p>}
+      </div>
       <div className="grid grid-cols-2 gap-4">
         {field('Start Date', 'startDate', 'date')}
         {field('End Date', 'endDate', 'date')}
       </div>
-      {field('Goals', 'goals', 'text', true)}
+      {field('Goals / Notes', 'goals', 'text', true)}
       {field('Achievement', 'achievement', 'text', true)}
       <div className="flex items-center gap-3">
         <button onClick={() => setForm(init())} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">
@@ -677,9 +757,14 @@ function CreateInitiativeModal({ onClose, onCreate }: {
   onClose: () => void;
   onCreate: (ini: InitiativeRow) => void;
 }) {
-  const [form, setForm] = useState({ name: '', goals: '', startDate: '', endDate: '' });
+  const [form, setForm] = useState({ name: '', goals: '', startDate: '', endDate: '', goalId: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [allGoals, setAllGoals] = useState<StrategicGoalRef[]>([]);
+
+  useEffect(() => {
+    fetch(`${API}/strategic-goals`).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (!form.name) { setError('Name is required'); return; }
@@ -688,7 +773,7 @@ function CreateInitiativeModal({ onClose, onCreate }: {
     try {
       const r = await fetch(`${API}/initiatives`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, goals: form.goals, startDate: form.startDate || null, endDate: form.endDate || null }),
+        body: JSON.stringify({ name: form.name, goals: form.goals, startDate: form.startDate || null, endDate: form.endDate || null, goalId: form.goalId ? Number(form.goalId) : null }),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed'); return; }
       const d = await r.json();
@@ -698,7 +783,7 @@ function CreateInitiativeModal({ onClose, onCreate }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-[460px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
+      <div className="w-[480px] bg-card border border-border rounded-2xl shadow-2xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display font-bold text-lg">New Initiative</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-secondary text-muted-foreground"><X className="w-4 h-4" /></button>
@@ -712,6 +797,24 @@ function CreateInitiativeModal({ onClose, onCreate }: {
             <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="e.g. Digital Transformation 2026"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
           </div>
+
+          {/* Strategic Goal */}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Flag className="w-3 h-3" /> Strategic Goal <span className="normal-case font-normal text-muted-foreground/50">(optional)</span>
+            </label>
+            <select value={form.goalId} onChange={e => setForm(f => ({ ...f, goalId: e.target.value }))}
+              className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary">
+              <option value="">— No goal —</option>
+              {allGoals.map(g => (
+                <option key={g.id} value={g.id}>
+                  GOAL-{String(g.goal_number).padStart(3, '0')} · {g.title}
+                </option>
+              ))}
+            </select>
+            {allGoals.length === 0 && <p className="text-xs text-muted-foreground/60 italic">No strategic goals yet — you can assign one later.</p>}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Start Date</label>
@@ -725,7 +828,7 @@ function CreateInitiativeModal({ onClose, onCreate }: {
             </div>
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Goals <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notes <span className="normal-case font-normal text-muted-foreground/50">(optional)</span></label>
             <textarea value={form.goals} onChange={e => setForm(f => ({ ...f, goals: e.target.value }))} rows={3}
               placeholder="What does this initiative aim to achieve?"
               className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary resize-none" />

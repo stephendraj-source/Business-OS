@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, initiatives, initiativeUrls, initiativeAssignees, initiativeProcesses, users, processesTable } from '@workspace/db';
 import { eq, desc, and } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
 
 export const initiativesRouter = Router();
@@ -52,9 +53,14 @@ async function getInitiativeDetail(id: number, tid: number | null) {
 initiativesRouter.get('/initiatives', requireAuth, async (req, res) => {
   try {
     const tid = tenantId(req);
-    const cond = tid !== null ? eq(initiatives.tenantId, tid) : undefined;
-    const rows = await db.select().from(initiatives).where(cond).orderBy(desc(initiatives.createdAt));
-    res.json(rows);
+    const result = await db.execute(sql`
+      SELECT i.*, sg.title AS goal_title, sg.color AS goal_color, sg.goal_number AS goal_number
+      FROM initiatives i
+      LEFT JOIN strategic_goals sg ON sg.id = i.goal_id
+      WHERE ${tid !== null ? sql`i.tenant_id = ${tid}` : sql`i.tenant_id IS NULL OR i.tenant_id IS NOT NULL`}
+      ORDER BY i.created_at DESC
+    `);
+    res.json(result.rows);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -63,7 +69,7 @@ initiativesRouter.get('/initiatives', requireAuth, async (req, res) => {
 initiativesRouter.post('/initiatives', requireAuth, async (req, res) => {
   try {
     const tid = tenantId(req);
-    const { name, goals = '', achievement = '', startDate, endDate } = req.body;
+    const { name, goals = '', achievement = '', startDate, endDate, goalId } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     const initiativeId = await nextInitiativeId(tid);
     const [row] = await db.insert(initiatives).values({
@@ -71,6 +77,7 @@ initiativesRouter.post('/initiatives', requireAuth, async (req, res) => {
       initiativeId, name, goals, achievement,
       startDate: startDate || null,
       endDate: endDate || null,
+      goalId: goalId || null,
     }).returning();
     const detail = await getInitiativeDetail(row.id, tid);
     res.status(201).json(detail);
@@ -94,13 +101,14 @@ initiativesRouter.patch('/initiatives/:id', requireAuth, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const tid = tenantId(req);
-    const { name, goals, achievement, startDate, endDate } = req.body;
+    const { name, goals, achievement, startDate, endDate, goalId } = req.body;
     const updates: Partial<typeof initiatives.$inferInsert> = {};
     if (name !== undefined) updates.name = name;
     if (goals !== undefined) updates.goals = goals;
     if (achievement !== undefined) updates.achievement = achievement;
     if (startDate !== undefined) updates.startDate = startDate || null;
     if (endDate !== undefined) updates.endDate = endDate || null;
+    if (goalId !== undefined) updates.goalId = goalId || null;
     const cond = tid !== null
       ? and(eq(initiatives.id, id), eq(initiatives.tenantId, tid))
       : eq(initiatives.id, id);
