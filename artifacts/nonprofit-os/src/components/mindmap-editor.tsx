@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import {
   Plus, Trash2, Save, ZoomIn, ZoomOut, Maximize2,
   GitBranch, CheckSquare, Loader2, X, Check, Link, Unlink,
@@ -145,6 +145,23 @@ function CtxMenu({
   onDuplicate, onChangeColor, onCreateTask, onUnlinkTask, onDelete,
 }: CtxMenuProps) {
   const isTask = node.type === 'task';
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+
+  // After each render (including when colorOpen changes) clamp to viewport
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const PAD = 8;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const { width, height } = el.getBoundingClientRect();
+    let left = x;
+    let top = y;
+    if (left + width + PAD > W)  left = Math.max(PAD, W - width - PAD);
+    if (top  + height + PAD > H) top  = Math.max(PAD, H - height - PAD);
+    setPos({ left, top });
+  }, [x, y, colorOpen]);
 
   const Item = ({
     onClick, icon, label, cls = 'text-foreground hover:bg-secondary/70',
@@ -163,8 +180,9 @@ function CtxMenu({
 
   return (
     <div
+      ref={menuRef}
       className="fixed z-[200] bg-popover border border-border rounded-xl shadow-2xl py-1.5 min-w-[200px] text-sm"
-      style={{ left: x, top: y }}
+      style={{ left: pos.left, top: pos.top }}
       onPointerDown={e => e.nativeEvent.stopImmediatePropagation()}
     >
       <Item onClick={onRename} icon={<Pencil className="w-3.5 h-3.5" />} label="Rename" />
