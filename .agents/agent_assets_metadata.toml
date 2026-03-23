@@ -6,3 +6,9 @@ id = "b5sIWt39zJNCeCF1EYc65"
 uri = "file://BusinessOS-Screens.docx"
 type = "word_document"
 title = "BusinessOS — Complete Screen Reference"
+
+[[outputs]]
+id = "G-dwNM7pQvLQLCa5x470z"
+uri = "file://BusinessOS-Screens.pdf"
+type = "pdf"
+title = "BusinessOS — Complete Screen Reference (PDF)"
