@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "b5sIWt39zJNCeCF1EYc65"
+uri = "file://BusinessOS-Screens.docx"
+type = "word_document"
+title = "BusinessOS — Complete Screen Reference"

@@ -46,7 +46,12 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => {
+    // Support ?token=xxx for screenshot automation (pre-issued JWT)
+    const urlToken = new URLSearchParams(window.location.search).get('token');
+    if (urlToken) { localStorage.setItem(TOKEN_KEY, urlToken); return urlToken; }
+    return localStorage.getItem(TOKEN_KEY);
+  });
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -101,6 +106,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
   }, [currentUser?.id]);
+
+  // Auto-login for screenshot automation (?autoScreenshot=admin|super)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get('autoScreenshot');
+    if (!mode || token) return;
+    const email = mode === 'super' ? 'stephen.raj@insead.edu' : 'stephen.raj@coryphaeus.ai';
+    const password = mode === 'super' ? 'stryker' : 'admin123';
+    fetch(`${API}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.token) {
+          localStorage.setItem(TOKEN_KEY, data.token);
+          setToken(data.token);
+          setCurrentUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     try {

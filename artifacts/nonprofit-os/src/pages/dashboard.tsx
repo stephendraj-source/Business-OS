@@ -35,7 +35,13 @@ const fadeSlide = {
 };
 
 export default function Dashboard() {
-  const [activeView, setActiveView] = useState<ActiveView>('table');
+  // Support ?view=xxx for screenshot automation
+  const initialView = (() => {
+    const p = new URLSearchParams(window.location.search).get('view');
+    const valid: ActiveView[] = ['table','tree','portfolio','process-map','connectors','governance','dashboards','reports','audit-logs','settings','ai-agents','workflows','forms','users','initiatives','configuration','activities','tasks','queues','strategy','strategic-planning','meetings','calendar'];
+    return (valid.includes(p as ActiveView) ? p : 'table') as ActiveView;
+  })();
+  const [activeView, setActiveView] = useState<ActiveView>(initialView);
   const [treeInitialCategory, setTreeInitialCategory] = useState<string | null>(null);
   const [navHistory, setNavHistory] = useState<ActiveView[]>([]);
   const [openKnowledgeId, setOpenKnowledgeId] = useState<number | null>(null);

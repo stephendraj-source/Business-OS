@@ -14,6 +14,8 @@
     "typescript": "~5.9.2"
   },
   "dependencies": {
+    "docx": "^9.6.1",
+    "playwright": "^1.58.2",
     "xlsx": "^0.18.5"
   }
 }
