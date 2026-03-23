@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Tag, Building2, Loader2, Save } from 'lucide-react';
+import { Settings, Palette, Check, Moon, Sun, Waves, Leaf, Flame, Tag, Building2, Loader2, Save, FileText, Download } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchOrgDisplayName, saveOrgDisplayName } from '@/hooks/use-org-name';
@@ -479,6 +479,30 @@ export function SettingsView() {
               {officialNationalIdSaved ? 'Saved' : 'Save'}
             </button>
           </div>
+        </section>
+
+        {/* Divider */}
+        <div className="border-t border-border" />
+
+        {/* Specification Document */}
+        <section>
+          <div className="flex items-center gap-2 mb-4">
+            <FileText className="w-5 h-5 text-primary" />
+            <h3 className="text-base font-semibold text-foreground">Technical Specification</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            Download a comprehensive Word document containing the full technical specification, database schema,
+            API endpoints, all 15 epics with detailed user stories, and step-by-step instructions for
+            recreating this application from scratch.
+          </p>
+          <a
+            href="/api/spec-doc/download"
+            download
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            Download Specification (.docx)
+          </a>
         </section>
 
         {/* Divider */}
