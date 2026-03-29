@@ -90,6 +90,10 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   // Capture the node topic when the context menu is shown (node is guaranteed selected)
   const pendingTopicRef = useRef<string>('');
 
+  // ── Node "+" buttons overlay refs ─────────────────────────────────────────────
+  const nodeButtonsRef = useRef<HTMLDivElement>(null);
+  const activeTopicRef = useRef<any>(null);   // current me-tpc HTMLElement being hovered
+
   useEffect(() => { setNameValue(mindmapName); }, [mindmapName]);
 
   // ── Auto-save helper ─────────────────────────────────────────────────────────
@@ -199,6 +203,53 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           if (!cancelled) triggerSave(me);
         });
 
+        // ── Hover "+" buttons ───────────────────────────────────────────────
+        const wrapper = containerRef.current!.parentElement!;
+        let leaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+        function showButtons(tpc: HTMLElement) {
+          if (!nodeButtonsRef.current) return;
+          activeTopicRef.current = tpc;
+          const wRect = wrapper.getBoundingClientRect();
+          const tRect = tpc.getBoundingClientRect();
+          const btn = nodeButtonsRef.current;
+          btn.style.top  = `${tRect.top  - wRect.top  + tRect.height + 4}px`;
+          btn.style.left = `${tRect.left - wRect.left}px`;
+          btn.style.display = 'flex';
+        }
+
+        function hideButtons() {
+          if (nodeButtonsRef.current) nodeButtonsRef.current.style.display = 'none';
+          activeTopicRef.current = null;
+        }
+
+        const onContainerOver = (e: MouseEvent) => {
+          let el = e.target as HTMLElement | null;
+          while (el && el !== containerRef.current) {
+            if (el.tagName === 'ME-TPC') {
+              if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+              showButtons(el);
+              return;
+            }
+            el = el.parentElement;
+          }
+        };
+
+        const onContainerLeave = () => {
+          leaveTimer = setTimeout(hideButtons, 120);
+        };
+
+        containerRef.current!.addEventListener('mouseover', onContainerOver);
+        containerRef.current!.addEventListener('mouseleave', onContainerLeave);
+
+        // Keep buttons visible when the mouse moves into them
+        nodeButtonsRef.current?.addEventListener('mouseenter', () => {
+          if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
+        });
+        nodeButtonsRef.current?.addEventListener('mouseleave', () => {
+          leaveTimer = setTimeout(hideButtons, 80);
+        });
+
         setLoading(false);
       })
       .catch(() => { if (!cancelled) setLoading(false); });
@@ -255,6 +306,28 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
     pdf.save(`${nameValue}.pdf`);
   }, [nameValue]);
+
+  // ── Node "+" button handlers ──────────────────────────────────────────────────
+
+  const handleAddChild = useCallback(async () => {
+    const me = meRef.current;
+    const tpc = activeTopicRef.current;
+    if (!me || !tpc) return;
+    me.selectNode(tpc);
+    await me.addChild(tpc);
+    if (nodeButtonsRef.current) nodeButtonsRef.current.style.display = 'none';
+    activeTopicRef.current = null;
+  }, []);
+
+  const handleAddSibling = useCallback(async () => {
+    const me = meRef.current;
+    const tpc = activeTopicRef.current;
+    if (!me || !tpc) return;
+    me.selectNode(tpc);
+    await me.insertSibling('after', tpc);
+    if (nodeButtonsRef.current) nodeButtonsRef.current.style.display = 'none';
+    activeTopicRef.current = null;
+  }, []);
 
   // ── Create task from node ─────────────────────────────────────────────────────
 
@@ -346,6 +419,31 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           </div>
         )}
         <div ref={containerRef} className="w-full h-full mindmap-container" />
+
+        {/* Hover "+" buttons — positioned via JS, hidden by default */}
+        <div
+          ref={nodeButtonsRef}
+          style={{ display: 'none', position: 'absolute', zIndex: 20, gap: '4px', pointerEvents: 'auto' }}
+        >
+          <button
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); handleAddChild(); }}
+            title="Add child node"
+            style={{
+              fontSize: '11px', padding: '2px 8px', borderRadius: '5px',
+              border: '1.5px solid #000', background: '#f3f4f6', cursor: 'pointer',
+              color: '#000', fontWeight: 600, lineHeight: '18px', boxShadow: '0 1px 3px rgba(0,0,0,.15)',
+            }}
+          >+ child</button>
+          <button
+            onMouseDown={e => { e.preventDefault(); e.stopPropagation(); handleAddSibling(); }}
+            title="Add sibling node"
+            style={{
+              fontSize: '11px', padding: '2px 8px', borderRadius: '5px',
+              border: '1.5px solid #000', background: '#f3f4f6', cursor: 'pointer',
+              color: '#000', fontWeight: 600, lineHeight: '18px', boxShadow: '0 1px 3px rgba(0,0,0,.15)',
+            }}
+          >+ sibling</button>
+        </div>
       </div>
 
       {/* ── Keyboard hint ────────────────────────────────────────────────────── */}
