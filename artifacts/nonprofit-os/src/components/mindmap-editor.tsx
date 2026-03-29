@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MindElixir, { type MindElixirInstance, type MindElixirData } from 'mind-elixir';
-import { Loader2, Pencil, Check, X, ZoomIn, ZoomOut, Maximize2, Download } from 'lucide-react';
+import { Loader2, Pencil, Check, X, ZoomIn, ZoomOut, Maximize2, FileDown } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
@@ -173,18 +173,28 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const zoomOut = () => { const me = meRef.current; if (me) me.scale(Math.max(0.25, me.scaleVal - 0.25)); };
   const fitView = () => meRef.current?.scaleFit();
 
-  // ── Export as SVG / PNG ───────────────────────────────────────────────────────
+  // ── Export as PDF ─────────────────────────────────────────────────────────────
 
-  const exportPNG = useCallback(() => {
+  const exportPDF = useCallback(async () => {
     if (!containerRef.current) return;
-    const svg = containerRef.current.querySelector('svg');
-    if (!svg) return;
-    const xml = new XMLSerializer().serializeToString(svg);
-    const blob = new Blob([xml], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${nameValue}.svg`; a.click();
-    URL.revokeObjectURL(url);
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import('html2canvas'),
+      import('jspdf'),
+    ]);
+    const canvas = await html2canvas(containerRef.current, {
+      backgroundColor: '#0f172a',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
+      unit: 'px',
+      format: [canvas.width / 2, canvas.height / 2],
+    });
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+    pdf.save(`${nameValue}.pdf`);
   }, [nameValue]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -242,8 +252,8 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
             <Maximize2 className="w-4 h-4" />
           </button>
           <div className="w-px h-5 bg-border mx-1" />
-          <button onClick={exportPNG} title="Export as SVG" className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
-            <Download className="w-4 h-4" />
+          <button onClick={exportPDF} title="Download as PDF" className="p-1.5 rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
+            <FileDown className="w-4 h-4" />
           </button>
         </div>
       </div>
