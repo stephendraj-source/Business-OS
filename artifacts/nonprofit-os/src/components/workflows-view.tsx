@@ -1865,6 +1865,9 @@ export function WorkflowsView() {
   const [availableForms, setAvailableForms] = useState<FormOption[]>([]);
   const [availableAgents, setAvailableAgents] = useState<AgentOption[]>([]);
 
+  // n8n integration — default to n8n designer mode
+  const [useN8n, setUseN8n] = useState(true);
+
   const selectedWorkflow = workflows.find(w => w.id === selectedId) ?? null;
 
   const fetchWorkflows = useCallback(async () => {
@@ -1969,6 +1972,39 @@ export function WorkflowsView() {
 
   const markDirty = () => setDirty(true);
 
+  // ── n8n full-screen designer mode ───────────────────────────────────────────
+  if (useN8n) {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        {/* Thin header bar */}
+        <div className="flex-none flex items-center gap-3 px-4 py-2 border-b border-border bg-card/70 shrink-0">
+          <GitBranch className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold">Workflows</span>
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-semibold flex items-center gap-1">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            n8n
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={() => setUseN8n(false)}
+            className="text-[11px] px-2.5 py-1 rounded-md border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            Switch to legacy designer
+          </button>
+        </div>
+        {/* n8n iframe */}
+        <iframe
+          src="/n8n/"
+          className="flex-1 w-full border-none"
+          title="n8n Workflow Designer"
+          allow="clipboard-read; clipboard-write"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full bg-background">
 
@@ -1980,6 +2016,15 @@ export function WorkflowsView() {
             <span className="text-sm font-semibold">Workflows</span>
             <span className="text-xs px-1.5 py-0.5 rounded-full bg-secondary text-muted-foreground">{workflows.length}</span>
           </div>
+          <button
+            onClick={() => setUseN8n(true)}
+            className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/15 text-orange-600 dark:text-orange-400 font-semibold hover:bg-orange-500/25 transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            Open n8n
+          </button>
           <button
             onClick={createWorkflow}
             className="flex items-center gap-1 px-2.5 py-1 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 transition-colors"
