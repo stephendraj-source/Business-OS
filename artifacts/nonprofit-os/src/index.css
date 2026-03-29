@@ -277,21 +277,21 @@
 
 /* ── Mind map (mind-elixir) theme overrides ──────────────────────────────── */
 .mindmap-container me-tpc {
-  border: 1.5px solid #7dd3fc !important;
-  background: #9ca3af !important;
+  border: 1.5px solid #000000 !important;
+  background: #f3f4f6 !important;
   color: #000000 !important;
 }
 .mindmap-container me-root > me-tpc {
-  border: 2px solid #7dd3fc !important;
-  background: #9ca3af !important;
+  border: 2px solid #000000 !important;
+  background: #f3f4f6 !important;
   color: #000000 !important;
 }
 .mindmap-container me-main > me-tpc {
-  border: 1.5px solid #7dd3fc !important;
-  background: #9ca3af !important;
+  border: 1.5px solid #000000 !important;
+  background: #f3f4f6 !important;
   color: #000000 !important;
 }
 .mindmap-container svg line,
 .mindmap-container svg path {
-  stroke: #7dd3fc !important;
+  stroke: #000000 !important;
 }
