@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { db, users, userModuleAccess, userAllowedCategories, userAllowedProcesses, userFieldPermissions, userRoles, roles } from '@workspace/db';
 import { eq, and, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
-import { requireAuth } from '../middleware/auth.js';
+import jwt from 'jsonwebtoken';
+import { requireAuth, JWT_SECRET } from '../middleware/auth.js';
 
 function getTenantId(req: any): number | null {
   const auth = req.auth;
@@ -106,15 +107,15 @@ usersRouter.post('/:id/send-password-reset', async (req, res) => {
     const [user] = await db.select({ id: users.id, name: users.name, email: users.email })
       .from(users).where(eq(users.id, id));
     if (!user) return res.status(404).json({ error: 'Not found' });
-    const token = crypto.randomUUID().replace(/-/g, '');
-    const resetLink = `/reset-password?token=${token}&uid=${id}`;
+    const token = jwt.sign({ userId: id, type: 'password-reset' }, JWT_SECRET, { expiresIn: '24h' });
+    const resetLink = `/reset-password?token=${token}`;
     res.json({
       ok: true,
       resetLink,
       resetToken: token,
       email: user.email,
       name: user.name,
-      message: `Password reset link generated for ${user.name} (${user.email}). In a production deployment this would be emailed automatically. Please share this link with the user manually.`,
+      message: `Password reset link generated for ${user.name} (${user.email}). Share this link with the user — it expires in 24 hours.`,
     });
   } catch (e: any) {
     res.status(500).json({ error: e.message });

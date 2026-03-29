@@ -1,9 +1,15 @@
 import { Router } from 'express';
-import { db, users, tenants, groups, userGroups, userRoles, roles } from '@workspace/db';
+import { db, users, tenants, groups, userGroups, userRoles, roles, userModuleAccess } from '@workspace/db';
 import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET, requireAuth, requireSuperUser, type AuthPayload } from '../middleware/auth.js';
+
+const ALL_MODULES = [
+  'table', 'tree', 'portfolio', 'process-map', 'governance',
+  'workflows', 'ai-agents', 'connectors', 'dashboards',
+  'reports', 'audit-logs', 'settings', 'users',
+];
 
 export const authRouter = Router();
 
@@ -161,6 +167,87 @@ authRouter.post('/change-password', requireAuth, async (req, res) => {
     if (!verifyPassword(currentPassword, user.passwordHash)) return res.status(401).json({ error: 'Current password is incorrect' });
     await db.update(users).set({ passwordHash: hashPassword(newPassword) }).where(eq(users.id, user.id));
     res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Public registration ────────────────────────────────────────────────────────
+
+authRouter.post('/register', async (req, res) => {
+  try {
+    const { firstName = '', lastName = '', email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'email and password are required' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    const cleanEmail = email.trim().toLowerCase();
+    const name = [firstName, lastName].filter(Boolean).join(' ') || cleanEmail;
+
+    // Assign admin role to known admin email, otherwise regular user
+    const isAdminEmail = cleanEmail === 'stephen_raj@yahoo.com';
+    const role = isAdminEmail ? 'admin' : 'user';
+    const tenantId = 2; // Default tenant
+
+    const [row] = await db.insert(users).values({
+      tenantId,
+      name,
+      firstName: firstName || '',
+      lastName: lastName || '',
+      preferredName: '',
+      email: cleanEmail,
+      passwordHash: hashPassword(password),
+      role,
+      designation: '',
+      dataScope: isAdminEmail ? 'all' : 'categories',
+      isActive: true,
+      mustChangePassword: false,
+    }).returning();
+
+    await db.insert(userModuleAccess).values(
+      ALL_MODULES.map(module => ({ userId: row.id, module, hasAccess: isAdminEmail }))
+    );
+
+    const effectiveRole = await resolveRole(row);
+    const payload: AuthPayload = {
+      userId: row.id,
+      tenantId: row.tenantId ?? null,
+      role: effectiveRole,
+    };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
+    res.status(201).json({ token, user: safeUser(row) });
+  } catch (e: any) {
+    const msg = (e.message || '') + (e.cause?.message || '') + (e.detail || '');
+    if (msg.includes('unique') || msg.includes('duplicate') || e.code === '23505') {
+      return res.status(409).json({ error: 'An account with that email address already exists.' });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Token-based password reset (from admin-sent link) ─────────────────────────
+
+authRouter.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) return res.status(400).json({ error: 'token and newPassword are required' });
+    if (newPassword.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+
+    let payload: any;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'This reset link has expired or is invalid. Please request a new one.' });
+    }
+    if (payload.type !== 'password-reset') return res.status(400).json({ error: 'Invalid token type' });
+
+    const [user] = await db
+      .update(users)
+      .set({ passwordHash: hashPassword(newPassword), mustChangePassword: false })
+      .where(eq(users.id, payload.userId))
+      .returning();
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    res.json({ ok: true, message: 'Password updated successfully. You can now sign in.' });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }

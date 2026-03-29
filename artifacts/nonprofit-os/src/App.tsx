@@ -32,6 +32,11 @@ function AppRoutes() {
     );
   }
 
+  // Password reset link — render login page in reset mode
+  if (location.startsWith('/reset-password')) {
+    return <LoginPage />;
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
