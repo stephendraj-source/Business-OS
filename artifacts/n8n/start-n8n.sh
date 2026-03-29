@@ -16,6 +16,10 @@ export N8N_LOG_LEVEL="warn"
 export N8N_DIAGNOSTICS_ENABLED="false"
 export N8N_VERSION_NOTIFICATIONS_ENABLED="false"
 export N8N_SKIP_OWNER_SETUP="true"
+
+# ── Credentials used by the API server proxy for auto-login ──────────────────
+export N8N_AUTO_EMAIL="stephen.d.raj@gmail.com"
+export N8N_AUTO_PASSWORD="n8n-auto-2024!"
 export N8N_TEMPLATES_ENABLED="true"
 export EXECUTIONS_DATA_PRUNE="true"
 export EXECUTIONS_DATA_MAX_AGE="336"
