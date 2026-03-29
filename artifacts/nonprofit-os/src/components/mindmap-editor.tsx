@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import MindElixir, { type MindElixirInstance, type MindElixirData } from 'mind-elixir';
-import { Loader2, Pencil, Check, X, ZoomIn, ZoomOut, Maximize2, FileDown, ListTodo } from 'lucide-react';
+import { Loader2, Pencil, Check, X, ZoomIn, ZoomOut, Maximize2, FileDown } from 'lucide-react';
+import { TaskCreatePanel } from './task-create-panel';
 import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
@@ -75,18 +76,11 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
   const [nameValue, setNameValue] = useState(mindmapName);
   const [editingName, setEditingName] = useState(false);
 
-  // ── Create-task modal state ───────────────────────────────────────────────────
-  const [taskModal, setTaskModal] = useState<{ topic: string } | null>(null);
-  const [taskName, setTaskName] = useState('');
-  const [taskSaving, setTaskSaving] = useState(false);
-  const [taskDone, setTaskDone] = useState(false);
-  // Ref so the non-React mind-elixir onclick can open the modal
-  const openTaskModalRef = useRef<((topic: string) => void) | null>(null);
-  openTaskModalRef.current = (topic: string) => {
-    setTaskName(topic);
-    setTaskDone(false);
-    setTaskModal({ topic });
-  };
+  // ── Create-task panel state ───────────────────────────────────────────────────
+  const [taskPanelTopic, setTaskPanelTopic] = useState<string | null>(null);
+  // Ref so the non-React mind-elixir onclick can open the panel
+  const openTaskPanelRef = useRef<((topic: string) => void) | null>(null);
+  openTaskPanelRef.current = (topic: string) => setTaskPanelTopic(topic);
   // Capture the node topic when the context menu is shown (node is guaranteed selected)
   const pendingTopicRef = useRef<string>('');
 
@@ -150,7 +144,7 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
               {
                 name: 'Create Task from node',
                 onclick: () => {
-                  openTaskModalRef.current?.(pendingTopicRef.current);
+                  openTaskPanelRef.current?.(pendingTopicRef.current);
                 },
               },
             ],
@@ -329,26 +323,6 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
     activeTopicRef.current = null;
   }, []);
 
-  // ── Create task from node ─────────────────────────────────────────────────────
-
-  const createTask = useCallback(async () => {
-    const name = taskName.trim();
-    if (!name) return;
-    setTaskSaving(true);
-    try {
-      await fetch(`${API}/tasks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...fetchHeaders() },
-        body: JSON.stringify({ name }),
-      });
-      setTaskDone(true);
-      setTimeout(() => setTaskModal(null), 1200);
-    } catch {
-      // leave modal open so user can retry
-    } finally {
-      setTaskSaving(false);
-    }
-  }, [taskName, fetchHeaders]);
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -458,57 +432,13 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
         </span>
       </div>
 
-      {/* ── Create-task modal ────────────────────────────────────────────────── */}
-      {taskModal && (
-        <div
-          className="absolute inset-0 z-50 flex items-center justify-center bg-background/60 backdrop-blur-sm"
-          onClick={e => { if (e.target === e.currentTarget) setTaskModal(null); }}
-        >
-          <div role="dialog" aria-modal="true" aria-labelledby="create-task-title" className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm mx-4 p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <ListTodo className="w-5 h-5 text-primary" />
-              <h3 id="create-task-title" className="font-semibold text-base">Create Task</h3>
-            </div>
-
-            {taskDone ? (
-              <div className="flex items-center gap-2 text-green-500 py-2">
-                <Check className="w-5 h-5" />
-                <span className="text-sm font-medium">Task created successfully</span>
-              </div>
-            ) : (
-              <>
-                <label className="block text-sm text-muted-foreground mb-1">Task name</label>
-                <input
-                  autoFocus
-                  value={taskName}
-                  onChange={e => setTaskName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') createTask();
-                    if (e.key === 'Escape') setTaskModal(null);
-                  }}
-                  className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 mb-4"
-                  placeholder="Task name…"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setTaskModal(null)}
-                    className="px-3 py-1.5 text-sm rounded-lg border border-border hover:bg-secondary transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={createTask}
-                    disabled={taskSaving || !taskName.trim()}
-                    className="px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {taskSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    Create Task
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      {/* ── Create-task panel ────────────────────────────────────────────────── */}
+      {taskPanelTopic !== null && (
+        <TaskCreatePanel
+          nodeTopic={taskPanelTopic}
+          onClose={() => setTaskPanelTopic(null)}
+          onCreated={() => setTaskPanelTopic(null)}
+        />
       )}
     </div>
   );
