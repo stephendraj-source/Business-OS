@@ -17,9 +17,9 @@ function tenantId(req: any): number | null {
 
 // ── Auto-generate initiative ID ───────────────────────────────────────────────
 
-async function nextInitiativeId(tid: number | null): Promise<string> {
-  const cond = tid !== null ? eq(initiatives.tenantId, tid) : undefined;
-  const rows = await db.select({ id: initiatives.initiativeId }).from(initiatives).where(cond).orderBy(desc(initiatives.id)).limit(1);
+async function nextInitiativeId(): Promise<string> {
+  // initiative_id has a global UNIQUE constraint, so sequence across ALL tenants
+  const rows = await db.select({ id: initiatives.initiativeId }).from(initiatives).orderBy(desc(initiatives.id)).limit(1);
   if (rows.length === 0) return 'INI-001';
   const last = rows[0].id;
   const num = parseInt(last.replace('INI-', ''), 10);
@@ -71,7 +71,7 @@ initiativesRouter.post('/initiatives', requireAuth, async (req, res) => {
     const tid = tenantId(req);
     const { name, goals = '', achievement = '', startDate, endDate, goalId } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
-    const initiativeId = await nextInitiativeId(tid);
+    const initiativeId = await nextInitiativeId();
     const [row] = await db.insert(initiatives).values({
       tenantId: tid,
       initiativeId, name, goals, achievement,

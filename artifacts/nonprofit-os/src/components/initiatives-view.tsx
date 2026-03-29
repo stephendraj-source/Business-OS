@@ -5,6 +5,7 @@ import {
   ExternalLink, Flag, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API = '/api';
 
@@ -76,6 +77,7 @@ function statusLabel(ini: InitiativeRow) {
 // ── Main view ─────────────────────────────────────────────────────────────────
 
 export function InitiativesView() {
+  const { fetchHeaders } = useAuth();
   const [initiatives, setInitiatives] = useState<InitiativeRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -86,22 +88,22 @@ export function InitiativesView() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await fetch(`${API}/initiatives`);
+      const r = await fetch(`${API}/initiatives`, { headers: fetchHeaders() });
       if (r.ok) setInitiatives(await r.json());
     } finally { setLoading(false); }
-  }, []);
+  }, [fetchHeaders]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const openDetail = async (ini: InitiativeRow) => {
-    const r = await fetch(`${API}/initiatives/${ini.id}`);
+    const r = await fetch(`${API}/initiatives/${ini.id}`, { headers: fetchHeaders() });
     if (r.ok) setSelected(await r.json());
   };
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirmDelete !== id) { setConfirmDelete(id); return; }
-    await fetch(`${API}/initiatives/${id}`, { method: 'DELETE' });
+    await fetch(`${API}/initiatives/${id}`, { method: 'DELETE', headers: fetchHeaders() });
     setConfirmDelete(null);
     if (selected?.id === id) setSelected(null);
     await fetchAll();
@@ -233,7 +235,7 @@ export function InitiativesView() {
           onClose={() => setSelected(null)}
           onSaved={async () => {
             await fetchAll();
-            const r = await fetch(`${API}/initiatives/${selected.id}`);
+            const r = await fetch(`${API}/initiatives/${selected.id}`, { headers: fetchHeaders() });
             if (r.ok) setSelected(await r.json());
           }}
         />
@@ -326,6 +328,7 @@ function InitiativeDetail({ initiative, onClose, onSaved }: {
 // ── Overview Tab ──────────────────────────────────────────────────────────────
 
 function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSaved: () => Promise<void> }) {
+  const { fetchHeaders } = useAuth();
   const init = () => ({
     name: initiative.name,
     goals: initiative.goals,
@@ -340,14 +343,14 @@ function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; on
 
   useEffect(() => { setForm(init()); }, [initiative.id]);
   useEffect(() => {
-    fetch(`${API}/strategic-goals`).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
+    fetch(`${API}/strategic-goals`, { headers: fetchHeaders() }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
   }, []);
 
   const save = async () => {
     setSaving(true);
     try {
       await fetch(`${API}/initiatives/${initiative.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, goals: form.goals, achievement: form.achievement, startDate: form.startDate || null, endDate: form.endDate || null, goalId: form.goalId || null }),
       });
       await onSaved();
@@ -412,6 +415,7 @@ function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; on
 // ── URLs Tab ──────────────────────────────────────────────────────────────────
 
 function UrlsTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSaved: () => Promise<void> }) {
+  const { fetchHeaders } = useAuth();
   const [urls, setUrls] = useState<InitiativeUrl[]>(initiative.urls.length > 0 ? initiative.urls : []);
   const [saving, setSaving] = useState(false);
 
@@ -426,7 +430,7 @@ function UrlsTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSave
     setSaving(true);
     try {
       await fetch(`${API}/initiatives/${initiative.id}/urls`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls: urls.filter(u => u.url) }),
       });
       await onSaved();
@@ -485,13 +489,14 @@ function UrlsTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSave
 // ── Assignees Tab ─────────────────────────────────────────────────────────────
 
 function AssigneesTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSaved: () => Promise<void> }) {
+  const { fetchHeaders } = useAuth();
   const [allUsers, setAllUsers] = useState<UserRow[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set(initiative.assignees.map(a => a.id)));
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    fetch(`${API}/users`).then(r => r.json()).then(setAllUsers);
+    fetch(`${API}/users`, { headers: fetchHeaders() }).then(r => r.json()).then(setAllUsers);
   }, []);
 
   useEffect(() => {
@@ -502,7 +507,7 @@ function AssigneesTab({ initiative, onSaved }: { initiative: InitiativeDetail; o
     setSaving(true);
     try {
       await fetch(`${API}/initiatives/${initiative.id}/assignees`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ userIds: Array.from(sel) }),
       });
       await onSaved();
@@ -560,6 +565,7 @@ const CATS = [
 ];
 
 function ProcessesTab({ initiative, onSaved }: { initiative: InitiativeDetail; onSaved: () => Promise<void> }) {
+  const { fetchHeaders } = useAuth();
   const [allProcesses, setAllProcesses] = useState<ProcessMeta[]>([]);
   const [sel, setSel] = useState<Set<number>>(new Set(initiative.processes.map(p => p.id)));
   const [saving, setSaving] = useState(false);
@@ -568,7 +574,7 @@ function ProcessesTab({ initiative, onSaved }: { initiative: InitiativeDetail; o
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    fetch(`${API}/processes`).then(r => r.json()).then(setAllProcesses);
+    fetch(`${API}/processes`, { headers: fetchHeaders() }).then(r => r.json()).then(setAllProcesses);
   }, []);
 
   useEffect(() => {
@@ -579,7 +585,7 @@ function ProcessesTab({ initiative, onSaved }: { initiative: InitiativeDetail; o
     setSaving(true);
     try {
       await fetch(`${API}/initiatives/${initiative.id}/processes`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        method: 'PUT', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ processIds: Array.from(sel) }),
       });
       await onSaved();
@@ -657,6 +663,7 @@ function ProcessesTab({ initiative, onSaved }: { initiative: InitiativeDetail; o
 // ── Goals Tab ──────────────────────────────────────────────────────────────────
 
 function GoalsTab({ initiative }: { initiative: InitiativeDetail }) {
+  const { fetchHeaders } = useAuth();
   const [allGoals, setAllGoals] = useState<{ id: number; goal_number: number; title: string; status: string; color: string }[]>([]);
   const [linkedIds, setLinkedIds] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
@@ -664,8 +671,8 @@ function GoalsTab({ initiative }: { initiative: InitiativeDetail }) {
 
   useEffect(() => {
     Promise.all([
-      fetch(`${API}/strategic-goals`).then(r => r.json()).catch(() => []),
-      fetch(`${API}/initiatives/${initiative.id}/strategic-goals`).then(r => r.json()).catch(() => []),
+      fetch(`${API}/strategic-goals`, { headers: fetchHeaders() }).then(r => r.json()).catch(() => []),
+      fetch(`${API}/initiatives/${initiative.id}/strategic-goals`, { headers: fetchHeaders() }).then(r => r.json()).catch(() => []),
     ]).then(([all, linked]) => {
       setAllGoals(Array.isArray(all) ? all : []);
       setLinkedIds(Array.isArray(linked) ? linked.map((g: any) => g.id) : []);
@@ -681,7 +688,7 @@ function GoalsTab({ initiative }: { initiative: InitiativeDetail }) {
     try {
       await fetch(`${API}/initiatives/${initiative.id}/strategic-goals`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal_ids: next }),
       });
       setSaved(true);
@@ -757,13 +764,14 @@ function CreateInitiativeModal({ onClose, onCreate }: {
   onClose: () => void;
   onCreate: (ini: InitiativeRow) => void;
 }) {
+  const { fetchHeaders } = useAuth();
   const [form, setForm] = useState({ name: '', goals: '', startDate: '', endDate: '', goalId: '' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [allGoals, setAllGoals] = useState<StrategicGoalRef[]>([]);
 
   useEffect(() => {
-    fetch(`${API}/strategic-goals`).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
+    fetch(`${API}/strategic-goals`, { headers: fetchHeaders() }).then(r => r.json()).then(d => { if (Array.isArray(d)) setAllGoals(d); }).catch(() => {});
   }, []);
 
   const submit = async () => {
@@ -772,7 +780,7 @@ function CreateInitiativeModal({ onClose, onCreate }: {
     setError('');
     try {
       const r = await fetch(`${API}/initiatives`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, goals: form.goals, startDate: form.startDate || null, endDate: form.endDate || null, goalId: form.goalId ? Number(form.goalId) : null }),
       });
       if (!r.ok) { const d = await r.json(); setError(d.error || 'Failed'); return; }
