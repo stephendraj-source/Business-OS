@@ -274,3 +274,24 @@
   height: 0;
 }
 .tiptap-editor .ProseMirror ::selection { background: hsl(var(--primary) / 0.2); }
+
+/* ── Mind map (mind-elixir) theme overrides ──────────────────────────────── */
+.mindmap-container me-tpc {
+  border: 1.5px solid #7dd3fc !important;
+  background: #9ca3af !important;
+  color: #000000 !important;
+}
+.mindmap-container me-root > me-tpc {
+  border: 2px solid #7dd3fc !important;
+  background: #9ca3af !important;
+  color: #000000 !important;
+}
+.mindmap-container me-main > me-tpc {
+  border: 1.5px solid #7dd3fc !important;
+  background: #9ca3af !important;
+  color: #000000 !important;
+}
+.mindmap-container svg line,
+.mindmap-container svg path {
+  stroke: #7dd3fc !important;
+}

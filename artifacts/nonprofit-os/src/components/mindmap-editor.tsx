@@ -131,6 +131,37 @@ export function MindmapEditor({ mindmapId, mindmapName, onRename }: MindmapEdito
           keypress: true,
           allowUndo: true,
           newTopicName: 'New node',
+          theme: {
+            name: 'BusinessOS',
+            type: 'light',
+            palette: [
+              '#7dd3fc','#7dd3fc','#7dd3fc','#7dd3fc',
+              '#7dd3fc','#7dd3fc','#7dd3fc','#7dd3fc',
+            ],
+            cssVar: {
+              '--node-gap-x': '32px',
+              '--node-gap-y': '12px',
+              '--main-gap-x': '64px',
+              '--main-gap-y': '16px',
+              '--main-color': '#000000',
+              '--main-bgcolor': '#9ca3af',
+              '--main-bgcolor-transparent': '#9ca3af99',
+              '--color': '#000000',
+              '--bgcolor': '#9ca3af',
+              '--selected': '#38bdf8',
+              '--accent-color': '#7dd3fc',
+              '--root-color': '#000000',
+              '--root-bgcolor': '#9ca3af',
+              '--root-border-color': '#7dd3fc',
+              '--root-radius': '8px',
+              '--main-radius': '6px',
+              '--topic-padding': '4px 14px',
+              '--panel-color': '#1e293b',
+              '--panel-bgcolor': '#ffffff',
+              '--panel-border-color': '#7dd3fc',
+              '--map-padding': '20px',
+            },
+          },
         });
 
         me.init(data);
