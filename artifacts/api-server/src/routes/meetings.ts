@@ -10,6 +10,14 @@ const pdfParse: (buf: Buffer) => Promise<{ text: string }> = _require("pdf-parse
 const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
+function todayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // ── Helpers for document parsing ──────────────────────────────────────────────
 
 function extractDate(text: string): string {
@@ -435,12 +443,13 @@ router.post("/meetings/:id/actions/:actionId/create-task", async (req, res) => {
     if (action.taskId) return res.status(400).json({ error: "Action already linked to a task" });
 
     const { name = action.text, priority = "medium", assignedTo = null } = req.body;
+    const defaultDate = todayDateString();
 
     const taskRows = await db.execute(sql`
       INSERT INTO tasks
-        (tenant_id, name, description, priority, status, approval_status, source, assigned_to, created_by)
+        (tenant_id, name, description, start_date, end_date, priority, status, approval_status, source, assigned_to, created_by)
       VALUES
-        (${tenantId}, ${name}, ${"From meeting: " + meeting.title}, ${priority}, ${"open"}, ${"none"}, ${"Meeting"}, ${assignedTo ?? null}, ${userId})
+        (${tenantId}, ${name}, ${"From meeting: " + meeting.title}, ${defaultDate}, ${defaultDate}, ${priority}, ${"open"}, ${"none"}, ${"Meeting"}, ${assignedTo ?? null}, ${userId})
       RETURNING *
     `);
     const task = taskRows.rows[0] as any;

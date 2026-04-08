@@ -7,6 +7,14 @@ import { useCredit } from "../lib/credits";
 
 const router: IRouter = Router();
 
+function todayDateString(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 const TASK_COLS = sql`
   t.*,
   u.name  AS assigned_to_name, u.email AS assigned_to_email,
@@ -82,24 +90,41 @@ router.post("/tasks", async (req, res) => {
     const createdBy: number | null = auth?.userId ?? null;
     const tenantId: number | null = auth?.tenantId ?? null;
     const {
-      name, description, startDate, endDate, revisedEndDate,
+      name, description, startDate, endDate,
       assignedTo, priority, aiAgentId,
       source, queueId, workflowId, approvalStatus, aiInstructions,
     } = req.body;
+    const defaultDate = todayDateString();
+    const effectiveStartDate = startDate ?? defaultDate;
+    const effectiveEndDate = endDate ?? defaultDate;
+    const effectiveAssignedTo = assignedTo ?? (source === "AI Agents" ? createdBy : null);
+
+    const nextTaskNumberRows = tenantId == null
+      ? await db.execute(sql`
+          SELECT COALESCE(MAX(task_number), 0) + 1 AS next_task_number
+          FROM tasks
+          WHERE tenant_id IS NULL
+        `)
+      : await db.execute(sql`
+          SELECT COALESCE(MAX(task_number), 0) + 1 AS next_task_number
+          FROM tasks
+          WHERE tenant_id = ${tenantId}
+        `);
+    const nextTaskNumber = Number((nextTaskNumberRows.rows as any[])[0]?.next_task_number ?? 1);
 
     const rows = await db.execute(sql`
       INSERT INTO tasks (
-        tenant_id, name, description, start_date, end_date, revised_end_date,
+        tenant_id, task_number, name, description, start_date, end_date,
         assigned_to, created_by, priority, ai_agent_id,
         source, queue_id, workflow_id, approval_status, ai_instructions
       ) VALUES (
         ${tenantId},
+        ${nextTaskNumber},
         ${name ?? ''},
         ${description ?? ''},
-        ${startDate ?? null},
-        ${endDate ?? null},
-        ${revisedEndDate ?? null},
-        ${assignedTo ?? null},
+        ${effectiveStartDate},
+        ${effectiveEndDate},
+        ${effectiveAssignedTo},
         ${createdBy},
         ${priority ?? 'normal'},
         ${aiAgentId ?? null},
@@ -123,7 +148,7 @@ router.patch("/tasks/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
     const {
-      name, description, startDate, endDate, revisedEndDate,
+      name, description, startDate, endDate,
       assignedTo, priority, status, aiAgentId, aiResult,
       source, queueId, workflowId, approvalStatus, aiInstructions,
     } = req.body;
@@ -138,7 +163,6 @@ router.patch("/tasks/:id", async (req, res) => {
         description      = ${description      ?? cur.description},
         start_date       = ${startDate       !== undefined ? startDate       : cur.start_date},
         end_date         = ${endDate         !== undefined ? endDate         : cur.end_date},
-        revised_end_date = ${revisedEndDate  !== undefined ? revisedEndDate  : cur.revised_end_date},
         assigned_to      = ${assignedTo      !== undefined ? assignedTo      : cur.assigned_to},
         priority         = ${priority         ?? cur.priority},
         status           = ${status           ?? cur.status},

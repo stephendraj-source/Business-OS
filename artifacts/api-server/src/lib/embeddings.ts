@@ -1,6 +1,10 @@
 let _pipeline: any = null;
 let _loading: Promise<any> | null = null;
 
+export function hasPgVectorSupport(): boolean {
+  return process.env.ENABLE_PGVECTOR === "true";
+}
+
 async function getPipeline(): Promise<any> {
   if (_pipeline) return _pipeline;
   if (_loading) return _loading;

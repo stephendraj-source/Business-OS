@@ -24,6 +24,9 @@ export const tenants = pgTable('tenants', {
   officialNationalId: text('official_national_id').notNull().default(''),
   systemPrompt: text('system_prompt'),
   colorScheme: text('color_scheme'),
+  n8nUserId: text('n8n_user_id'),
+  n8nUserEmail: text('n8n_user_email'),
+  n8nProjectId: text('n8n_project_id'),
   createdAt: timestamp('created_at').defaultNow(),
 });
 

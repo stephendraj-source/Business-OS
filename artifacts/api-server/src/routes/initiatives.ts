@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db, initiatives, initiativeUrls, initiativeAssignees, initiativeProcesses, users, processesTable } from '@workspace/db';
+import { db, initiatives, initiativeUrls, initiativeAssignees, initiativeProcesses, users, processesTable, strategicGoalInitiativesTable } from '@workspace/db';
 import { eq, desc, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { requireAuth } from '../middleware/auth.js';
@@ -48,6 +48,17 @@ async function getInitiativeDetail(id: number, tid: number | null) {
   return { ...ini, urls, assignees, processes: procs };
 }
 
+async function syncInitiativeGoalLinks(id: number, goalId: number | null) {
+  await db.delete(strategicGoalInitiativesTable).where(eq(strategicGoalInitiativesTable.initiativeId, id));
+
+  if (goalId !== null) {
+    await db.insert(strategicGoalInitiativesTable).values({
+      goalId,
+      initiativeId: id,
+    });
+  }
+}
+
 // ── List ──────────────────────────────────────────────────────────────────────
 
 initiativesRouter.get('/initiatives', requireAuth, async (req, res) => {
@@ -79,6 +90,7 @@ initiativesRouter.post('/initiatives', requireAuth, async (req, res) => {
       endDate: endDate || null,
       goalId: goalId || null,
     }).returning();
+    await syncInitiativeGoalLinks(row.id, row.goalId ?? null);
     const detail = await getInitiativeDetail(row.id, tid);
     res.status(201).json(detail);
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -113,6 +125,9 @@ initiativesRouter.patch('/initiatives/:id', requireAuth, async (req, res) => {
       ? and(eq(initiatives.id, id), eq(initiatives.tenantId, tid))
       : eq(initiatives.id, id);
     await db.update(initiatives).set(updates).where(cond);
+    if (goalId !== undefined) {
+      await syncInitiativeGoalLinks(id, goalId || null);
+    }
     const detail = await getInitiativeDetail(id, tid);
     if (!detail) return res.status(404).json({ error: 'Not found' });
     res.json(detail);

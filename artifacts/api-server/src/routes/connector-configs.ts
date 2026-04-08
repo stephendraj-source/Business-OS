@@ -89,19 +89,7 @@ router.post("/connector-configs/:id/test", async (req, res) => {
     let testPassed = false;
     let errorMsg = "";
 
-    if (connector.type === "n8n") {
-      if (!cfg.webhookUrl) { errorMsg = "Webhook URL required"; }
-      else {
-        try {
-          const r = await fetch(cfg.webhookUrl, {
-            method: "GET",
-            headers: cfg.apiKey ? { "X-N8N-API-KEY": cfg.apiKey } : {},
-            signal: AbortSignal.timeout(8000),
-          });
-          testPassed = r.ok || r.status === 404; // 404 is fine — means webhook exists
-        } catch (e: any) { errorMsg = e.message || "Connection failed"; }
-      }
-    } else if (connector.type === "zapier") {
+    if (connector.type === "zapier") {
       if (!cfg.webhookUrl) { errorMsg = "Webhook URL required"; }
       else {
         try {

@@ -7,7 +7,7 @@ import {
   db, knowledgeItemsTable,
 } from "@workspace/db";
 import { eq, and, isNull } from "drizzle-orm";
-import { embed, vecToSql, warmUp } from "../lib/embeddings.js";
+import { embed, vecToSql, warmUp, hasPgVectorSupport } from "../lib/embeddings.js";
 import { extractTextFromFile } from "../lib/extract-text.js";
 
 const router: IRouter = Router();
@@ -30,6 +30,7 @@ warmUp().catch(() => {});
 
 async function embedItem(id: number, title: string, content: string): Promise<void> {
   try {
+    if (!hasPgVectorSupport()) return;
     const text = `${title}\n${content}`;
     if (!text.trim()) return;
     const vec = await embed(text);
@@ -49,6 +50,21 @@ router.get("/knowledge/search", async (req, res) => {
     if (!q?.trim()) return res.json([]);
     const auth = (req as any).auth;
     const limitNum = Math.min(Number(limit) || 10, 50);
+
+    if (!hasPgVectorSupport()) {
+      const tenantCondition = auth?.tenantId
+        ? sql`tenant_id = ${auth.tenantId}`
+        : sql`tenant_id IS NULL`;
+      const pattern = `%${q.trim().split(/\s+/).filter(w => w.length > 2).slice(0, 3).join("%") || q.trim()}%`;
+      const rows = await db.execute(
+        sql`SELECT id, title, content, type, folder_id, file_name, mime_type, url, 0.0 AS similarity
+            FROM knowledge_items
+            WHERE ${tenantCondition}
+              AND (lower(title) LIKE lower(${pattern}) OR lower(content) LIKE lower(${pattern}))
+            LIMIT ${limitNum}`
+      );
+      return res.json(rows.rows);
+    }
 
     const queryVec = await embed(q);
     const embStr = vecToSql(queryVec);
@@ -87,6 +103,7 @@ router.post("/knowledge/reindex", async (req, res) => {
     const allItems = await db
       .select({
         id: knowledgeItemsTable.id,
+        tenantId: knowledgeItemsTable.tenantId,
         title: knowledgeItemsTable.title,
         content: knowledgeItemsTable.content,
         filePath: knowledgeItemsTable.filePath,
@@ -96,9 +113,9 @@ router.post("/knowledge/reindex", async (req, res) => {
       })
       .from(knowledgeItemsTable);
 
-    const tenantId = (req as any).auth?.tenantId ?? null;
+    const authTenantId = (req as any).auth?.tenantId;
     const filtered = allItems.filter(i =>
-      (tenantId ? (i as any).tenantId === tenantId : true) &&
+      (authTenantId === undefined ? true : authTenantId ? i.tenantId === authTenantId : i.tenantId === null) &&
       (!i.embeddedAt || (i.filePath && !i.content?.trim()))
     );
 

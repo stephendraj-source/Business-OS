@@ -2,7 +2,7 @@
 
 ## Overview
 
-Nonprofit Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
+Business Operating System — a full-stack business operating system for nonprofits, built on a pnpm workspace monorepo using TypeScript.
 
 ## Recent Features Added
 - **Meetings**: Full meeting management module under Workflows section. Meeting types: Physical, Virtual, Hybrid. Six-tab detail panel: Overview (type, date/time, location, organiser, linked process), Agenda (ordered list items), Attendees (from users list or external), Discussions (free-text minutes), Actions (action items with assignee/due date/priority, one-click "→ Task" converts to real task record), Links (select linked Workflows + AI Agents). DB: `meetings`, `meeting_workflows`, `meeting_agents` tables. API: GET/POST/GET:id/PATCH:id/DELETE /api/meetings + POST /api/meetings/:id/actions/:actionId/create-task.
@@ -49,7 +49,7 @@ Nonprofit Operating System — a full-stack business operating system for nonpro
 artifacts-monorepo/
 ├── artifacts/
 │   ├── api-server/         # Express API server
-│   └── nonprofit-os/       # React + Vite frontend (served at /)
+│   └── business-os/        # React + Vite frontend (served at /)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -65,7 +65,7 @@ artifacts-monorepo/
 
 ## Features
 
-### Nonprofit OS (`artifacts/nonprofit-os`)
+### Business OS (`artifacts/business-os`)
 
 #### Process Matrix
 - Editable spreadsheet of all 101 operational processes across 8 categories (101 = original 100 + Grant Approval)
@@ -108,10 +108,10 @@ artifacts-monorepo/
 The platform is fully multi-tenant with JWT-based authentication.
 
 ### Auth Architecture
-- **JWT tokens**: 30-day expiry, stored in `localStorage` key `nonprofit-os-auth-token`
+- **JWT tokens**: 30-day expiry, stored in `localStorage` key `business-os-auth-token`
 - **Payload**: `{ userId, tenantId, role }`
 - **Middleware**: `artifacts/api-server/src/middleware/auth.ts` — `authMiddleware` applied globally in `app.ts`; sets `req.auth = { userId, tenantId, role }`
-- **AuthContext**: `artifacts/nonprofit-os/src/contexts/AuthContext.tsx` — replaces old UserContext; exports `useAuth()`, `useUser()` (backward compat), `AuthProvider`
+- **AuthContext**: `artifacts/business-os/src/contexts/AuthContext.tsx` — replaces old UserContext; exports `useAuth()`, `useUser()` (backward compat), `AuthProvider`
 - **UserContext**: now a re-export shim for `AuthContext` — all existing components using `useUser()` work unchanged
 
 ### Users & Roles

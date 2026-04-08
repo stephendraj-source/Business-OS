@@ -28,6 +28,7 @@ import meetingsRouter from "./meetings";
 import calendarEventsRouter from "./calendar-events";
 import navPreferencesRouter from "./nav-preferences";
 import { specDocRouter } from "./spec-doc";
+import operatonRouter from "./operaton";
 
 const router: IRouter = Router();
 
@@ -59,6 +60,7 @@ router.use(mindmapsRouter);
 router.use(meetingsRouter);
 router.use(calendarEventsRouter);
 router.use('/nav-preferences', navPreferencesRouter);
+router.use(operatonRouter);
 router.use(specDocRouter);
 
 export default router;

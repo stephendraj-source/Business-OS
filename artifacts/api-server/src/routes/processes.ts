@@ -43,6 +43,68 @@ async function writeAuditLog(data: {
   } catch { /* non-critical */ }
 }
 
+async function generateAiProcessFields(args: {
+  category: string;
+  processName?: string;
+  processDescription: string;
+  aiAgent?: string;
+  purpose?: string;
+  inputs?: string;
+  outputs?: string;
+  humanInTheLoop?: string;
+  kpi?: string;
+  estimatedValueImpact?: string;
+  industryBenchmark?: string;
+  target?: string;
+  achievement?: string;
+}) {
+  const name = args.processName || args.processDescription;
+  const prompt = `You are an expert nonprofit operations advisor. For the following nonprofit process, populate ALL the blank fields with realistic, specific, and actionable content tailored to a modern nonprofit organization.
+
+Process Name: ${name}
+Category: ${args.category}
+
+CURRENT VALUES (only fill blank or empty fields):
+- AI Agent: ${args.aiAgent || "(BLANK - fill this)"}
+- Purpose: ${args.purpose || "(BLANK - fill this)"}
+- Inputs: ${args.inputs || "(BLANK - fill this)"}
+- Outputs: ${args.outputs || "(BLANK - fill this)"}
+- Human-in-the-Loop: ${args.humanInTheLoop || "(BLANK - fill this)"}
+- KPI: ${args.kpi || "(BLANK - fill this)"}
+- Estimated Value Impact: ${args.estimatedValueImpact || "(BLANK - fill this)"}
+- Industry Benchmark: ${args.industryBenchmark || "(BLANK - fill this)"}
+- Target: ${args.target || "(BLANK - fill this)"}
+- Achievement: ${args.achievement || "(BLANK - fill this)"}
+
+Return ONLY a valid JSON object with these exact keys (include ALL keys, keep existing non-blank values unchanged):
+{
+  "aiAgent": "...",
+  "purpose": "...",
+  "inputs": "...",
+  "outputs": "...",
+  "humanInTheLoop": "...",
+  "kpi": "...",
+  "estimatedValueImpact": "...",
+  "industryBenchmark": "...",
+  "target": "...",
+  "achievement": "..."
+}`;
+
+  const response = await anthropic.messages.create({
+    model: "claude-opus-4-5",
+    max_tokens: 1500,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = response.content[0].type === "text" ? response.content[0].text : "";
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error("AI did not return valid JSON");
+  }
+
+  return JSON.parse(jsonMatch[0]) as Record<string, string>;
+}
+
 // --- Export (must be before /:id) ---
 router.get("/processes/export", async (req, res) => {
   try {
@@ -53,6 +115,7 @@ router.get("/processes/export", async (req, res) => {
 
     const rows = processes.map(p => ({
       "#": p.number,
+      "Subprocess Of": p.parentProcessId ?? "",
       "Category": p.category,
       "Process Name": p.processName,
       "Process Description": p.processDescription,
@@ -64,6 +127,7 @@ router.get("/processes/export", async (req, res) => {
       "KPI": p.kpi,
       "Target": p.target,
       "Achievement": p.achievement,
+      "BPMN": p.bpmn,
       "Status": p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '',
       "Estimated Value Impact": p.estimatedValueImpact,
       "Industry Benchmark": p.industryBenchmark,
@@ -130,6 +194,9 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
 
       const data = {
         number: num,
+        parentProcessId: row["Subprocess Of"] == null || row["Subprocess Of"] === ""
+          ? null
+          : parseInt(String(row["Subprocess Of"]), 10) || null,
         category: String(row["Category"] ?? ""),
         processName: String(row["Process Name"] ?? ""),
         processDescription: String(row["Process Description"] ?? ""),
@@ -141,6 +208,7 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
         kpi: String(row["KPI"] ?? ""),
         target: String(row["Target"] ?? ""),
         achievement: String(row["Achievement"] ?? ""),
+        bpmn: String(row["BPMN"] ?? ""),
         estimatedValueImpact: String(row["Estimated Value Impact"] ?? ""),
         industryBenchmark: String(row["Industry Benchmark"] ?? ""),
         included: String(row["Include"] ?? "").toLowerCase() === "yes",
@@ -370,48 +438,21 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
     }
 
     const name = process.processName || process.processDescription;
-    const prompt = `You are an expert nonprofit operations advisor. For the following nonprofit process, populate ALL the blank fields with realistic, specific, and actionable content tailored to a modern nonprofit organization.
-
-Process Name: ${name}
-Category: ${process.category}
-
-CURRENT VALUES (only fill blank or empty fields):
-- AI Agent: ${process.aiAgent || "(BLANK - fill this)"}
-- Purpose: ${process.purpose || "(BLANK - fill this)"}
-- Inputs: ${process.inputs || "(BLANK - fill this)"}
-- Outputs: ${process.outputs || "(BLANK - fill this)"}
-- Human-in-the-Loop: ${process.humanInTheLoop || "(BLANK - fill this)"}
-- KPI: ${process.kpi || "(BLANK - fill this)"}
-- Estimated Value Impact: ${process.estimatedValueImpact || "(BLANK - fill this)"}
-- Industry Benchmark: ${process.industryBenchmark || "(BLANK - fill this)"}
-- Target: ${process.target || "(BLANK - fill this)"}
-- Achievement: ${process.achievement || "(BLANK - fill this)"}
-
-Return ONLY a valid JSON object with these exact keys (include ALL keys, keep existing non-blank values unchanged):
-{
-  "aiAgent": "...",
-  "purpose": "...",
-  "inputs": "...",
-  "outputs": "...",
-  "humanInTheLoop": "...",
-  "kpi": "...",
-  "estimatedValueImpact": "...",
-  "industryBenchmark": "...",
-  "target": "...",
-  "achievement": "..."
-}`;
-
-    const response = await anthropic.messages.create({
-      model: "claude-opus-4-5",
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
+    const fields = await generateAiProcessFields({
+      category: process.category,
+      processName: process.processName,
+      processDescription: process.processDescription,
+      aiAgent: process.aiAgent,
+      purpose: process.purpose,
+      inputs: process.inputs,
+      outputs: process.outputs,
+      humanInTheLoop: process.humanInTheLoop,
+      kpi: process.kpi,
+      estimatedValueImpact: process.estimatedValueImpact,
+      industryBenchmark: process.industryBenchmark,
+      target: process.target,
+      achievement: process.achievement,
     });
-
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) { res.status(500).json({ error: "AI did not return valid JSON" }); return; }
-
-    const fields = JSON.parse(jsonMatch[0]) as Record<string, string>;
 
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
     if (!process.aiAgent && fields.aiAgent) updateData.aiAgent = fields.aiAgent;
@@ -440,6 +481,46 @@ Return ONLY a valid JSON object with these exact keys (include ALL keys, keep ex
   } catch (err) {
     req.log.error(err, "Failed to AI-populate process");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/processes/ai-draft", async (req, res) => {
+  try {
+    const body = req.body as Record<string, string | undefined>;
+    if (!body.category || !body.processDescription) {
+      res.status(400).json({ error: "category and processDescription are required" });
+      return;
+    }
+
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
+
+    const fields = await generateAiProcessFields({
+      category: body.category,
+      processName: body.processName,
+      processDescription: body.processDescription,
+      aiAgent: body.aiAgent,
+      purpose: body.purpose,
+      inputs: body.inputs,
+      outputs: body.outputs,
+      humanInTheLoop: body.humanInTheLoop,
+      kpi: body.kpi,
+      estimatedValueImpact: body.estimatedValueImpact,
+      industryBenchmark: body.industryBenchmark,
+      target: body.target,
+      achievement: body.achievement,
+    });
+
+    res.json(fields);
+  } catch (err) {
+    req.log.error(err, "Failed to AI-draft process");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Internal server error" });
   }
 });
 
@@ -472,8 +553,23 @@ router.post("/processes", async (req, res) => {
 
     const [maxRow] = await db.select({ max: max(processesTable.number) }).from(processesTable);
     const nextNumber = (maxRow?.max ?? 0) + 1;
+    const parentProcessId = body.parentProcessId == null || body.parentProcessId === ""
+      ? null
+      : Number(body.parentProcessId);
+    if (parentProcessId != null) {
+      if (Number.isNaN(parentProcessId)) {
+        res.status(400).json({ error: "Subprocess parent must be another valid process" });
+        return;
+      }
+      const [parent] = await db.select({ id: processesTable.id }).from(processesTable).where(eq(processesTable.id, parentProcessId));
+      if (!parent) {
+        res.status(400).json({ error: "Selected parent process was not found" });
+        return;
+      }
+    }
 
     const [created] = await db.insert(processesTable).values({
+      parentProcessId,
       number: nextNumber,
       category: body.category,
       processDescription: body.processDescription,
@@ -484,11 +580,12 @@ router.post("/processes", async (req, res) => {
       outputs: body.outputs ?? "",
       humanInTheLoop: body.humanInTheLoop ?? "",
       kpi: body.kpi ?? "",
+      bpmn: body.bpmn ?? "",
       estimatedValueImpact: body.estimatedValueImpact ?? "",
       industryBenchmark: body.industryBenchmark ?? "",
       included: body.included ?? false,
       target: body.target ?? "",
-      achievement: body.achievement ?? "",
+      achievement: body.achievement ?? null,
       trafficLight: body.trafficLight ?? "",
     }).returning();
 
@@ -543,6 +640,33 @@ router.put("/processes/:id", async (req, res) => {
       updateData.number = newNumber;
     }
 
+    if (body.parentProcessId !== undefined) {
+      const parentProcessId = body.parentProcessId == null || body.parentProcessId === ""
+        ? null
+        : Number(body.parentProcessId);
+      if (parentProcessId != null && (Number.isNaN(parentProcessId) || parentProcessId === id)) {
+        res.status(400).json({ error: "Subprocess parent must be another valid process" }); return;
+      }
+      if (parentProcessId != null) {
+        const allProcesses = await db.select({
+          id: processesTable.id,
+          parentProcessId: processesTable.parentProcessId,
+        }).from(processesTable);
+        const processMap = new Map(allProcesses.map(process => [process.id, process.parentProcessId ?? null]));
+        if (!processMap.has(parentProcessId)) {
+          res.status(400).json({ error: "Selected parent process was not found" }); return;
+        }
+        let cursor: number | null = parentProcessId;
+        while (cursor != null) {
+          if (cursor === id) {
+            res.status(400).json({ error: "A process cannot be assigned under its own subprocess tree" }); return;
+          }
+          cursor = processMap.get(cursor) ?? null;
+        }
+      }
+      updateData.parentProcessId = parentProcessId;
+    }
+
     if (body.category !== undefined) updateData.category = body.category as string;
     if (body.processDescription !== undefined) updateData.processDescription = body.processDescription as string;
     if (body.processName !== undefined) updateData.processName = body.processName as string;
@@ -552,12 +676,13 @@ router.put("/processes/:id", async (req, res) => {
     if (body.outputs !== undefined) updateData.outputs = body.outputs as string;
     if (body.humanInTheLoop !== undefined) updateData.humanInTheLoop = body.humanInTheLoop as string;
     if (body.kpi !== undefined) updateData.kpi = body.kpi as string;
+    if (body.bpmn !== undefined) updateData.bpmn = body.bpmn as string;
     if (body.estimatedValueImpact !== undefined) updateData.estimatedValueImpact = body.estimatedValueImpact as string;
     if (body.industryBenchmark !== undefined) updateData.industryBenchmark = body.industryBenchmark as string;
     if (body.included !== undefined) updateData.included = body.included as boolean;
     if (body.aiAgentActive !== undefined) updateData.aiAgentActive = body.aiAgentActive as boolean;
     if (body.target !== undefined) updateData.target = body.target as string;
-    if (body.achievement !== undefined) updateData.achievement = body.achievement as string;
+    if (body.achievement !== undefined) updateData.achievement = body.achievement == null ? null : String(body.achievement);
     if (body.trafficLight !== undefined) updateData.trafficLight = body.trafficLight as string;
     if (body.priority !== undefined) updateData.priority = body.priority === null ? null : Number(body.priority);
 

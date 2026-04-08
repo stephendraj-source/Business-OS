@@ -231,7 +231,7 @@ router.get("/spec-doc/download", async (_req, res) => {
         ["Path", "Package name", "Purpose"],
         [
           ["artifacts/api-server",      "@workspace/api-server",        "Express REST API, all business logic"],
-          ["artifacts/nonprofit-os",    "@workspace/nonprofit-os",       "React + Vite frontend SPA"],
+          ["artifacts/business-os",    "@workspace/business-os",       "React + Vite frontend SPA"],
           ["lib/db",                    "@workspace/db",                 "Drizzle schema + DB connection pool"],
           ["lib/api-zod",               "@workspace/api-zod",            "Generated Zod schemas from OpenAPI"],
           ["lib/api-client-react",      "@workspace/api-client-react",   "Generated React Query hooks (Orval)"],
@@ -534,10 +534,10 @@ router.get("/spec-doc/download", async (_req, res) => {
     // ── 6. FRONTEND ARCHITECTURE ─────────────────────────────────────────────
     children.push(
       h1("6. Frontend Architecture"),
-      body("The frontend is a React 18 SPA built with Vite. It lives at artifacts/nonprofit-os. Routing is state-based (no URL router) — a single activeView state drives which view component renders inside the Layout shell."),
+      body("The frontend is a React 18 SPA built with Vite. It lives at artifacts/business-os. Routing is state-based (no URL router) — a single activeView state drives which view component renders inside the Layout shell."),
       ...spacer(1),
       h2("Key Frontend Patterns"),
-      bullet("Auth: AuthContext (useAuth hook) stores JWT token in localStorage under the key nonprofit-os-auth-token. All fetch calls include Authorization: Bearer <token>."),
+      bullet("Auth: AuthContext (useAuth hook) stores JWT token in localStorage under the key business-os-auth-token. All fetch calls include Authorization: Bearer <token>."),
       bullet("API base: const API = '/api' — never use a dynamic hook for this. Vite proxies /api → Express in dev."),
       bullet("Theme: all colours use CSS variables (bg-background, bg-card, text-foreground, text-muted-foreground). Never hardcode hex colours."),
       bullet("Tenant isolation: the JWT payload contains tenantId which the API uses to filter all queries."),
@@ -595,7 +595,7 @@ router.get("/spec-doc/download", async (_req, res) => {
             ac: [
               "POST /api/auth/login accepts {email, password} and returns {token, user}",
               "JWT contains {userId, tenantId, role} and expires in 30 days",
-              "Token stored in localStorage under key nonprofit-os-auth-token",
+              "Token stored in localStorage under key business-os-auth-token",
               "Invalid credentials return HTTP 401 with message 'Invalid credentials'",
               "Login page shows email + password fields with show/hide toggle",
             ],
@@ -1204,12 +1204,12 @@ router.get("/spec-doc/download", async (_req, res) => {
       bullet("Superuser pattern: tenantId=null skips tenant filtering and routes to TenantManagementPage on the frontend"),
       ...spacer(1),
 
-      h2("Step 4 — Create artifacts/nonprofit-os"),
-      bullet("Package: @workspace/nonprofit-os. Scaffold with Vite + React + TypeScript template"),
+      h2("Step 4 — Create artifacts/business-os"),
+      bullet("Package: @workspace/business-os. Scaffold with Vite + React + TypeScript template"),
       bullet("Install: tailwindcss, shadcn/ui components, framer-motion, lucide-react, @tanstack/react-query"),
       bullet("Configure Vite server.proxy: '/api' → 'http://localhost:<API_PORT>'"),
       bullet("vite.config.ts: server.allowedHosts = true (required for Replit proxy)"),
-      bullet("src/contexts/AuthContext.tsx: read/write JWT from localStorage key nonprofit-os-auth-token; useAuth() and useUser() hooks"),
+      bullet("src/contexts/AuthContext.tsx: read/write JWT from localStorage key business-os-auth-token; useAuth() and useUser() hooks"),
       bullet("src/components/layout.tsx: defines ActiveView union type; SECTIONS_DEF; ITEMS_DEF (all nav items with sectionId); VIEW_META (label + section per view); getIcon() switch; drag-reorder sidebar; breadcrumb header"),
       bullet("src/pages/dashboard.tsx: useState<ActiveView>; renders correct view component inside AnimatePresence"),
       bullet("API calls: const API = '/api'; always pass Authorization: Bearer ${token} header from useAuth()"),
@@ -1218,7 +1218,7 @@ router.get("/spec-doc/download", async (_req, res) => {
 
       h2("Step 5 — Environment variables"),
       bullet("DATABASE_URL — PostgreSQL connection string (required)"),
-      bullet("JWT_SECRET — secret for signing/verifying JWTs (defaults to 'nonprofit-os-jwt-secret-2024' if not set)"),
+      bullet("JWT_SECRET — secret for signing/verifying JWTs (defaults to 'business-os-jwt-secret-2024' if not set)"),
       bullet("PORT — port for the API server (assigned by Replit automatically)"),
       bullet("NODE_ENV — 'development' | 'production'"),
       bullet("Create .env at repo root; add .env to .gitignore"),

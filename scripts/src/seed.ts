@@ -1,4 +1,11 @@
-import { db, processesTable } from "@workspace/db";
+import {
+  db,
+  initiatives,
+  processesTable,
+  strategicGoalInitiativesTable,
+  strategicGoalsTable,
+  tenantStrategyTable,
+} from "@workspace/db";
 
 const processes = [
   { number: 1, category: "Strategy & Governance", processName: "Define multi-year cause-area strategy and funding thesis", aiAgent: "Philanthropy Strategy Agent", purpose: "Analyze needs, trends, and prior outcomes to recommend strategic priorities.", inputs: "Historical impact data; beneficiary needs assessments; macro trends; board priorities", outputs: "3-year strategy options; recommended focus areas; risk-adjusted portfolio view", humanInTheLoop: "CEO / Board validates strategic direction", kpi: "Program ROI; % portfolio aligned to strategy; strategy refresh cycle time", estimatedValueImpact: "Higher allocation effectiveness; reduced strategy rework" },
@@ -103,21 +110,217 @@ const processes = [
   { number: 100, category: "Technology & Data", processName: "Automate digital experience testing and conversion rate optimisation", aiAgent: "CRO Agent", purpose: "Run A/B tests and heatmaps to continuously improve digital conversion rates.", inputs: "Website analytics; A/B test results; heatmap data; user journey recordings", outputs: "Test results summary; winning variant recommendations; implementation brief", humanInTheLoop: "Digital team reviews results and implements approved variants", kpi: "Conversion rate improvement; test velocity; uplift vs control", estimatedValueImpact: "Higher digital donation conversion and improved user experience" },
 ];
 
+const tenantId = 1;
+
+const strategyProfile = {
+  mission: "Help nonprofit leaders make sharper strategic decisions with connected operational data, clearer priorities, and faster follow-through.",
+  vision: "A mission-driven organisation where every team can see how daily execution contributes to measurable social impact.",
+  purpose: "Turn planning, governance, delivery, and learning into one coherent operating system for sustainable nonprofit growth.",
+};
+
+const seededGoals = [
+  {
+    key: "goal-1",
+    title: "Grow resilient unrestricted revenue",
+    description: "Expand diversified fundraising so the organisation can fund strategic priorities with fewer concentration risks.",
+    targetDate: "2026-12-31",
+    status: "active",
+    color: "#22c55e",
+  },
+  {
+    key: "goal-2",
+    title: "Improve programme outcomes visibility",
+    description: "Standardise outcome tracking and executive reporting so leadership can act on impact data each quarter.",
+    targetDate: "2026-10-31",
+    status: "active",
+    color: "#3b82f6",
+  },
+  {
+    key: "goal-3",
+    title: "Raise board and management operating cadence",
+    description: "Shorten decision cycles by making strategy reviews, governance updates, and initiative progress visible in one place.",
+    targetDate: "2026-09-30",
+    status: "draft",
+    color: "#f97316",
+  },
+];
+
+const seededInitiatives = [
+  {
+    key: "initiative-1",
+    initiativeId: "INIT-101",
+    name: "Major Donor Pipeline Acceleration",
+    goals: "Increase qualified major donor pipeline coverage and improve proposal velocity for top prospects.",
+    achievement: "Targeting a 25% increase in pipeline value and better conversion tracking by year end.",
+    startDate: "2026-04-01",
+    endDate: "2026-11-30",
+    linkedGoalKeys: ["goal-1"],
+  },
+  {
+    key: "initiative-2",
+    initiativeId: "INIT-102",
+    name: "Quarterly Impact Scorecard Rollout",
+    goals: "Launch a cross-functional scorecard covering programme reach, outcomes, and budget-to-impact efficiency.",
+    achievement: "Executive team receives a standard quarterly scorecard with fewer manual reporting steps.",
+    startDate: "2026-04-15",
+    endDate: "2026-10-15",
+    linkedGoalKeys: ["goal-2", "goal-3"],
+  },
+  {
+    key: "initiative-3",
+    initiativeId: "INIT-103",
+    name: "Board Pack Automation and Governance Tracker",
+    goals: "Reduce prep time for board and committee meetings while improving visibility into open decisions and actions.",
+    achievement: "Board packs are assembled from live data and action closure is reviewed in every governance cycle.",
+    startDate: "2026-05-01",
+    endDate: "2026-09-30",
+    linkedGoalKeys: ["goal-3"],
+  },
+];
+
 async function seed() {
-  console.log("Seeding processes...");
-  
-  // Check if already seeded
-  const existing = await db.select().from(processesTable).limit(1);
-  if (existing.length > 0) {
-    console.log("Database already seeded, skipping.");
-    return;
+  console.log("Seeding local development data...");
+
+  const existingProcesses = await db.select().from(processesTable).limit(1);
+  if (existingProcesses.length === 0) {
+    for (const p of processes) {
+      await db.insert(processesTable).values({
+        number: p.number,
+        category: p.category,
+        processDescription: p.processName,
+        processName: "",
+        aiAgent: p.aiAgent,
+        purpose: p.purpose,
+        inputs: p.inputs,
+        outputs: p.outputs,
+        humanInTheLoop: p.humanInTheLoop,
+        kpi: p.kpi,
+        estimatedValueImpact: p.estimatedValueImpact,
+      });
+    }
+    console.log(`Seeded ${processes.length} processes.`);
+  } else {
+    console.log("Processes already seeded, skipping.");
   }
 
-  for (const p of processes) {
-    await db.insert(processesTable).values(p);
+  const existingStrategy = await db
+    .select()
+    .from(tenantStrategyTable)
+    .limit(100);
+
+  const tenantStrategy = existingStrategy.find((row) => row.tenantId === tenantId);
+
+  if (!tenantStrategy) {
+    await db.insert(tenantStrategyTable).values({
+      tenantId,
+      ...strategyProfile,
+    });
+    console.log("Seeded tenant strategy profile.");
+  } else {
+    console.log("Tenant strategy profile already seeded, skipping.");
   }
-  
-  console.log(`Seeded ${processes.length} processes.`);
+
+  const goalIdsByKey = new Map<string, number>();
+
+  for (let index = 0; index < seededGoals.length; index += 1) {
+    const goal = seededGoals[index];
+    const existingGoal = await db
+      .select()
+      .from(strategicGoalsTable)
+      .limit(500);
+
+    const matchingGoal = existingGoal.find(
+      (row) => row.tenantId === tenantId && row.title === goal.title,
+    );
+
+    if (matchingGoal) {
+      goalIdsByKey.set(goal.key, matchingGoal.id);
+      continue;
+    }
+
+    const [createdGoal] = await db
+      .insert(strategicGoalsTable)
+      .values({
+        tenantId,
+        goalNumber: index + 1,
+        title: goal.title,
+        description: goal.description,
+        targetDate: goal.targetDate,
+        status: goal.status,
+        color: goal.color,
+      })
+      .returning({ id: strategicGoalsTable.id });
+
+    goalIdsByKey.set(goal.key, createdGoal.id);
+  }
+
+  console.log(`Ensured ${seededGoals.length} strategic goals.`);
+
+  const initiativeIdsByKey = new Map<string, number>();
+
+  for (const initiative of seededInitiatives) {
+    const primaryGoalId = goalIdsByKey.get(initiative.linkedGoalKeys[0]) ?? null;
+    const existingInitiative = await db
+      .select()
+      .from(initiatives)
+      .limit(500);
+
+    const matchingInitiative = existingInitiative.find(
+      (row) => row.tenantId === tenantId && row.initiativeId === initiative.initiativeId,
+    );
+
+    if (matchingInitiative) {
+      initiativeIdsByKey.set(initiative.key, matchingInitiative.id);
+      continue;
+    }
+
+    const [createdInitiative] = await db
+      .insert(initiatives)
+      .values({
+        tenantId,
+        initiativeId: initiative.initiativeId,
+        name: initiative.name,
+        goals: initiative.goals,
+        achievement: initiative.achievement,
+        startDate: initiative.startDate,
+        endDate: initiative.endDate,
+        goalId: primaryGoalId,
+      })
+      .returning({ id: initiatives.id });
+
+    initiativeIdsByKey.set(initiative.key, createdInitiative.id);
+  }
+
+  console.log(`Ensured ${seededInitiatives.length} initiatives.`);
+
+  let linkedCount = 0;
+  for (const initiative of seededInitiatives) {
+    const initiativeDbId = initiativeIdsByKey.get(initiative.key);
+    if (!initiativeDbId) continue;
+
+    for (const goalKey of initiative.linkedGoalKeys) {
+      const goalDbId = goalIdsByKey.get(goalKey);
+      if (!goalDbId) continue;
+
+      const existingLink = await db
+        .select()
+        .from(strategicGoalInitiativesTable)
+        .limit(100);
+
+      const alreadyLinked = existingLink.some(
+        (row) => row.goalId === goalDbId && row.initiativeId === initiativeDbId,
+      );
+      if (alreadyLinked) continue;
+
+      await db.insert(strategicGoalInitiativesTable).values({
+        goalId: goalDbId,
+        initiativeId: initiativeDbId,
+      });
+      linkedCount += 1;
+    }
+  }
+
+  console.log(`Ensured ${linkedCount} new goal-to-initiative links.`);
   process.exit(0);
 }
 

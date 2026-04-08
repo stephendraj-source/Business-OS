@@ -5,7 +5,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { embed, vecToSql } from "../lib/embeddings.js";
+import { embed, vecToSql, hasPgVectorSupport } from "../lib/embeddings.js";
 import { extractTextFromFile } from "../lib/extract-text.js";
 
 const router: IRouter = Router();
@@ -24,6 +24,7 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
 async function embedAttachment(id: number, title: string, text: string): Promise<void> {
   try {
+    if (!hasPgVectorSupport()) return;
     const combined = `${title}\n${text}`;
     if (!combined.trim()) return;
     const vec = await embed(combined);
@@ -98,8 +99,11 @@ router.post("/processes/:processId/attachments/upload", upload.single("file"), a
 // ── Re-index all unembedded process attachments ───────────────────────────────
 router.post("/processes/attachments/reindex", async (req, res) => {
   try {
+    if (!hasPgVectorSupport()) {
+      return res.json({ queued: 0, status: "pgvector disabled" });
+    }
     const rows = await db.execute(
-      sql`SELECT id, title, file_path, file_name, mime_type, url, extracted_text
+      sql`SELECT id, type, title, file_path, file_name, mime_type, url, extracted_text
           FROM process_attachments
           WHERE embedding_vec IS NULL`
     );

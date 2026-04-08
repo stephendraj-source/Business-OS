@@ -9,7 +9,7 @@ import { sql } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { useCredit } from "../lib/credits";
 import { requireAuth } from "../middleware/auth.js";
-import { embed, vecToSql } from "../lib/embeddings.js";
+import { embed, vecToSql, hasPgVectorSupport } from "../lib/embeddings.js";
 import { extractTextFromFile } from "../lib/extract-text.js";
 
 function getTenantId(req: any): number | null {
@@ -33,41 +33,11 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 
-// ── Text extraction from uploaded files ───────────────────────────────────────
-
-async function extractTextFromFile(filePath: string, mimeType: string, originalName: string): Promise<string> {
-  try {
-    const ext = path.extname(originalName).toLowerCase();
-    if (mimeType === "application/pdf" || ext === ".pdf") {
-      const buffer = fs.readFileSync(filePath);
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy();
-      return result.text || "";
-    }
-    if (mimeType === "text/plain" || ext === ".txt" || ext === ".md" || ext === ".csv") {
-      return fs.readFileSync(filePath, "utf-8");
-    }
-    if (ext === ".xlsx" || ext === ".xls" || mimeType.includes("spreadsheet")) {
-      const XLSX = (await import("xlsx")).default;
-      const wb = XLSX.readFile(filePath);
-      return wb.SheetNames.map((name: string) => {
-        const ws = wb.Sheets[name];
-        return `Sheet: ${name}\n${XLSX.utils.sheet_to_txt(ws)}`;
-      }).join("\n\n");
-    }
-    // For unsupported types, return empty (but we'll still store the doc)
-    return "";
-  } catch (err) {
-    console.error("[governance] text extraction failed:", err);
-    return "";
-  }
-}
-
 // ── Embed governance document (fire-and-forget) ───────────────────────────────
 
 async function embedGovDoc(docId: number, standardName: string, text: string): Promise<void> {
   try {
+    if (!hasPgVectorSupport()) return;
     if (!text?.trim()) return;
     const combined = `${standardName}\n${text}`;
     const vec = await embed(combined);
@@ -209,6 +179,9 @@ router.post("/governance/:id/documents", upload.array("files", 20), async (req, 
 // ── Re-index all governance documents without embeddings ─────────────────────
 router.post("/governance/reindex", async (_req, res) => {
   try {
+    if (!hasPgVectorSupport()) {
+      return res.json({ indexed: 0, total: 0, status: "pgvector disabled" });
+    }
     const docsResult = await db.execute(
       sql`SELECT gd.id, gd.file_path, gd.mime_type, gd.original_name, gs.compliance_name
             FROM governance_documents gd

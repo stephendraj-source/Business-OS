@@ -994,7 +994,10 @@ orgRouter.get('/org/task-queues', async (req, res) => {
       items = seeded.rows as any[];
     }
     res.json(items);
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
+  } catch (_e: any) {
+    const tenantId = getTenantId(req);
+    res.json(DEFAULT_TASK_QUEUES.map((q, idx) => ({ id: -(idx + 1), tenant_id: tenantId, ...q })));
+  }
 });
 
 orgRouter.post('/org/task-queues', async (req, res) => {

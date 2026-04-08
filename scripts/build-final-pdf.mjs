@@ -61,7 +61,7 @@ const SCREENS = [
   { label:'AI Agents — Onboarding Agent',       file:'AI_Agents_Onboarding_Detail.png',     section:'AI',                badge:'ADMIN',      note:'Agent detail — instructions, knowledge base, schedule, and activity log.' },
 
   // Integrations
-  { label:'Connectors',                          file:'Connectors.png',                      section:'Integrations',      badge:'ADMIN',      note:'Connector library — n8n, Zapier, Custom API, MCP Server, Salesforce and more.' },
+  { label:'Connectors',                          file:'Connectors.png',                      section:'Integrations',      badge:'ADMIN',      note:'Connector library — Zapier, Custom API, MCP Server, Salesforce and more.' },
 
   // System
   { label:'Dashboards',                          file:'Dashboards.png',                      section:'System',            badge:'ADMIN',      note:'Customisable dashboard — Process Summary, Category Breakdown, Portfolio Status, Performance Overview.' },

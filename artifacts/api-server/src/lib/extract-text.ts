@@ -1,6 +1,7 @@
 import path from "path";
 import fs from "fs";
 import { PDFParse } from "pdf-parse";
+import mammoth from "mammoth";
 
 export async function extractTextFromFile(
   filePath: string,
@@ -22,9 +23,29 @@ export async function extractTextFromFile(
       mimeType === "text/plain" ||
       mimeType === "text/markdown" ||
       mimeType === "text/csv" ||
+      mimeType === "application/json" ||
       [".txt", ".md", ".markdown", ".csv"].includes(ext)
     ) {
       return fs.readFileSync(filePath, "utf-8").trim();
+    }
+
+    if (mimeType.includes("json") || ext === ".json") {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      try {
+        return JSON.stringify(JSON.parse(raw), null, 2).trim();
+      } catch {
+        return raw.trim();
+      }
+    }
+
+    if (
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      mimeType === "application/msword" ||
+      ext === ".docx" ||
+      ext === ".doc"
+    ) {
+      const result = await mammoth.extractRawText({ path: filePath });
+      return result.value.trim();
     }
 
     if (

@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 
-export const JWT_SECRET = process.env.JWT_SECRET || 'nonprofit-os-jwt-secret-2024';
+export const JWT_SECRET = process.env.JWT_SECRET || 'business-os-jwt-secret-2024';
 
 export interface AuthPayload {
   userId: number;

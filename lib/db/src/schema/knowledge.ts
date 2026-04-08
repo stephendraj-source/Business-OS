@@ -4,7 +4,7 @@ import { formFoldersTable } from "./forms";
 
 const vector384 = customType<{ data: number[] | null; driverData: string | null }>({
   dataType() {
-    return "vector(384)";
+    return process.env.ENABLE_PGVECTOR === "true" ? "vector(384)" : "text";
   },
   toDriver(value: number[] | null): string | null {
     if (value === null || value === undefined) return null;

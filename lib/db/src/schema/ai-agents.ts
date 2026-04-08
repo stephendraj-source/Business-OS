@@ -1,4 +1,19 @@
-import { pgTable, text, serial, timestamp, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, boolean, customType } from "drizzle-orm/pg-core";
+
+const vector384 = customType<{ data: number[] | null; driverData: string | null }>({
+  dataType() {
+    return process.env.ENABLE_PGVECTOR === "true" ? "vector(384)" : "text";
+  },
+  toDriver(value: number[] | null): string | null {
+    if (value === null || value === undefined) return null;
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: unknown): number[] | null {
+    if (value === null || value === undefined) return null;
+    const str = String(value);
+    return str.slice(1, -1).split(",").map(Number);
+  },
+});
 
 export const aiAgentsTable = pgTable("ai_agents", {
   id: serial("id").primaryKey(),
@@ -35,6 +50,9 @@ export const agentKnowledgeFilesTable = pgTable("agent_knowledge_files", {
   mimeType: text("mime_type").notNull().default("application/octet-stream"),
   fileSize: integer("file_size").notNull().default(0),
   filePath: text("file_path").notNull(),
+  extractedText: text("extracted_text").notNull().default(""),
+  embeddingVec: vector384("embedding_vec"),
+  embeddedAt: timestamp("embedded_at", { withTimezone: true }),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

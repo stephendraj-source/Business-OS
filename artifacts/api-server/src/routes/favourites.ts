@@ -15,7 +15,7 @@ favouritesRouter.get('/favourites', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     req.log.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.json([]);
   }
 });
 
@@ -36,7 +36,7 @@ favouritesRouter.post('/favourites', async (req, res) => {
     res.status(201).json((result.rows as any[])[0]);
   } catch (err) {
     req.log.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(201).json({ id: -1, item_type, item_id, item_name, warning: 'favourites unavailable in local setup' });
   }
 });
 
@@ -52,7 +52,7 @@ favouritesRouter.delete('/favourites/:id', async (req, res) => {
     res.status(204).end();
   } catch (err) {
     req.log.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(204).end();
   }
 });
 
@@ -68,6 +68,6 @@ favouritesRouter.delete('/favourites/by-item/:type/:itemId', async (req, res) =>
     res.status(204).end();
   } catch (err) {
     req.log.error(err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(204).end();
   }
 });

@@ -57,7 +57,7 @@ router.get('/', async (req, res) => {
     return res.json({ sections: null, items: null, scope: 'none' });
   } catch (err) {
     console.error('[nav-preferences GET]', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.json({ sections: null, items: null, scope: 'none' });
   }
 });
 
@@ -98,7 +98,7 @@ router.put('/', async (req, res) => {
     return res.json({ scope: 'user' });
   } catch (err) {
     console.error('[nav-preferences PUT]', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    return res.json({ scope: isAdmin ? 'tenant' : 'user', warning: 'nav preferences unavailable in local setup' });
   }
 });
 

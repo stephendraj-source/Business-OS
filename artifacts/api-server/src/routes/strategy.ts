@@ -177,7 +177,23 @@ router.put("/strategic-goals/:id/initiatives", async (req, res) => {
         VALUES (${id}, ${initiativeId})
         ON CONFLICT DO NOTHING
       `);
+      await db.execute(sql`
+        UPDATE initiatives
+        SET goal_id = ${id}
+        WHERE id = ${initiativeId}
+      `);
     }
+
+    await db.execute(sql`
+      UPDATE initiatives
+      SET goal_id = NULL
+      WHERE goal_id = ${id}
+        AND id NOT IN (
+          SELECT initiative_id
+          FROM strategic_goal_initiatives
+          WHERE goal_id = ${id}
+        )
+    `);
     res.json({ goal_id: id, initiative_ids });
   } catch (err) {
     req.log.error(err);
@@ -216,6 +232,11 @@ router.put("/initiatives/:id/strategic-goals", async (req, res) => {
         ON CONFLICT DO NOTHING
       `);
     }
+    await db.execute(sql`
+      UPDATE initiatives
+      SET goal_id = ${goal_ids[0] ?? null}
+      WHERE id = ${id}
+    `);
     res.json({ initiative_id: id, goal_ids });
   } catch (err) {
     req.log.error(err);

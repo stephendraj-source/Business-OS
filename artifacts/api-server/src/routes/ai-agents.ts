@@ -14,6 +14,8 @@ import { userGroups, groupRoles } from "@workspace/db";
 import { eq, desc, max, sql, or, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { useCredit } from "../lib/credits";
+import { extractTextFromFile } from "../lib/extract-text.js";
+import { embed, hasPgVectorSupport, vecToSql } from "../lib/embeddings.js";
 
 const router: IRouter = Router();
 
@@ -66,26 +68,32 @@ async function fetchUrlContent(url: string): Promise<string> {
 
 // ── Helper: read file content ─────────────────────────────────────────────────
 
-function readFileContent(filePath: string, mimeType: string, originalName: string): string {
+async function readFileContent(filePath: string, mimeType: string, originalName: string): Promise<string> {
   try {
     if (!fs.existsSync(filePath)) return `[File not found: ${originalName}]`;
-    if (mimeType.includes("text") || originalName.endsWith(".txt") || originalName.endsWith(".md") || originalName.endsWith(".csv")) {
-      return `File: ${originalName}\n${fs.readFileSync(filePath, "utf8").slice(0, 5000)}`;
-    }
-    if (originalName.endsWith(".xlsx") || originalName.endsWith(".xls")) {
-      try {
-        const xlsx = require("xlsx");
-        const wb = xlsx.readFile(filePath);
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const csv = xlsx.utils.sheet_to_csv(sheet);
-        return `File: ${originalName}\n${csv.slice(0, 5000)}`;
-      } catch {
-        return `File: ${originalName} [Excel file - could not parse]`;
-      }
-    }
-    return `File: ${originalName} [Binary file, ${mimeType}]`;
+    const extracted = await extractTextFromFile(filePath, mimeType, originalName);
+    if (extracted.trim()) return `File: ${originalName}\n${extracted.slice(0, 5000)}`;
+    return `File: ${originalName} [Binary or unsupported file, ${mimeType}]`;
   } catch {
     return `[Error reading ${originalName}]`;
+  }
+}
+
+async function embedAgentKnowledgeFile(id: number, title: string, text: string): Promise<void> {
+  try {
+    if (!hasPgVectorSupport()) return;
+    const combined = `${title}\n${text}`.trim();
+    if (!combined) return;
+    const vec = await embed(combined);
+    await db.execute(
+      sql`UPDATE agent_knowledge_files
+          SET extracted_text = ${text},
+              embedding_vec = ${vecToSql(vec)}::vector,
+              embedded_at = NOW()
+          WHERE id = ${id}`
+    );
+  } catch (err) {
+    console.error(`[embeddings] failed to embed agent knowledge file ${id}:`, err);
   }
 }
 
@@ -232,7 +240,7 @@ async function runAgentExecution(agentId: number, scheduleId?: number): Promise<
   }
 
   const urlContents = await Promise.all(agent.urls.map(u => fetchUrlContent(u.url)));
-  const fileContents = agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName));
+  const fileContents = await Promise.all(agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName)));
   const resolvedInstructions = await resolveInstructions(agent.instructions);
   const toolsList = (() => { try { return JSON.parse(agent.tools); } catch { return []; } })();
 
@@ -475,19 +483,59 @@ router.post("/ai-agents/:id/knowledge/files", upload.array("files", 20), async (
     const agentId = Number(req.params.id);
     const uploadedFiles = req.files as Express.Multer.File[];
     if (!uploadedFiles?.length) return res.status(400).json({ error: "No files uploaded" });
-    const inserted = await Promise.all(uploadedFiles.map(f =>
-      db.insert(agentKnowledgeFilesTable).values({
+    const inserted = await Promise.all(uploadedFiles.map(async (f) => {
+      const extractedText = await extractTextFromFile(f.path, f.mimetype, f.originalname);
+      const [file] = await db.insert(agentKnowledgeFilesTable).values({
         agentId,
         originalName: f.originalname,
         storedName: f.filename,
         mimeType: f.mimetype,
         fileSize: f.size,
         filePath: f.path,
-      }).returning().then(r => r[0])
-    ));
+        extractedText,
+      }).returning();
+      setImmediate(() => embedAgentKnowledgeFile(file.id, file.originalName, extractedText));
+      return file;
+    }));
     res.status(201).json(inserted);
   } catch (err) {
     req.log.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/ai-agents/knowledge-files/reindex", async (_req, res) => {
+  try {
+    if (!hasPgVectorSupport()) {
+      return res.json({ queued: 0, status: "pgvector disabled" });
+    }
+
+    const files = await db.select({
+      id: agentKnowledgeFilesTable.id,
+      originalName: agentKnowledgeFilesTable.originalName,
+      filePath: agentKnowledgeFilesTable.filePath,
+      mimeType: agentKnowledgeFilesTable.mimeType,
+      extractedText: agentKnowledgeFilesTable.extractedText,
+      embeddedAt: agentKnowledgeFilesTable.embeddedAt,
+    }).from(agentKnowledgeFilesTable);
+
+    const pending = files.filter((file) => !file.embeddedAt || !file.extractedText.trim());
+    res.json({ queued: pending.length, status: "indexing" });
+
+    setImmediate(async () => {
+      for (const file of pending) {
+        let text = file.extractedText;
+        if ((!text || !text.trim()) && fs.existsSync(file.filePath)) {
+          text = await extractTextFromFile(file.filePath, file.mimeType, file.originalName);
+          await db.update(agentKnowledgeFilesTable)
+            .set({ extractedText: text })
+            .where(eq(agentKnowledgeFilesTable.id, file.id));
+        }
+        await embedAgentKnowledgeFile(file.id, file.originalName, text);
+      }
+    });
+  } catch (err) {
+    console.error("[reindex] agent knowledge files failed:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -617,7 +665,7 @@ router.post("/ai-agents/:id/run", async (req, res) => {
     if (!agent) return res.status(404).json({ error: "Not found" });
 
     const urlContents = await Promise.all(agent.urls.map(u => fetchUrlContent(u.url)));
-    const fileContents = agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName));
+    const fileContents = await Promise.all(agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName)));
     const resolvedInstructions = await resolveInstructions(agent.instructions);
     const toolsList = (() => { try { return JSON.parse(agent.tools); } catch { return []; } })();
     const knowledgeSection = [...urlContents, ...fileContents].filter(Boolean).join("\n\n---\n\n");
@@ -704,7 +752,7 @@ router.post("/ai-agents/:id/test", async (req, res) => {
     }
 
     const urlContents = await Promise.all(agent.urls.map(u => fetchUrlContent(u.url)));
-    const fileContents = agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName));
+    const fileContents = await Promise.all(agent.files.map(f => readFileContent(f.filePath, f.mimeType, f.originalName)));
     const resolvedInstructions = await resolveInstructions(agent.instructions);
     const toolsList = (() => { try { return JSON.parse(agent.tools); } catch { return []; } })();
     const knowledgeSection = [...urlContents, ...fileContents].filter(Boolean).join("\n\n---\n\n");
