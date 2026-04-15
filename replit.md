@@ -46,17 +46,20 @@ Business Operating System — a full-stack business operating system for nonprof
 ## Structure
 
 ```text
-artifacts-monorepo/
-├── artifacts/
-│   ├── api-server/         # Express API server
-│   └── business-os/        # React + Vite frontend (served at /)
-├── lib/                    # Shared libraries
+business-os-monorepo/
+├── apps/
+│   ├── api/                # Express API server
+│   ├── web/                # React + Vite frontend (served at /)
+│   ├── mockup-sandbox/     # Prototype and sandbox app
+│   └── operaton/           # Operaton runtime assets
+├── packages/               # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
 │   └── db/                 # Drizzle ORM schema + DB connection
-├── scripts/                # Utility scripts
-│   └── src/seed.ts         # Seeds 100 nonprofit processes into DB
+├── tools/
+│   └── scripts/            # Utility scripts and automation
+│       └── src/seed.ts     # Seeds 100 nonprofit processes into DB
 ├── pnpm-workspace.yaml
 ├── tsconfig.base.json
 ├── tsconfig.json
@@ -65,7 +68,7 @@ artifacts-monorepo/
 
 ## Features
 
-### Business OS (`artifacts/business-os`)
+### Business OS (`apps/web`)
 
 #### Process Matrix
 - Editable spreadsheet of all 101 operational processes across 8 categories (101 = original 100 + Grant Approval)
@@ -110,8 +113,8 @@ The platform is fully multi-tenant with JWT-based authentication.
 ### Auth Architecture
 - **JWT tokens**: 30-day expiry, stored in `localStorage` key `business-os-auth-token`
 - **Payload**: `{ userId, tenantId, role }`
-- **Middleware**: `artifacts/api-server/src/middleware/auth.ts` — `authMiddleware` applied globally in `app.ts`; sets `req.auth = { userId, tenantId, role }`
-- **AuthContext**: `artifacts/business-os/src/contexts/AuthContext.tsx` — replaces old UserContext; exports `useAuth()`, `useUser()` (backward compat), `AuthProvider`
+- **Middleware**: `apps/api/src/middleware/auth.ts` — `authMiddleware` applied globally in `app.ts`; sets `req.auth = { userId, tenantId, role }`
+- **AuthContext**: `apps/web/src/app/providers/AuthContext.tsx` — replaces old UserContext; exports `useAuth()`, `useUser()` (backward compat), `AuthProvider`
 - **UserContext**: now a re-export shim for `AuthContext` — all existing components using `useUser()` work unchanged
 
 ### Users & Roles
@@ -163,7 +166,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 - `pnpm run build` — runs `typecheck` first, then recursively runs `build` in all packages
 - `pnpm run typecheck` — runs `tsc --build --emitDeclarationOnly` using project references
-- `pnpm --filter @workspace/scripts run seed` — seed processes into database
+- `pnpm --filter @workspace/scripts run seed` — seed processes into database from `tools/scripts`
 - `pnpm --filter @workspace/api-spec run codegen` — re-generate API client from OpenAPI spec (run after every OpenAPI change)
 - `pnpm --filter @workspace/db run push` — push schema changes to database (run after every schema change)
 
