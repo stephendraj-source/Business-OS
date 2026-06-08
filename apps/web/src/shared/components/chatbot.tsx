@@ -5,6 +5,7 @@ import { X, Send, Plus, Trash2, ChevronDown, Bot, Loader2, Sparkles, GripHorizon
 import { cn } from '@/shared/lib/utils';
 import { dispatchCreditsRefresh } from '@/shared/hooks/use-credits';
 import { useAuth } from '@/app/providers/AuthContext';
+import { useIsMobile } from '@/shared/hooks/use-mobile';
 
 const API = '/api';
 
@@ -368,6 +369,7 @@ function TaskQuickCreateModal({
 // ── Main chatbot component ────────────────────────────────────────────────────
 export function Chatbot() {
   const { fetchHeaders } = useAuth();
+  const isMobile = useIsMobile();
   const [open, setOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -737,7 +739,7 @@ export function Chatbot() {
           isFullscreen && open && "opacity-0 pointer-events-none",
           open ? "bg-destructive/90 hover:bg-destructive" : "bg-primary hover:bg-primary/90"
         )}
-        style={{ bottom: 24, left: SIDEBAR_W + 8 }}
+        style={isMobile ? { bottom: 16, right: 16 } : { bottom: 24, left: SIDEBAR_W + 8 }}
         title={open ? "Close AI Assistant" : "Open AI Assistant"}
       >
         {open ? <X className="w-6 h-6 text-white" /> : <Sparkles className="w-6 h-6 text-primary-foreground" />}

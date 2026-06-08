@@ -4,7 +4,7 @@ import {
   Map, Plug, FileBarChart, ShieldCheck, ChevronLeft, ChevronRight, ChevronDown, Home, Bot,
   GitBranch, Users, LogOut, Coins, ClipboardList, KeyRound, Eye, EyeOff,
   X, Check, Settings2, Activity, ListTodo, Compass, TrendingUp, GripVertical, RotateCcw,
-  Star, Calendar, CalendarDays, Inbox,
+  Star, Calendar, CalendarDays, Inbox, Menu,
 } from 'lucide-react';
 import { useFavourites, OPEN_FAVOURITE_EVENT } from '@/app/providers/FavouritesContext';
 import { cn } from '@/shared/lib/utils';
@@ -196,6 +196,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   const { currentUser } = useUser();
   const { logout, isSuperUser, isAdmin, fetchHeaders } = useAuth();
   const { credits } = useCredits();
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // ── Change password modal state ──────────────────────────────────────────────
   const [showChangePw, setShowChangePw]     = useState(false);
@@ -230,7 +231,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
   function handleFavouriteClick(fav: typeof favourites[0]) {
     const view = FAV_VIEW_MAP[fav.item_type];
     if (view) {
-      onViewChange(view);
+      handleViewChange(view);
       // Delay dispatch until the view has mounted/re-rendered
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent(OPEN_FAVOURITE_EVENT, {
@@ -238,6 +239,11 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         }));
       }, 100);
     }
+  }
+
+  function handleViewChange(view: ActiveView) {
+    onViewChange(view);
+    setIsMobileSidebarOpen(false);
   }
 
   // ── Section collapsed state ───────────────────────────────────────────────────
@@ -480,8 +486,21 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
         </div>
       )}
 
+      {isMobileSidebarOpen && (
+        <button
+          aria-label="Close navigation"
+          className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[2px] md:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-72 max-w-[86vw] flex-col bg-sidebar border-r border-sidebar-border transition-transform duration-200 md:relative md:z-auto md:w-64 md:max-w-none md:flex-shrink-0 md:translate-x-0",
+          isMobileSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
+        )}
+      >
 
         {/* Brand */}
         <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
@@ -636,7 +655,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
 
                           {/* Nav button */}
                           <button
-                            onClick={() => onViewChange(item.id)}
+                            onClick={() => handleViewChange(item.id)}
                             className={cn(
                               'flex-1 flex items-center gap-3 px-2.5 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium min-w-0',
                               activeView === item.id
@@ -811,7 +830,14 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
       <main className="flex-1 flex flex-col min-w-0 bg-background relative shadow-[-10px_0_30px_-15px_rgba(0,0,0,0.5)]">
 
         {/* Breadcrumb bar */}
-        <div className="flex-none flex items-center gap-1 h-10 px-4 border-b border-border bg-card/60 backdrop-blur-sm z-30">
+        <div className="flex-none flex items-center gap-1 h-10 px-3 sm:px-4 border-b border-border bg-card/60 backdrop-blur-sm z-30">
+          <button
+            onClick={() => setIsMobileSidebarOpen(true)}
+            title="Open navigation"
+            className="mr-1 flex h-7 w-7 items-center justify-center rounded-md text-foreground/80 transition-colors hover:bg-secondary hover:text-foreground md:hidden"
+          >
+            <Menu className="h-4 w-4" />
+          </button>
           <button onClick={onBack} disabled={!canGoBack} title={canGoBack ? 'Go back' : 'No history'}
             className={cn("flex items-center justify-center w-6 h-6 rounded-md transition-all duration-150",
               canGoBack ? "text-foreground/70 hover:text-foreground hover:bg-secondary cursor-pointer" : "text-muted-foreground/30 cursor-not-allowed")}>
@@ -819,7 +845,7 @@ export function Layout({ children, activeView, onViewChange, canGoBack = false, 
           </button>
           <div className="w-px h-4 bg-border mx-1" />
           <div className="flex items-center gap-0.5 text-xs min-w-0">
-            <button onClick={() => onViewChange('table')}
+            <button onClick={() => handleViewChange('table')}
               className={cn("flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors whitespace-nowrap",
                 activeView === 'table' ? "text-foreground font-medium" : "text-muted-foreground hover:text-foreground hover:bg-secondary")}>
               <Home className="w-3 h-3 flex-shrink-0" />

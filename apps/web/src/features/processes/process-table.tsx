@@ -1963,13 +1963,13 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
     <div className="h-full flex flex-col bg-background relative overflow-hidden">
 
       {/* Toolbar */}
-      <div className="flex-none p-4 md:p-5 border-b border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card z-20">
-        <div>
-          <h2 className="text-xl font-display font-bold text-foreground">{title}</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
+      <div className="flex-none p-3 sm:p-4 md:p-5 border-b border-border flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 md:gap-4 bg-card z-20">
+        <div className="min-w-0">
+          <h2 className="text-lg sm:text-xl font-display font-bold text-foreground">{title}</h2>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 max-w-2xl">{subtitle}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          <div className="relative w-full sm:w-52">
+        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:w-auto lg:flex-wrap lg:items-center">
+          <div className="relative w-full lg:w-52">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input
               placeholder="Search processes..."
@@ -1981,7 +1981,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
           <select
             value={selectedCategory}
             onChange={e => setSelectedCategory(e.target.value)}
-            className="px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer"
+            className="w-full min-w-0 px-3 py-2 bg-secondary/50 border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer lg:w-auto lg:min-w-40"
           >
             <option value="All">All Categories</option>
             {categories?.map(cat => (
@@ -1989,20 +1989,20 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             ))}
           </select>
 
-          <div className="flex items-center gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 sm:col-span-2 sm:flex sm:flex-wrap sm:items-center">
             <button
               onClick={() => { setSubprocessParent(null); setShowAddModal(true); }}
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-medium transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Process
             </button>
-            <div className="flex flex-col items-end gap-0.5">
+            <div className="flex min-w-0 flex-col items-stretch gap-0.5 sm:items-end">
               <button
                 onClick={handleBatchAIScore}
                 disabled={batchScoring}
                 title="Score all processes for AI compliance"
-                className="flex items-center gap-1.5 px-3 py-2 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-400 rounded-lg text-xs font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {batchScoring
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Scoring {batchProgress?.current}/{batchProgress?.total}…</>
@@ -2014,7 +2014,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <button
               onClick={handleExport}
               title="Export to Excel"
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 border border-emerald-600/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               Export
@@ -2023,7 +2023,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
               onClick={() => fileInputRef.current?.click()}
               disabled={importing}
               title="Import from Excel"
-              className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 px-3 py-2 bg-primary/10 hover:bg-primary/20 border border-primary/30 text-primary rounded-lg text-xs font-medium transition-colors disabled:opacity-50"
             >
               {importing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
               Import
@@ -2206,12 +2206,12 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex-none px-4 py-2 border-t border-border bg-sidebar flex justify-between items-center text-xs text-muted-foreground">
-        <span>
+      <div className="flex-none px-3 sm:px-4 py-2 border-t border-border bg-sidebar flex flex-wrap justify-between items-center gap-2 text-xs text-muted-foreground">
+        <span className="min-w-0">
           Showing {filteredProcesses.length} of {mode === 'portfolio' ? (processes?.filter(p => p.included).length || 0) : (processes?.length || 0)} processes
           {mode === 'portfolio' && ` · ${processes?.filter(p => p.included).length || 0} included total`}
         </span>
-        <span className="flex items-center gap-2">
+        <span className="flex shrink-0 items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           System Online
         </span>

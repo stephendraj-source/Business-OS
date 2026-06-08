@@ -108,7 +108,6 @@ export function OperatonView() {
   const catalogueProcesses = useMemo(
     () =>
       [...processes]
-        .filter((process) => process.included || (process as any).parentProcessId != null)
         .sort((a, b) => {
           const categoryCompare = a.category.localeCompare(b.category);
           if (categoryCompare !== 0) return categoryCompare;
@@ -330,6 +329,7 @@ export function OperatonView() {
   };
 
   const loadProcessIntoModeler = async (processId: string) => {
+    if (!processId) return;
     setSelectedProcessId(processId);
     const selected = catalogueProcesses.find((item) => String(item.id) === processId);
     if (!selected) return;
@@ -338,15 +338,38 @@ export function OperatonView() {
     const nextKey = slugify(selected.processName || selected.processDescription || `process_${selected.number}`) || "business_os_process";
     setProcessName(nextName);
     setProcessKey(nextKey);
+    setStatus(`Fetching BPMN for ${nextName}…`);
 
-    if ((selected as any).bpmn) {
-      await importXml((selected as any).bpmn, { recreate: true });
-      setStatus(`Loaded BPMN for ${nextName}.`);
-      return;
+    try {
+      const response = await fetch(`${API}/processes/${encodeURIComponent(processId)}`, {
+        headers: fetchHeaders(),
+      });
+      if (response.ok) {
+        const data = await response.json() as { bpmn?: string };
+        if (data.bpmn) {
+          let xml = data.bpmn.trim();
+          // If bpmn field holds a URL/link, fetch the actual BPMN XML from it
+          if (xml.startsWith("http://") || xml.startsWith("https://")) {
+            const bpmnRes = await fetch(xml);
+            if (!bpmnRes.ok) throw new Error(`Could not fetch BPMN from ${xml}`);
+            xml = await bpmnRes.text();
+          } else if (xml.startsWith("/")) {
+            // Relative path on the same server — include auth headers
+            const bpmnRes = await fetch(xml, { headers: fetchHeaders() });
+            if (!bpmnRes.ok) throw new Error(`Could not fetch BPMN from ${xml}`);
+            xml = await bpmnRes.text();
+          }
+          await importXml(xml, { recreate: true });
+          setStatus(`Loaded BPMN for ${nextName}.`);
+          return;
+        }
+      }
+    } catch {
+      // fall through to fresh template
     }
 
     await importXml(createTemplateXml(nextName, nextKey), { recreate: true });
-    setStatus(`Started a fresh BPMN diagram for ${nextName}.`);
+    setStatus(`No BPMN saved for ${nextName}. Starting fresh diagram.`);
   };
 
   useEffect(() => {

@@ -2,7 +2,7 @@ import { Router } from "express";
 
 const router = Router();
 
-const OPERATON_REST_BASE = "http://localhost:8080/engine-rest";
+const OPERATON_REST_BASE = process.env.OPERATON_REST_BASE ?? "http://localhost:8080/engine-rest";
 const OPERATON_USER = process.env.OPERATON_USER ?? "demo";
 const OPERATON_PASSWORD = process.env.OPERATON_PASSWORD ?? "demo";
 const DEFAULT_HISTORY_TTL_DAYS = process.env.OPERATON_DEFAULT_HISTORY_TTL ?? "180";
@@ -39,6 +39,11 @@ async function readUpstreamJson(res: Response) {
   } catch {
     return text;
   }
+}
+
+function isOperatonConnectionError(err: unknown) {
+  const message = err instanceof Error ? err.message : String(err);
+  return /ECONNREFUSED|fetch failed|Connect Timeout|ENOTFOUND|EHOSTUNREACH/i.test(message);
 }
 
 async function deployXmlToOperaton({
@@ -102,6 +107,12 @@ router.post("/operaton/deploy", async (req, res) => {
       message: "Deployment created successfully",
     });
   } catch (err) {
+    if (isOperatonConnectionError(err)) {
+      return res.status(503).json({
+        error: "Operaton engine is unavailable",
+        details: `Could not reach ${OPERATON_REST_BASE}. Start Operaton locally or configure OPERATON_REST_BASE.`,
+      });
+    }
     return res.status(500).json({
       error: err instanceof Error ? err.message : "Operaton deployment failed",
     });
@@ -139,6 +150,12 @@ router.get("/operaton/processes/:processKey/instances", async (req, res) => {
       latestInstanceId: instances[0]?.id ?? null,
     });
   } catch (err) {
+    if (isOperatonConnectionError(err)) {
+      return res.status(503).json({
+        error: "Operaton engine is unavailable",
+        details: `Could not reach ${OPERATON_REST_BASE}. Start Operaton locally or configure OPERATON_REST_BASE.`,
+      });
+    }
     return res.status(500).json({
       error: err instanceof Error ? err.message : "Failed to fetch process instances",
     });
@@ -215,6 +232,12 @@ router.post("/operaton/processes/:processKey/start", async (req, res) => {
 
     return res.json(payload);
   } catch (err) {
+    if (isOperatonConnectionError(err)) {
+      return res.status(503).json({
+        error: "Operaton engine is unavailable",
+        details: `Could not reach ${OPERATON_REST_BASE}. Start Operaton locally or configure OPERATON_REST_BASE.`,
+      });
+    }
     return res.status(500).json({
       error: err instanceof Error ? err.message : "Failed to start process",
     });
@@ -272,6 +295,12 @@ router.post("/operaton/processes/:processKey/stop", async (req, res) => {
       message: "Stopped latest active process instance",
     });
   } catch (err) {
+    if (isOperatonConnectionError(err)) {
+      return res.status(503).json({
+        error: "Operaton engine is unavailable",
+        details: `Could not reach ${OPERATON_REST_BASE}. Start Operaton locally or configure OPERATON_REST_BASE.`,
+      });
+    }
     return res.status(500).json({
       error: err instanceof Error ? err.message : "Failed to stop process",
     });
