@@ -16,7 +16,6 @@ export interface Process {
   category: string;
   processDescription: string;
   processName: string;
-  aiAgent: string;
   purpose: string;
   inputs: string;
   outputs: string;
@@ -29,7 +28,6 @@ export interface Process {
   target: string;
   achievement: string;
   trafficLight?: string;
-  aiAgentActive?: boolean;
   priority?: string;
   governanceFramework?: string;
   processOwner?: string;
@@ -45,7 +43,6 @@ export interface CreateProcessBody {
   category: string;
   processDescription: string;
   processName?: string;
-  aiAgent?: string;
   purpose?: string;
   inputs?: string;
   outputs?: string;
@@ -58,7 +55,6 @@ export interface CreateProcessBody {
   target?: string;
   achievement?: string;
   trafficLight?: string;
-  aiAgentActive?: boolean;
   priority?: string;
   governanceFramework?: string;
   processOwner?: string;
@@ -66,7 +62,7 @@ export interface CreateProcessBody {
   risk?: string;
   regulation?: string;
   automationPotential?: string;
-  [key: string]: string | boolean | number | undefined;
+  [key: string]: string | boolean | number | null | undefined;
 }
 
 export interface UpdateProcessBody {
@@ -74,7 +70,6 @@ export interface UpdateProcessBody {
   category?: string;
   processDescription?: string;
   processName?: string;
-  aiAgent?: string;
   purpose?: string;
   inputs?: string;
   outputs?: string;
@@ -87,7 +82,6 @@ export interface UpdateProcessBody {
   target?: string;
   achievement?: string;
   trafficLight?: string;
-  aiAgentActive?: boolean;
   priority?: string;
   governanceFramework?: string;
   processOwner?: string;
@@ -95,7 +89,7 @@ export interface UpdateProcessBody {
   risk?: string;
   regulation?: string;
   automationPotential?: string;
-  [key: string]: string | boolean | number | undefined;
+  [key: string]: string | boolean | number | null | undefined;
 }
 
 export interface DeleteResponse {

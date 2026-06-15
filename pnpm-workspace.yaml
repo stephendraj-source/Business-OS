@@ -4,6 +4,13 @@ packages:
   - packages/integrations/*
   - tools/scripts
 
+allowBuilds:
+  core-js: true
+  esbuild: true
+  onnxruntime-node: true
+  protobufjs: true
+  sharp: true
+
 autoInstallPeers: false
 
 catalog:
@@ -37,6 +44,7 @@ minimumReleaseAgeExclude:
 
 onlyBuiltDependencies:
   - '@swc/core'
+  - core-js
   - esbuild
   - msw
   - unrs-resolver

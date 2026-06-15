@@ -208,7 +208,6 @@ async function seed() {
         category: p.category,
         processDescription: p.processName,
         processName: "",
-        aiAgent: p.aiAgent,
         purpose: p.purpose,
         inputs: p.inputs,
         outputs: p.outputs,

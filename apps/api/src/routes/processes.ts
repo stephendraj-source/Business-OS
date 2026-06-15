@@ -47,7 +47,6 @@ async function generateAiProcessFields(args: {
   category: string;
   processName?: string;
   processDescription: string;
-  aiAgent?: string;
   purpose?: string;
   inputs?: string;
   outputs?: string;
@@ -65,7 +64,6 @@ Process Name: ${name}
 Category: ${args.category}
 
 CURRENT VALUES (only fill blank or empty fields):
-- AI Agent: ${args.aiAgent || "(BLANK - fill this)"}
 - Purpose: ${args.purpose || "(BLANK - fill this)"}
 - Inputs: ${args.inputs || "(BLANK - fill this)"}
 - Outputs: ${args.outputs || "(BLANK - fill this)"}
@@ -78,7 +76,6 @@ CURRENT VALUES (only fill blank or empty fields):
 
 Return ONLY a valid JSON object with these exact keys (include ALL keys, keep existing non-blank values unchanged):
 {
-  "aiAgent": "...",
   "purpose": "...",
   "inputs": "...",
   "outputs": "...",
@@ -119,7 +116,6 @@ router.get("/processes/export", async (req, res) => {
       "Category": p.category,
       "Process Name": p.processName,
       "Process Description": p.processDescription,
-      "AI Agent": p.aiAgent,
       "Purpose": p.purpose,
       "Inputs": p.inputs,
       "Outputs": p.outputs,
@@ -200,7 +196,6 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
         category: String(row["Category"] ?? ""),
         processName: String(row["Process Name"] ?? ""),
         processDescription: String(row["Process Description"] ?? ""),
-        aiAgent: String(row["AI Agent"] ?? ""),
         purpose: String(row["Purpose"] ?? ""),
         inputs: String(row["Inputs"] ?? ""),
         outputs: String(row["Outputs"] ?? ""),
@@ -442,7 +437,6 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
       category: process.category,
       processName: process.processName,
       processDescription: process.processDescription,
-      aiAgent: process.aiAgent,
       purpose: process.purpose,
       inputs: process.inputs,
       outputs: process.outputs,
@@ -455,7 +449,6 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
     });
 
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
-    if (!process.aiAgent && fields.aiAgent) updateData.aiAgent = fields.aiAgent;
     if (!process.purpose && fields.purpose) updateData.purpose = fields.purpose;
     if (!process.inputs && fields.inputs) updateData.inputs = fields.inputs;
     if (!process.outputs && fields.outputs) updateData.outputs = fields.outputs;
@@ -587,7 +580,6 @@ router.post("/processes/ai-draft", async (req, res) => {
       category: body.category,
       processName: body.processName,
       processDescription: body.processDescription,
-      aiAgent: body.aiAgent,
       purpose: body.purpose,
       inputs: body.inputs,
       outputs: body.outputs,
@@ -656,7 +648,6 @@ router.post("/processes", async (req, res) => {
       category: body.category,
       processDescription: body.processDescription,
       processName: body.processName ?? "",
-      aiAgent: body.aiAgent ?? "",
       purpose: body.purpose ?? "",
       inputs: body.inputs ?? "",
       outputs: body.outputs ?? "",
@@ -752,7 +743,6 @@ router.put("/processes/:id", async (req, res) => {
     if (body.category !== undefined) updateData.category = body.category as string;
     if (body.processDescription !== undefined) updateData.processDescription = body.processDescription as string;
     if (body.processName !== undefined) updateData.processName = body.processName as string;
-    if (body.aiAgent !== undefined) updateData.aiAgent = body.aiAgent as string;
     if (body.purpose !== undefined) updateData.purpose = body.purpose as string;
     if (body.inputs !== undefined) updateData.inputs = body.inputs as string;
     if (body.outputs !== undefined) updateData.outputs = body.outputs as string;
@@ -762,7 +752,6 @@ router.put("/processes/:id", async (req, res) => {
     if (body.estimatedValueImpact !== undefined) updateData.estimatedValueImpact = body.estimatedValueImpact as string;
     if (body.industryBenchmark !== undefined) updateData.industryBenchmark = body.industryBenchmark as string;
     if (body.included !== undefined) updateData.included = body.included as boolean;
-    if (body.aiAgentActive !== undefined) updateData.aiAgentActive = body.aiAgentActive as boolean;
     if (body.target !== undefined) updateData.target = body.target as string;
     if (body.achievement !== undefined) updateData.achievement = body.achievement == null ? null : String(body.achievement);
     if (body.trafficLight !== undefined) updateData.trafficLight = body.trafficLight as string;

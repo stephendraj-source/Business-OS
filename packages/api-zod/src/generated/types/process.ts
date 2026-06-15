@@ -12,7 +12,6 @@ export interface Process {
   category: string;
   processDescription: string;
   processName: string;
-  aiAgent: string;
   purpose: string;
   inputs: string;
   outputs: string;

@@ -2,9 +2,9 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useProcessesData, useOptimisticUpdateProcess } from '@/shared/hooks/use-app-data';
 import {
-  ChevronRight, Cpu, Target, ArrowRightLeft, Users, Activity,
-  TrendingUp, Loader2, Map, BarChart3, CheckCircle2, Award, Pencil,
-  Zap, Briefcase, X
+  ChevronRight, Target, ArrowRightLeft, Users, Activity,
+  TrendingUp, Loader2, Map, CheckCircle2, Award, Pencil,
+  Briefcase, X
 } from 'lucide-react';
 import { cn, getCategoryColorClass } from '@/shared/lib/utils';
 import type { Process } from '@workspace/api-client-react';
@@ -254,16 +254,6 @@ export function ProcessMap() {
                   />
                 </div>
                 <div className="w-px h-5 bg-border/60" />
-                {/* AI Agent Active */}
-                <BooleanToggle
-                  icon={<Zap className="w-3.5 h-3.5" />}
-                  label="AI Agent Active"
-                  value={!!liveSelectedProcess.aiAgentActive}
-                  onToggle={() => updateProcess({ id: liveSelectedProcess.id, data: { aiAgentActive: !liveSelectedProcess.aiAgentActive } })}
-                  activeColor="text-violet-400"
-                  activeBg="bg-violet-500/10 border-violet-500/30"
-                />
-                <div className="w-px h-5 bg-border/60" />
                 {/* In Portfolio */}
                 <BooleanToggle
                   icon={<Briefcase className="w-3.5 h-3.5" />}
@@ -376,13 +366,6 @@ export function ProcessMap() {
                   value={liveSelectedProcess.purpose ?? ''}
                   onSave={v => handleSave('purpose', v)}
                   fullWidth
-                />
-                <EditableDetailSection
-                  icon={<Cpu />}
-                  title="AI Agent"
-                  value={liveSelectedProcess.aiAgent ?? ''}
-                  onSave={v => handleSave('aiAgent', v)}
-                  highlight
                 />
                 <EditableDetailSection
                   icon={<Users />}
