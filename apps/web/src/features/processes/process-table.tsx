@@ -44,6 +44,7 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'category',             label: 'Category',             defaultWidth: 185, minWidth: 110 },
   { key: 'priority',             label: 'Priority',             defaultWidth: 90,  minWidth: 70  },
   { key: 'processName',          label: 'Process Name',          defaultWidth: 175, minWidth: 110 },
+  { key: 'bpmn',                 label: 'BPMN Link',            defaultWidth: 200, minWidth: 140 },
   { key: 'processDescription',   label: 'Process Description',   defaultWidth: 260, minWidth: 140 },
   { key: 'aiAgent',              label: 'AI Agent',              defaultWidth: 175, minWidth: 110 },
   { key: 'aiAgentActive',        label: 'AI Agent Active',       defaultWidth: 120, minWidth: 100 },
@@ -53,7 +54,6 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'outputs',              label: 'Outputs',               defaultWidth: 200, minWidth: 130 },
   { key: 'humanInTheLoop',       label: 'Human-in-the-Loop',    defaultWidth: 175, minWidth: 110 },
   { key: 'kpi',                  label: 'KPI',                   defaultWidth: 175, minWidth: 110 },
-  { key: 'bpmn',                 label: 'BPMN Process',         defaultWidth: 220, minWidth: 140 },
   { key: 'bpmnKey',              label: 'BPMN Process Key',      defaultWidth: 220, minWidth: 150 },
   { key: 'target',               label: 'Target',                defaultWidth: 160, minWidth: 110 },
   { key: 'achievement',          label: 'Achievement',           defaultWidth: 160, minWidth: 110 },
@@ -161,6 +161,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   const { isFavourite, toggleFavourite } = useFavourites();
   const { data: processes } = useProcessesData();
   const process = (processes?.find(p => p.id === initialProcess.id) ?? initialProcess) as Process;
+  console.log('Process Detail:', process);
   const { mutate: updateProcess } = useOptimisticUpdateProcess();
   const { data: categories = [] } = useCategoriesData();
   const queryClient = useQueryClient();
@@ -432,7 +433,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+    <div className="fixed inset-0 z-[400] bg-background flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-8 py-4 border-b border-border flex-none bg-card shadow-sm">
           <div className="min-w-0 flex-1">
@@ -1299,7 +1300,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   function getPinnedCellClass(key: string, isHeader = false) {
     if (!isPinnedLeftColumn(key)) return undefined;
     return cn(
-      isHeader ? "pinned-left-header bg-card" : "pinned-left-cell bg-background",
+      isHeader ? "pinned-left-header bg-secondary/95" : "pinned-left-cell bg-background",
       key === 'processName' && "pinned-left-divider"
     );
   }
@@ -1632,7 +1633,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'processDescription':
         return (
           <td key="processDescription" className="overflow-hidden p-0" style={{ width: widths['processDescription'] }}>
-            <EditableCell processId={process.id} field="processDescription" initialValue={process.processDescription} multiline onSaved={cellSaved(process, 'processDescription')} displayClassName={subprocessDisplayClass} alwaysExpanded />
+            <EditableCell processId={process.id} field="processDescription" initialValue={process.processDescription} multiline onSaved={cellSaved(process, 'processDescription')} displayClassName={subprocessDisplayClass} />
           </td>
         );
       case 'aiAgent':
@@ -1725,22 +1726,24 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
         );
       case 'bpmn':
         return (
-          <td key="bpmn" className="overflow-hidden p-0" style={{ width: widths['bpmn'] }}>
-            {(process as any).bpmn ? (
-              <a
-                href={bpmnModelerHref(process.id)}
-                className="block min-h-[40px] w-full p-3 text-sm text-primary hover:bg-muted/50 hover:underline"
-              >
-                {bpmnLinkLabel((process as any).bpmn, process.processName || process.processDescription || "Open BPMN in Modeler")}
-              </a>
-            ) : (
-              <a
-                href={bpmnModelerHref(process.id)}
-                className="block min-h-[40px] w-full p-3 text-sm text-primary hover:bg-muted/50 hover:underline"
-              >
-                Create new BPMN process
-              </a>
-            )}
+          <td key="bpmn" className="align-middle overflow-hidden p-2" style={{ width: widths['bpmn'] }}>
+            <a
+              href={bpmnModelerHref(process.id)}
+              className={cn(
+                "inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border w-full",
+                (process as any).bpmn
+                  ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20 hover:border-primary/50"
+                  : "bg-secondary/40 border-border/50 text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+              )}
+              title="Click to open BPMN diagram"
+            >
+              <GitBranch className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">
+                {(process as any).bpmn
+                  ? (bpmnLinkLabel((process as any).bpmn, process.processName) || "Open Diagram")
+                  : "Create BPMN Diagram"}
+              </span>
+            </a>
           </td>
         );
       case 'bpmnKey': {

@@ -8,6 +8,7 @@ import {
   Loader2,
   Rocket,
   RotateCcw,
+  Sparkles,
   WandSparkles,
 } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthContext";
@@ -99,6 +100,7 @@ export function OperatonView() {
   const [workspaceError, setWorkspaceError] = useState("");
   const [selectedProcessId, setSelectedProcessId] = useState<string>("");
   const [isSavingBpmn, setIsSavingBpmn] = useState(false);
+  const [isGeneratingBpmn, setIsGeneratingBpmn] = useState(false);
   const [activeInstanceCount, setActiveInstanceCount] = useState(0);
   const safeProcessKey = slugify(processKey) || "business_os_process";
   const initialProcessId = useMemo(
@@ -528,6 +530,30 @@ export function OperatonView() {
     }
   };
 
+  const generateBpmnWithAi = async () => {
+    if (!selectedProcessId) return;
+    setIsGeneratingBpmn(true);
+    setStatus("Generating BPMN diagram with AI…");
+    try {
+      const response = await fetch(
+        `${API}/processes/${encodeURIComponent(selectedProcessId)}/ai-generate-bpmn?save=true`,
+        { method: "POST", headers: { "Content-Type": "application/json", ...fetchHeaders() } },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || "AI generation failed");
+      await importXml(payload.bpmn, { recreate: true });
+      const selected = catalogueProcesses.find((item) => String(item.id) === selectedProcessId);
+      toast({ title: "BPMN generated", description: `AI created a diagram for ${selected?.processName || selected?.processDescription || "this process"} and saved it.` });
+      setStatus("AI-generated BPMN loaded.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to generate BPMN";
+      toast({ title: "Generation failed", description: message, variant: "destructive" });
+      setStatus(message);
+    } finally {
+      setIsGeneratingBpmn(false);
+    }
+  };
+
   const deployDiagram = async () => {
     const modeler = modelerRef.current;
     if (!modeler) return;
@@ -742,6 +768,15 @@ export function OperatonView() {
             </div>
 
             <div className="space-y-2">
+              <button
+                onClick={generateBpmnWithAi}
+                disabled={!selectedProcessId || isBooting || isGeneratingBpmn}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isGeneratingBpmn ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Generate BPMN with AI
+              </button>
+
               <button
                 onClick={saveBpmnToProcess}
                 disabled={!selectedProcessId || isBooting || isSavingBpmn}

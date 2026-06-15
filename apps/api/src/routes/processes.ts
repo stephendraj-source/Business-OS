@@ -484,6 +484,88 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
   }
 });
 
+router.post("/processes/:id/ai-generate-bpmn", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+    const [process] = await db.select().from(processesTable).where(eq(processesTable.id, id));
+    if (!process) { res.status(404).json({ error: "Process not found" }); return; }
+
+    const tenantId = req.auth?.tenantId;
+    if (tenantId) {
+      const credit = await useCredit(tenantId);
+      if (!credit.ok) {
+        res.status(402).json({ error: "Insufficient credits. Please contact your administrator." });
+        return;
+      }
+    }
+
+    const name = process.processName || process.processDescription;
+    const processKey = name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `process_${process.number}`;
+
+    const prompt = `You are a BPMN process modelling expert. Generate a realistic, detailed BPMN 2.0 XML diagram for the following nonprofit business process.
+
+Process Name: ${name}
+Category: ${process.category}
+Purpose: ${process.purpose || "Not specified"}
+Inputs: ${process.inputs || "Not specified"}
+Outputs: ${process.outputs || "Not specified"}
+Human-in-the-Loop: ${process.humanInTheLoop || "Not specified"}
+KPI: ${process.kpi || "Not specified"}
+
+Requirements:
+- Use bpmn: namespace prefix (xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL")
+- Include bpmndi: diagram info (xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI") and dc: (xmlns:dc="http://www.omg.org/spec/DD/20100524/DC") and di: (xmlns:di="http://www.omg.org/spec/DD/20100524/DI")
+- Include operaton namespace: xmlns:operaton="http://operaton.org/schema/1.0/bpmn"
+- Process id must be: "${processKey}"
+- Process name must be: "${name}"
+- Include operaton:historyTimeToLive="180" on the process element
+- Create a realistic flow with 4-8 tasks that represent the actual steps of this process
+- Include a start event, relevant intermediate tasks (use bpmn:task or bpmn:userTask or bpmn:serviceTask as appropriate), and an end event
+- Add at least one gateway (bpmn:exclusiveGateway or bpmn:parallelGateway) to show decision points or parallel work
+- Connect all elements with bpmn:sequenceFlow elements
+- Include proper BPMNDI layout with non-overlapping coordinates (space elements 180px apart horizontally, use y=200 as baseline)
+- All shape IDs and edge IDs must be unique
+- Return ONLY the complete valid BPMN XML, no explanation`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 8000,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Strip markdown code fences if Claude wrapped the XML
+    const stripped = text.replace(/```(?:xml|bpmn)?\s*/gi, "").replace(/```\s*/g, "").trim();
+    const xmlMatch = stripped.match(/<\?xml[\s\S]*<\/bpmn:definitions>/i) || stripped.match(/<bpmn:definitions[\s\S]*<\/bpmn:definitions>/i);
+    if (!xmlMatch) {
+      res.status(500).json({ error: "AI did not return valid BPMN XML" });
+      return;
+    }
+
+    const bpmnXml = xmlMatch[0];
+
+    const save = req.query.save === "true";
+    if (save) {
+      await db.update(processesTable).set({ bpmn: bpmnXml }).where(eq(processesTable.id, id));
+    }
+
+    await writeAuditLog({
+      action: "ai-generate-bpmn",
+      entityType: "process",
+      entityId: String(id),
+      entityName: name,
+      description: `AI generated BPMN diagram for "${name}"${save ? " (saved)" : ""}`,
+      userId: req.auth?.userId,
+    });
+
+    res.json({ bpmn: bpmnXml, saved: save });
+  } catch (err) {
+    req.log.error(err, "Failed to AI-generate BPMN");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Internal server error" });
+  }
+});
+
 router.post("/processes/ai-draft", async (req, res) => {
   try {
     const body = req.body as Record<string, string | undefined>;

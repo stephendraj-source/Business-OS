@@ -735,7 +735,7 @@ export function Chatbot() {
       <button
         onClick={() => setOpen(v => !v)}
         className={cn(
-          "fixed z-[60] w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
+          "fixed z-[300] w-12 h-12 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300",
           isFullscreen && open && "opacity-0 pointer-events-none",
           open ? "bg-destructive/90 hover:bg-destructive" : "bg-primary hover:bg-primary/90"
         )}
