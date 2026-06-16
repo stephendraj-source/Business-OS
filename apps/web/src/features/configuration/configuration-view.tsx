@@ -774,7 +774,7 @@ function BlueprintSection({ fetchHeaders }: { fetchHeaders: () => Record<string,
         `${s.businessUnits} business units`,
         `${s.regions} regions`,
         `${s.checklists} checklists`,
-        `${s.initiatives} initiatives`,
+        `${s.initiatives} measures`,
         `${s.forms} documents`,
         `${s.strategicGoals} strategic goals`,
       ];
@@ -805,7 +805,7 @@ function BlueprintSection({ fetchHeaders }: { fetchHeaders: () => Record<string,
           <h4 className="font-medium text-sm">Export Blueprint</h4>
         </div>
         <p className="text-xs text-muted-foreground">
-          Downloads all your workspace configuration — processes, workflows, AI agents, documents, strategic goals, groups, roles, governance records, checklists, dashboards, and initiatives — as a single JSON file.
+          Downloads all your workspace configuration — processes, workflows, AI agents, documents, strategic goals, groups, roles, governance records, checklists, dashboards, and measures — as a single JSON file.
         </p>
         <div className="flex gap-3 items-center">
           <input
@@ -888,7 +888,7 @@ function BlueprintSection({ fetchHeaders }: { fetchHeaders: () => Record<string,
               <p className="text-sm font-semibold">Confirm overwrite</p>
             </div>
             <p className="text-xs text-muted-foreground">
-              This will permanently delete all current processes, workflows, agents, groups, roles, checklists, and initiatives, then replace them with the data from <strong>{importFile?.name}</strong>. Are you sure?
+              This will permanently delete all current processes, workflows, agents, groups, roles, checklists, and measures, then replace them with the data from <strong>{importFile?.name}</strong>. Are you sure?
             </p>
             <div className="flex gap-2">
               <button

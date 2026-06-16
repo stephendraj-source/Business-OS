@@ -13,7 +13,6 @@ export interface UpdateProcessBody {
   purpose?: string;
   inputs?: string;
   outputs?: string;
-  humanInTheLoop?: string;
   kpi?: string;
   estimatedValueImpact?: string;
   industryBenchmark?: string;

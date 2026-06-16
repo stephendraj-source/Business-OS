@@ -14,7 +14,6 @@ import { AiAgentsView } from '@/features/ai-agents/ai-agents-view';
 import { OperatonView } from '@/features/operaton/operaton-view';
 import { FormsView } from '@/features/forms/forms-view';
 import { UsersView } from '@/features/users/users-view';
-import { InitiativesView } from '@/features/initiatives/initiatives-view';
 import { StrategyView } from '@/features/strategy/strategy-view';
 import { StrategicPlanningView } from '@/features/strategy/strategic-planning-view';
 import { ConfigurationView } from '@/features/configuration/configuration-view';
@@ -25,7 +24,7 @@ import { MeetingsView } from '@/features/meetings/meetings-view';
 import { CalendarView } from '@/features/calendar/calendar-view';
 import { motion, AnimatePresence } from 'framer-motion';
 
-type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'operaton' | 'forms' | 'users' | 'initiatives' | 'configuration' | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning' | 'meetings' | 'calendar';
+type ActiveView = 'table' | 'tree' | 'portfolio' | 'process-map' | 'connectors' | 'governance' | 'dashboards' | 'reports' | 'audit-logs' | 'settings' | 'ai-agents' | 'operaton' | 'forms' | 'users' | 'configuration' | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning' | 'meetings' | 'calendar';
 
 const fadeSlide = {
   initial: { opacity: 0, y: 10 },
@@ -39,7 +38,7 @@ export default function Dashboard() {
   const initialView = (() => {
     const p = new URLSearchParams(window.location.search).get('view');
     if (p === 'workflows') return 'operaton';
-    const valid: ActiveView[] = ['table','tree','portfolio','process-map','connectors','governance','dashboards','reports','audit-logs','settings','ai-agents','operaton','forms','users','initiatives','configuration','activities','tasks','queues','strategy','strategic-planning','meetings','calendar'];
+    const valid: ActiveView[] = ['table','tree','portfolio','process-map','connectors','governance','dashboards','reports','audit-logs','settings','ai-agents','operaton','forms','users','configuration','activities','tasks','queues','strategy','strategic-planning','meetings','calendar'];
     return (valid.includes(p as ActiveView) ? p : 'table') as ActiveView;
   })();
   const [activeView, setActiveView] = useState<ActiveView>(initialView);
@@ -155,11 +154,6 @@ export default function Dashboard() {
         {activeView === 'users' && (
           <motion.div key="users" {...fadeSlide} className="w-full h-full">
             <UsersView />
-          </motion.div>
-        )}
-        {activeView === 'initiatives' && (
-          <motion.div key="initiatives" {...fadeSlide} className="w-full h-full">
-            <InitiativesView />
           </motion.div>
         )}
         {activeView === 'strategy' && (

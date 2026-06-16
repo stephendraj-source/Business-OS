@@ -1349,14 +1349,14 @@ const AP_FIELDS: Record<string, { key: string; label: string }[]> = {
     { key: 'outputs', label: 'Outputs' }, { key: 'humanInTheLoop', label: 'Human in the Loop' },
     { key: 'kpi', label: 'KPI' }, { key: 'estimatedValueImpact', label: 'Value Impact' },
     { key: 'industryBenchmark', label: 'Benchmark' }, { key: 'included', label: 'Included' },
-    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Achievement' },
+    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Actual KPI Result' },
     { key: 'trafficLight', label: 'Traffic Light' },
   ],
   process: [
     { key: 'number', label: 'Number' }, { key: 'category', label: 'Category' },
     { key: 'processName', label: 'Process Name' }, { key: 'processDescription', label: 'Description' },
     { key: 'aiAgent', label: 'AI Agent' }, { key: 'included', label: 'Included' },
-    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Achievement' },
+    { key: 'target', label: 'Target' }, { key: 'achievement', label: 'Actual KPI Result' },
     { key: 'trafficLight', label: 'Traffic Light' },
   ],
 };

@@ -349,7 +349,7 @@ export function ProcessMap() {
                 />
                 <EditableKpiCard
                   icon={<CheckCircle2 />}
-                  label="Achievement"
+                  label="Actual KPI Result"
                   value={liveSelectedProcess.achievement ?? ''}
                   color="text-emerald-400"
                   bg="bg-emerald-400/10 border-emerald-400/20"
@@ -366,12 +366,6 @@ export function ProcessMap() {
                   value={liveSelectedProcess.purpose ?? ''}
                   onSave={v => handleSave('purpose', v)}
                   fullWidth
-                />
-                <EditableDetailSection
-                  icon={<Users />}
-                  title="Human-in-the-Loop"
-                  value={liveSelectedProcess.humanInTheLoop ?? ''}
-                  onSave={v => handleSave('humanInTheLoop', v)}
                 />
                 <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 p-6 bg-secondary/30 rounded-2xl border border-border/50">
                   <EditableDetailSection

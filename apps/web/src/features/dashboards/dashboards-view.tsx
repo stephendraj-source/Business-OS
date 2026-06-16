@@ -945,7 +945,7 @@ function DashProcessDetailPanel({ process: initialProcess, onClose, onBack }: {
             <DashPanelTextField label="Human in the Loop" value={process.humanInTheLoop ?? ''} onSave={v => save('humanInTheLoop', v)} multiline />
             <DashPanelTextField label="KPI" value={process.kpi ?? ''} onSave={v => save('kpi', v)} />
             <DashPanelTextField label="Target" value={process.target ?? ''} onSave={v => save('target', v)} />
-            <DashPanelTextField label="Achievement" value={process.achievement ?? ''} onSave={v => save('achievement', v)} />
+            <DashPanelTextField label="Actual KPI Result" value={process.achievement ?? ''} onSave={v => save('achievement', v)} />
             <DashPanelTextField label="Est. Value Impact" value={process.estimatedValueImpact ?? ''} onSave={v => save('estimatedValueImpact', v)} />
             <DashPanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''} onSave={v => save('industryBenchmark', v)} />
           </div>

@@ -50,7 +50,6 @@ async function generateAiProcessFields(args: {
   purpose?: string;
   inputs?: string;
   outputs?: string;
-  humanInTheLoop?: string;
   kpi?: string;
   estimatedValueImpact?: string;
   industryBenchmark?: string;
@@ -67,7 +66,6 @@ CURRENT VALUES (only fill blank or empty fields):
 - Purpose: ${args.purpose || "(BLANK - fill this)"}
 - Inputs: ${args.inputs || "(BLANK - fill this)"}
 - Outputs: ${args.outputs || "(BLANK - fill this)"}
-- Human-in-the-Loop: ${args.humanInTheLoop || "(BLANK - fill this)"}
 - KPI: ${args.kpi || "(BLANK - fill this)"}
 - Estimated Value Impact: ${args.estimatedValueImpact || "(BLANK - fill this)"}
 - Industry Benchmark: ${args.industryBenchmark || "(BLANK - fill this)"}
@@ -79,7 +77,6 @@ Return ONLY a valid JSON object with these exact keys (include ALL keys, keep ex
   "purpose": "...",
   "inputs": "...",
   "outputs": "...",
-  "humanInTheLoop": "...",
   "kpi": "...",
   "estimatedValueImpact": "...",
   "industryBenchmark": "...",
@@ -119,7 +116,6 @@ router.get("/processes/export", async (req, res) => {
       "Purpose": p.purpose,
       "Inputs": p.inputs,
       "Outputs": p.outputs,
-      "Human-in-the-Loop": p.humanInTheLoop,
       "KPI": p.kpi,
       "Target": p.target,
       "Achievement": p.achievement,
@@ -199,7 +195,6 @@ router.post("/processes/import", upload.single("file"), async (req, res) => {
         purpose: String(row["Purpose"] ?? ""),
         inputs: String(row["Inputs"] ?? ""),
         outputs: String(row["Outputs"] ?? ""),
-        humanInTheLoop: String(row["Human-in-the-Loop"] ?? ""),
         kpi: String(row["KPI"] ?? ""),
         target: String(row["Target"] ?? ""),
         achievement: String(row["Achievement"] ?? ""),
@@ -339,7 +334,6 @@ router.post("/processes/:id/ai-compliance", async (req, res) => {
     const purpose = process.purpose || "Not specified";
     const inputs = process.inputs || "Not specified";
     const outputs = process.outputs || "Not specified";
-    const humanInTheLoop = process.humanInTheLoop || "Not specified";
     const kpi = process.kpi || "Not specified";
     const target = process.target || "Not specified";
     const achievement = process.achievement || "Not specified";
@@ -354,7 +348,6 @@ PROCESS DETAILS:
 - Purpose: ${purpose}
 - Required Inputs: ${inputs}
 - Expected Outputs: ${outputs}
-- Human-in-the-Loop requirements: ${humanInTheLoop}
 - KPI: ${kpi}
 - Target: ${target}
 - Achievement: ${achievement}
@@ -440,19 +433,17 @@ router.post("/processes/:id/ai-populate", async (req, res) => {
       purpose: process.purpose,
       inputs: process.inputs,
       outputs: process.outputs,
-      humanInTheLoop: process.humanInTheLoop,
       kpi: process.kpi,
       estimatedValueImpact: process.estimatedValueImpact,
       industryBenchmark: process.industryBenchmark,
       target: process.target,
-      achievement: process.achievement,
+      achievement: process.achievement ?? undefined,
     });
 
     const updateData: Partial<typeof processesTable.$inferInsert> = {};
     if (!process.purpose && fields.purpose) updateData.purpose = fields.purpose;
     if (!process.inputs && fields.inputs) updateData.inputs = fields.inputs;
     if (!process.outputs && fields.outputs) updateData.outputs = fields.outputs;
-    if (!process.humanInTheLoop && fields.humanInTheLoop) updateData.humanInTheLoop = fields.humanInTheLoop;
     if (!process.kpi && fields.kpi) updateData.kpi = fields.kpi;
     if (!process.estimatedValueImpact && fields.estimatedValueImpact) updateData.estimatedValueImpact = fields.estimatedValueImpact;
     if (!process.industryBenchmark && fields.industryBenchmark) updateData.industryBenchmark = fields.industryBenchmark;
@@ -503,7 +494,6 @@ Category: ${process.category}
 Purpose: ${process.purpose || "Not specified"}
 Inputs: ${process.inputs || "Not specified"}
 Outputs: ${process.outputs || "Not specified"}
-Human-in-the-Loop: ${process.humanInTheLoop || "Not specified"}
 KPI: ${process.kpi || "Not specified"}
 
 Requirements:
@@ -583,7 +573,6 @@ router.post("/processes/ai-draft", async (req, res) => {
       purpose: body.purpose,
       inputs: body.inputs,
       outputs: body.outputs,
-      humanInTheLoop: body.humanInTheLoop,
       kpi: body.kpi,
       estimatedValueImpact: body.estimatedValueImpact,
       industryBenchmark: body.industryBenchmark,
@@ -651,7 +640,6 @@ router.post("/processes", async (req, res) => {
       purpose: body.purpose ?? "",
       inputs: body.inputs ?? "",
       outputs: body.outputs ?? "",
-      humanInTheLoop: body.humanInTheLoop ?? "",
       kpi: body.kpi ?? "",
       bpmn: body.bpmn ?? "",
       estimatedValueImpact: body.estimatedValueImpact ?? "",
@@ -746,7 +734,6 @@ router.put("/processes/:id", async (req, res) => {
     if (body.purpose !== undefined) updateData.purpose = body.purpose as string;
     if (body.inputs !== undefined) updateData.inputs = body.inputs as string;
     if (body.outputs !== undefined) updateData.outputs = body.outputs as string;
-    if (body.humanInTheLoop !== undefined) updateData.humanInTheLoop = body.humanInTheLoop as string;
     if (body.kpi !== undefined) updateData.kpi = body.kpi as string;
     if (body.bpmn !== undefined) updateData.bpmn = body.bpmn as string;
     if (body.estimatedValueImpact !== undefined) updateData.estimatedValueImpact = body.estimatedValueImpact as string;

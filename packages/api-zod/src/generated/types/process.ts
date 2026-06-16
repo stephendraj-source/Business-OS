@@ -15,7 +15,6 @@ export interface Process {
   purpose: string;
   inputs: string;
   outputs: string;
-  humanInTheLoop: string;
   kpi: string;
   estimatedValueImpact: string;
   industryBenchmark: string;

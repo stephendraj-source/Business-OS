@@ -407,7 +407,7 @@ function OverviewTab({ initiative, onSaved }: { initiative: InitiativeDetail; on
         {field('End Date', 'endDate', 'date')}
       </div>
       {field('Goals / Notes', 'goals', 'text', true)}
-      {field('Achievement', 'achievement', 'text', true)}
+      {field('Actual KPI Result', 'achievement', 'text', true)}
       <div className="flex items-center gap-3">
         <button onClick={() => setForm(init())} className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-border text-sm font-medium text-muted-foreground hover:bg-secondary transition-colors">
           <X className="w-4 h-4" /> Cancel

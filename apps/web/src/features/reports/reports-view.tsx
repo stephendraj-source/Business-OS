@@ -78,7 +78,7 @@ const FIELD_DEFS: Record<ReportId, FieldDef[]> = {
     { key: 'category',    label: 'Category' },
     { key: 'kpi',         label: 'KPI' },
     { key: 'target',      label: 'Target' },
-    { key: 'achievement', label: 'Achievement' },
+    { key: 'achievement', label: 'Actual KPI Result' },
     { key: 'trafficLight',label: 'Traffic Light' },
   ],
   value: [
@@ -139,7 +139,7 @@ const FILTER_FIELDS: FilterFieldDef[] = [
   { key: 'humanInTheLoop',       label: 'Human-in-the-Loop', type: 'text' },
   { key: 'kpi',                  label: 'KPI',                type: 'text' },
   { key: 'target',               label: 'Target',             type: 'text' },
-  { key: 'achievement',          label: 'Achievement',        type: 'text' },
+  { key: 'achievement',          label: 'Actual KPI Result',  type: 'text' },
   { key: 'estimatedValueImpact', label: 'Value Impact',       type: 'text' },
   { key: 'industryBenchmark',    label: 'Benchmark',          type: 'text' },
   { key: 'trafficLight', label: 'Traffic Light', type: 'categorical', options: [
@@ -377,7 +377,7 @@ function generateReportSQL(p: SqlParams): string {
       if (k === 'category')    return `  category AS "Category"`;
       if (k === 'kpi')         return `  kpi AS "KPI"`;
       if (k === 'target')      return `  target AS "Target"`;
-      if (k === 'achievement') return `  achievement AS "Achievement"`;
+      if (k === 'achievement') return `  achievement AS "Actual KPI Result"`;
       if (k === 'trafficLight') return `  traffic_light AS "Traffic Light"`;
       return `  ${FIELD_TO_SQL_COL[k] ?? k}`;
     }).join(',\n');
@@ -907,7 +907,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             <RPanelTextField label="Human-in-the-Loop"  value={process.humanInTheLoop ?? ''}       onSave={v => save('humanInTheLoop', v)} multiline />
             <RPanelTextField label="KPI"                value={process.kpi ?? ''}                  onSave={v => save('kpi', v)} />
             <RPanelTextField label="Target"             value={process.target ?? ''}               onSave={v => save('target', v)} />
-            <RPanelTextField label="Achievement"        value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
+            <RPanelTextField label="Actual KPI Result"  value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
             <RPanelTextField label="Estimated Value Impact" value={process.estimatedValueImpact ?? ''} onSave={v => save('estimatedValueImpact', v)} />
             <RPanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''}    onSave={v => save('industryBenchmark', v)} />
           </div>
@@ -1026,7 +1026,7 @@ const CUSTOM_REPORT_ALL_FIELDS: FieldDef[] = [
   { key: 'humanInTheLoop',       label: 'Human-in-the-Loop' },
   { key: 'kpi',                  label: 'KPI' },
   { key: 'target',               label: 'Target' },
-  { key: 'achievement',          label: 'Achievement' },
+  { key: 'achievement',          label: 'Actual KPI Result' },
   { key: 'trafficLight',         label: 'Traffic Light' },
   { key: 'estimatedValueImpact', label: 'Value Impact' },
   { key: 'industryBenchmark',    label: 'Benchmark' },
@@ -1689,7 +1689,7 @@ export function ReportsView() {
           else if (key === 'category') row['Category'] = p.category;
           else if (key === 'kpi') row['KPI'] = p.kpi;
           else if (key === 'target') row['Target'] = p.target;
-          else if (key === 'achievement') row['Achievement'] = p.achievement;
+          else if (key === 'achievement') row['Actual KPI Result'] = p.achievement;
           else if (key === 'trafficLight') row['Traffic Light'] = p.trafficLight === 'green' ? 'On Track' : p.trafficLight === 'orange' ? 'At Risk' : p.trafficLight === 'red' ? 'Off Track' : '';
         }
         return row;
@@ -2378,7 +2378,7 @@ function KpiReport({ processes, activeFields, onRowClick, onReorderField, sortKe
         {[
           { label: 'Have KPI Defined', value: withKpi,         total: processes.length, color: 'text-primary' },
           { label: 'Have Target Set',   value: withTarget,      total: processes.length, color: 'text-blue-400' },
-          { label: 'Have Achievement',  value: withAchievement, total: processes.length, color: 'text-green-400' },
+          { label: 'Have Actual KPI Result', value: withAchievement, total: processes.length, color: 'text-green-400' },
         ].map(card => (
           <div key={card.label} className="p-4 rounded-xl border border-border bg-card">
             <div className={cn("text-2xl font-bold font-display", card.color)}>

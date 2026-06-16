@@ -19,7 +19,7 @@ export type ActiveView =
   | 'connectors' | 'governance'
   | 'dashboards' | 'reports' | 'audit-logs' | 'settings'
   | 'ai-agents' | 'operaton' | 'forms'
-  | 'users' | 'initiatives' | 'configuration'
+  | 'users' | 'configuration'
   | 'activities' | 'tasks' | 'queues' | 'strategy' | 'strategic-planning'
   | 'meetings' | 'calendar';
 
@@ -54,9 +54,8 @@ const ITEMS_DEF: ItemDef[] = [
   { id: 'process-map',       label: 'Process Map',        sectionId: 'core'         },
   { id: 'strategy',          label: 'Mission & Vision',   sectionId: 'strategy'     },
   { id: 'strategic-planning',label: 'Strategic Planning', sectionId: 'strategy'     },
-  { id: 'initiatives',       label: 'Initiatives',        sectionId: 'strategy'     },
   { id: 'governance',        label: 'Governance',         sectionId: 'governance'   },
-  { id: 'operaton',          label: 'Workflows',         sectionId: 'workflows'    },
+  { id: 'operaton',          label: 'Process Flows',      sectionId: 'workflows'    },
   { id: 'forms',             label: 'Documents',sectionId: 'workflows'    },
   { id: 'meetings',          label: 'Meetings',           sectionId: 'workflows'    },
   { id: 'calendar',          label: 'Calendar',           sectionId: 'workflows'    },
@@ -85,13 +84,12 @@ const VIEW_META: Record<ActiveView, { label: string; section: string }> = {
   'audit-logs':        { label: 'Audit & Logs',         section: 'System'       },
   settings:            { label: 'Settings',             section: 'System'       },
   'ai-agents':         { label: 'AI Agents',            section: 'AI'           },
-  operaton:            { label: 'Workflows',            section: 'Productivity' },
+  operaton:            { label: 'Process Flows',         section: ''             },
   forms:               { label: 'Documents',            section: 'Productivity' },
   users:               { label: 'Users',                section: 'Admin'        },
   configuration:       { label: 'Configuration',        section: 'Admin'        },
   strategy:            { label: 'Mission & Vision',     section: 'Strategy'     },
   'strategic-planning':{ label: 'Strategic Planning',   section: 'Strategy'     },
-  initiatives:         { label: 'Initiatives',          section: 'Strategy'     },
   activities:          { label: 'Activities',           section: 'Productivity' },
   tasks:               { label: 'Tasks',                section: 'Productivity' },
   queues:              { label: 'Queues',                section: 'Productivity' },
@@ -108,7 +106,6 @@ function getIcon(id: ActiveView) {
     case 'process-map':        return <Map className={cls} />;
     case 'strategy':           return <Compass className={cls} />;
     case 'strategic-planning': return <TrendingUp className={cls} />;
-    case 'initiatives':        return <Briefcase className={cls} />;
     case 'governance':         return <ShieldCheck className={cls} />;
     case 'operaton':           return <GitBranch className={cls} />;
     case 'forms':              return <ClipboardList className={cls} />;

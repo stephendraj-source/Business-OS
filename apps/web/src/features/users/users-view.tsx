@@ -61,7 +61,7 @@ const CATALOGUE_FIELDS: Record<string, { key: string; label: string }[]> = {
     { key: 'industryBenchmark', label: 'Benchmark' },
     { key: 'included', label: 'Included' },
     { key: 'target', label: 'Target' },
-    { key: 'achievement', label: 'Achievement' },
+    { key: 'achievement', label: 'Actual KPI Result' },
     { key: 'trafficLight', label: 'Traffic Light' },
   ],
   process: [
@@ -72,7 +72,7 @@ const CATALOGUE_FIELDS: Record<string, { key: string; label: string }[]> = {
     { key: 'aiAgent', label: 'AI Agent' },
     { key: 'included', label: 'Included' },
     { key: 'target', label: 'Target' },
-    { key: 'achievement', label: 'Achievement' },
+    { key: 'achievement', label: 'Actual KPI Result' },
     { key: 'trafficLight', label: 'Traffic Light' },
   ],
 };

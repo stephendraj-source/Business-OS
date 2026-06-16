@@ -322,7 +322,27 @@ function EditForm({
     <div className="space-y-3">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Compliance Name *</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Compliance Name *</label>
+            {onAiPopulate && (
+              <button
+                type="button"
+                onClick={onAiPopulate}
+                disabled={aiPopulating || !state.complianceName.trim()}
+                className={cn(
+                  "flex items-center gap-1 px-2 py-0.5 text-[10px] rounded font-medium border transition-all",
+                  "bg-violet-500/10 border-violet-500/30 text-violet-400 hover:bg-violet-500/20 hover:border-violet-500/50",
+                  "disabled:opacity-50 disabled:cursor-not-allowed"
+                )}
+              >
+                {aiPopulating
+                  ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  : <Sparkles className="w-2.5 h-2.5" />
+                }
+                AI Fill
+              </button>
+            )}
+          </div>
           <input
             autoFocus
             type="text"
@@ -330,7 +350,7 @@ function EditForm({
             onChange={e => onChange({ ...state, complianceName: e.target.value })}
             onKeyDown={e => e.key === 'Enter' && onSave()}
             placeholder="e.g. PDPA"
-            className="mt-1 w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
           />
         </div>
         <div>

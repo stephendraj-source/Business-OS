@@ -19,8 +19,6 @@ interface LinkedAgent { id: number; agentNumber: number; name: string }
 interface LinkedWorkflow { id: number; name: string }
 interface AssignedUser { id: number; name: string; email: string; role: string }
 
-type GovStandard = { id: number; complianceName: string };
-type GovMap = Record<number, number[]>;
 
 interface ColumnDef {
   key: string;
@@ -50,15 +48,12 @@ const REORDERABLE: ColumnDef[] = [
   { key: 'purpose',              label: 'Purpose',               defaultWidth: 215, minWidth: 130 },
   { key: 'inputs',               label: 'Inputs',                defaultWidth: 200, minWidth: 130 },
   { key: 'outputs',              label: 'Outputs',               defaultWidth: 200, minWidth: 130 },
-  { key: 'humanInTheLoop',       label: 'Human-in-the-Loop',    defaultWidth: 175, minWidth: 110 },
   { key: 'kpi',                  label: 'KPI',                   defaultWidth: 175, minWidth: 110 },
-  { key: 'bpmnKey',              label: 'BPMN Process Key',      defaultWidth: 220, minWidth: 150 },
   { key: 'target',               label: 'Target',                defaultWidth: 160, minWidth: 110 },
-  { key: 'achievement',          label: 'Achievement',           defaultWidth: 160, minWidth: 110 },
+  { key: 'achievement',          label: 'Actual KPI Result',     defaultWidth: 160, minWidth: 110 },
   { key: 'trafficLight',         label: 'Status',                defaultWidth: 110, minWidth: 90 },
   { key: 'estimatedValueImpact', label: 'Value Impact',          defaultWidth: 190, minWidth: 120 },
   { key: 'industryBenchmark',    label: 'Industry Benchmark',    defaultWidth: 235, minWidth: 150 },
-  { key: 'governance',           label: 'Governance',            defaultWidth: 190, minWidth: 130 },
 ];
 
 const FIXED_END: ColumnDef[] = [
@@ -148,11 +143,6 @@ function bpmnLinkLabel(xml: string | null | undefined, fallback: string) {
   return fallback;
 }
 
-function bpmnProcessKey(xml: string | null | undefined) {
-  if (!xml) return "";
-  const match = xml.match(/<bpmn:process\b[^>]*\bid="([^"]+)"/i);
-  return match?.[1]?.trim() ?? "";
-}
 
 function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Process; onClose: () => void }) {
   const { fetchHeaders } = useAuth();
@@ -593,26 +583,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             <PanelTextField label="Purpose"            value={process.purpose ?? ''}              onSave={v => save('purpose', v)} multiline />
             <PanelTextField label="Inputs"             value={process.inputs ?? ''}               onSave={v => save('inputs', v)} multiline />
             <PanelTextField label="Outputs"            value={process.outputs ?? ''}              onSave={v => save('outputs', v)} multiline />
-            <PanelTextField label="Human in the Loop"  value={process.humanInTheLoop ?? ''}       onSave={v => save('humanInTheLoop', v)} multiline />
             <PanelTextField label="KPI"                value={process.kpi ?? ''}                  onSave={v => save('kpi', v)} />
-            <div>
-              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">BPMN Process Key</div>
-              {bpmnProcessKey((process as any).bpmn) ? (
-                <a
-                  href={bpmnModelerHref(process.id)}
-                  className="block rounded-lg border border-border/50 bg-secondary/30 px-3 py-2 text-sm text-primary hover:border-primary/30 hover:bg-secondary/50 hover:underline"
-                >
-                  {bpmnProcessKey((process as any).bpmn)}
-                </a>
-              ) : (
-                <a
-                  href={bpmnModelerHref(process.id)}
-                  className="block rounded-lg border border-dashed border-border/50 bg-secondary/30 px-3 py-2 text-sm text-primary hover:border-primary/30 hover:bg-secondary/50 hover:underline"
-                >
-                  Create new BPMN process
-                </a>
-              )}
-            </div>
             <div>
               <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider mb-1">BPMN</div>
               {(process as any).bpmn ? (
@@ -632,7 +603,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
               )}
             </div>
             <PanelTextField label="Target"             value={process.target ?? ''}               onSave={v => save('target', v)} />
-            <PanelTextField label="Achievement"        value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
+            <PanelTextField label="Actual KPI Result"   value={process.achievement ?? ''}          onSave={v => save('achievement', v)} />
 
             {/* ── AI Evaluation ─────────────────────────────── */}
             <div>
@@ -667,7 +638,7 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
 
               {!parsedEval && !evaluating && !evalError && (
                 <div className="text-xs text-muted-foreground/40 italic text-center py-3 border border-dashed border-border/40 rounded-lg">
-                  No evaluation yet — click "Evaluate with AI" to rate achievement vs. target
+                  No evaluation yet — click "Evaluate with AI" to rate actual KPI result vs. target
                 </div>
               )}
 
@@ -827,55 +798,12 @@ function ProcessDetailPanel({ process: initialProcess, onClose }: { process: Pro
             <PanelTextField label="Industry Benchmark" value={process.industryBenchmark ?? ''}    onSave={v => save('industryBenchmark', v)} />
           </div>
 
-          {/* Linked Agents & Workflows */}
+          {/* Linked Workflows */}
           <div className="border-t border-border/50 pt-4 space-y-3">
             <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
               <Link2 className="w-3.5 h-3.5" />
-              Linked Agents & Workflows
+              Linked Workflows
               {linksSaving && <Loader2 className="w-3 h-3 animate-spin ml-auto" />}
-            </div>
-
-            {/* Linked Agents */}
-            <div className="space-y-1.5">
-              <div className="text-[10px] font-semibold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
-                <Bot className="w-3 h-3" />AI Agents
-              </div>
-              {linkedAgents.length === 0 && !showAgentPicker && (
-                <p className="text-xs text-muted-foreground/50 italic">No agents linked yet.</p>
-              )}
-              <div className="flex flex-wrap gap-1.5">
-                {linkedAgents.map(a => (
-                  <span key={a.id} className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium border border-primary/20">
-                    <Bot className="w-3 h-3 shrink-0" />
-                    {a.name || `Agent #${a.agentNumber}`}
-                    <button onClick={() => removeAgent(a.id)} className="ml-0.5 hover:text-red-400 transition-colors"><X className="w-3 h-3" /></button>
-                  </span>
-                ))}
-              </div>
-              {showAgentPicker ? (
-                <div className="rounded-lg border border-border bg-background shadow-md overflow-hidden">
-                  {allAgents.filter(a => !linkedAgents.find(la => la.id === a.id)).length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">All agents already linked.</div>
-                  ) : allAgents.filter(a => !linkedAgents.find(la => la.id === a.id)).map(a => (
-                    <button
-                      key={a.id}
-                      onClick={() => addAgent(a)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-secondary/60 transition-colors text-left"
-                    >
-                      <Bot className="w-3.5 h-3.5 text-primary shrink-0" />
-                      {a.name || `Agent #${a.agentNumber}`}
-                    </button>
-                  ))}
-                  <button onClick={() => setShowAgentPicker(false)} className="w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-secondary/40 border-t border-border transition-colors">Cancel</button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setShowAgentPicker(true)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1"
-                >
-                  <Plus className="w-3 h-3" />Link an agent
-                </button>
-              )}
             </div>
 
             {/* Linked Workflows */}
@@ -1153,34 +1081,6 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
   const [widths, setWidths] = useState<Record<string, number>>(initWidths);
   const [colOrder, setColOrder] = useState<string[]>(REORDERABLE.map(c => c.key));
 
-  const [govStandards, setGovStandards] = useState<GovStandard[]>([]);
-  const [govMap, setGovMap] = useState<GovMap>({});
-  const [govPopoverFor, setGovPopoverFor] = useState<number | null>(null);
-  const [govPopoverPos, setGovPopoverPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
-
-
-  useEffect(() => {
-    fetch('/api/governance', { headers: fetchHeaders() }).then(r => r.json()).then((data: { id: number; complianceName: string }[]) => {
-      setGovStandards(data.map(d => ({ id: d.id, complianceName: d.complianceName })));
-    }).catch(() => {});
-    fetch('/api/processes/governance-map', { headers: fetchHeaders() }).then(r => r.json()).then((data: GovMap) => {
-      setGovMap(data);
-    }).catch(() => {});
-  }, []);
-
-  const toggleGovAssignment = async (processId: number, govId: number) => {
-    const current = govMap[processId] ?? [];
-    const next = current.includes(govId)
-      ? current.filter(id => id !== govId)
-      : [...current, govId];
-    setGovMap(prev => ({ ...prev, [processId]: next }));
-    await fetch(`/api/processes/${processId}/governance`, {
-      method: 'PUT',
-      headers: { ...fetchHeaders(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ governanceIds: next }),
-    });
-  };
-
   const resizing = useRef<{ key: string; startX: number; startWidth: number } | null>(null);
   const dragKey = useRef<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
@@ -1386,9 +1286,7 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'purpose':              av = a.purpose ?? '';                   bv = b.purpose ?? ''; break;
       case 'inputs':               av = a.inputs ?? '';                    bv = b.inputs ?? ''; break;
       case 'outputs':              av = a.outputs ?? '';                   bv = b.outputs ?? ''; break;
-      case 'humanInTheLoop':       av = a.humanInTheLoop ?? '';            bv = b.humanInTheLoop ?? ''; break;
       case 'kpi':                  av = a.kpi ?? '';                       bv = b.kpi ?? ''; break;
-      case 'bpmnKey':              av = bpmnProcessKey((a as any).bpmn);   bv = bpmnProcessKey((b as any).bpmn); break;
       case 'bpmn':                 av = (a as any).bpmn ?? '';             bv = (b as any).bpmn ?? ''; break;
       case 'target':               av = a.target ?? '';                    bv = b.target ?? ''; break;
       case 'achievement':          av = a.achievement ?? '';               bv = b.achievement ?? ''; break;
@@ -1397,12 +1295,11 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
       case 'estimatedValueImpact': av = a.estimatedValueImpact ?? '';      bv = b.estimatedValueImpact ?? ''; break;
       case 'industryBenchmark':    av = a.industryBenchmark ?? '';         bv = b.industryBenchmark ?? ''; break;
       case 'include':              av = a.included ? 0 : 1;                bv = b.included ? 0 : 1; break;
-      case 'governance':           av = (govMap[a.id]?.length ?? 0);       bv = (govMap[b.id]?.length ?? 0); break;
       default:                     av = a.number;                           bv = b.number; break;
     }
     if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * m;
     return String(av).localeCompare(String(bv)) * m;
-  }, [sortKey, sortDir, govMap]);
+  }, [sortKey, sortDir]);
 
   const filteredProcesses = useMemo(() => {
     if (!processes) return [];
@@ -1679,12 +1576,6 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <EditableCell processId={process.id} field="outputs" initialValue={process.outputs} multiline onSaved={cellSaved(process, 'outputs')} displayClassName={subprocessDisplayClass} />
           </td>
         );
-      case 'humanInTheLoop':
-        return (
-          <td key="humanInTheLoop" className="overflow-hidden p-0" style={{ width: widths['humanInTheLoop'] }}>
-            <EditableCell processId={process.id} field="humanInTheLoop" initialValue={process.humanInTheLoop} multiline onSaved={cellSaved(process, 'humanInTheLoop')} displayClassName={subprocessDisplayClass} />
-          </td>
-        );
       case 'kpi':
         return (
           <td key="kpi" className="overflow-hidden p-0" style={{ width: widths['kpi'] }}>
@@ -1713,19 +1604,6 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             </a>
           </td>
         );
-      case 'bpmnKey': {
-        const processKey = bpmnProcessKey((process as any).bpmn);
-        return (
-          <td key="bpmnKey" className="overflow-hidden p-0" style={{ width: widths['bpmnKey'] }}>
-            <a
-              href={bpmnModelerHref(process.id)}
-              className="block min-h-[40px] w-full p-3 text-sm text-primary hover:bg-muted/50 hover:underline"
-            >
-              {processKey || "Create new BPMN process"}
-            </a>
-          </td>
-        );
-      }
       case 'target':
         return (
           <td key="target" className="overflow-hidden p-0" style={{ width: widths['target'] }}>
@@ -1798,84 +1676,6 @@ export function ProcessTable({ mode = 'matrix' }: TableProps) {
             <EditableCell processId={process.id} field="industryBenchmark" initialValue={process.industryBenchmark} multiline onSaved={cellSaved(process, 'industryBenchmark')} displayClassName={subprocessDisplayClass} />
           </td>
         );
-      case 'governance': {
-        const assigned = govMap[process.id] ?? [];
-        const assignedStandards = govStandards.filter(g => assigned.includes(g.id));
-        const isOpen = govPopoverFor === process.id;
-        return (
-          <td key="governance" className="align-middle p-2 overflow-hidden" style={{ width: widths['governance'] }}>
-            <div className="flex flex-wrap gap-1 items-center">
-              {assignedStandards.map(g => (
-                <span key={g.id} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary border border-primary/20 whitespace-nowrap">
-                  <ShieldCheck className="w-2.5 h-2.5" />
-                  {g.complianceName}
-                </span>
-              ))}
-              <button
-                onClick={(e) => {
-                  if (isOpen) {
-                    setGovPopoverFor(null);
-                  } else {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setGovPopoverPos({ top: rect.bottom + 4, left: rect.left });
-                    setGovPopoverFor(process.id);
-                  }
-                }}
-                title="Assign governance standards"
-                className="p-0.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {isOpen && createPortal(
-              <>
-                {/* Backdrop to close on outside click */}
-                <div
-                  className="fixed inset-0 z-[90]"
-                  onClick={() => setGovPopoverFor(null)}
-                />
-                <div
-                  className="fixed z-[91] w-56 rounded-xl border border-border bg-card shadow-xl shadow-black/30 py-2"
-                  style={{ top: govPopoverPos.top, left: govPopoverPos.left }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                    Assign Standards
-                  </div>
-                  {govStandards.length === 0 ? (
-                    <div className="px-3 py-2 text-xs text-muted-foreground">No standards available</div>
-                  ) : (
-                    govStandards.map(g => {
-                      const checked = assigned.includes(g.id);
-                      return (
-                        <label
-                          key={g.id}
-                          className="flex items-center gap-2 px-3 py-1.5 hover:bg-secondary/50 cursor-pointer transition-colors"
-                          onClick={() => toggleGovAssignment(process.id, g.id)}
-                        >
-                          <span className={cn(
-                            "w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all",
-                            checked ? "bg-primary border-primary" : "border-border"
-                          )}>
-                            {checked && <CheckCircle2 className="w-2.5 h-2.5 text-primary-foreground" />}
-                          </span>
-                          <span className="text-xs text-foreground flex-1">{g.complianceName}</span>
-                        </label>
-                      );
-                    })
-                  )}
-                  <div className="border-t border-border mt-1 pt-1 px-3">
-                    <button onClick={() => setGovPopoverFor(null)} className="text-[10px] text-muted-foreground hover:text-foreground transition-colors">
-                      Close
-                    </button>
-                  </div>
-                </div>
-              </>,
-              document.body
-            )}
-          </td>
-        );
-      }
       case 'actions':
         return (
           <td key="actions" className="align-middle p-2 text-center" style={{ width: widths['actions'] }}>
@@ -2357,11 +2157,9 @@ function AddProcessModal({
   const [category, setCategory]                     = useState(initialParentProcess?.category ?? categories[0] ?? '');
   const [processName, setProcessName]               = useState('');
   const [processDescription, setProcessDescription] = useState('');
-  const [aiAgent, setAiAgent]                       = useState('');
   const [purpose, setPurpose]                       = useState('');
   const [inputs, setInputs]                         = useState('');
   const [outputs, setOutputs]                       = useState('');
-  const [humanInTheLoop, setHumanInTheLoop]         = useState('');
   const [kpi, setKpi]                               = useState('');
   const [target, setTarget]                         = useState('');
   const [achievement, setAchievement]               = useState('');
@@ -2389,7 +2187,7 @@ function AddProcessModal({
     onCreateAndPopulate({
       parentProcessId: parentProcessId ? Number(parentProcessId) : null,
       category, processName, processDescription,
-      aiAgent, purpose, inputs, outputs, humanInTheLoop,
+      purpose, inputs, outputs,
       kpi, target, achievement, estimatedValueImpact, industryBenchmark,
       trafficLight, included,
     }, useAi);
@@ -2411,11 +2209,9 @@ function AddProcessModal({
           category,
           processName,
           processDescription,
-          aiAgent,
           purpose,
           inputs,
           outputs,
-          humanInTheLoop,
           kpi,
           estimatedValueImpact,
           industryBenchmark,
@@ -2428,11 +2224,9 @@ function AddProcessModal({
         throw new Error(payload?.error || 'AI draft fill failed');
       }
 
-      if (!aiAgent && payload.aiAgent) setAiAgent(payload.aiAgent);
       if (!purpose && payload.purpose) setPurpose(payload.purpose);
       if (!inputs && payload.inputs) setInputs(payload.inputs);
       if (!outputs && payload.outputs) setOutputs(payload.outputs);
-      if (!humanInTheLoop && payload.humanInTheLoop) setHumanInTheLoop(payload.humanInTheLoop);
       if (!kpi && payload.kpi) setKpi(payload.kpi);
       if (!estimatedValueImpact && payload.estimatedValueImpact) setEstimatedValueImpact(payload.estimatedValueImpact);
       if (!industryBenchmark && payload.industryBenchmark) setIndustryBenchmark(payload.industryBenchmark);
@@ -2513,11 +2307,6 @@ function AddProcessModal({
 
             <SectionHeading>Operations</SectionHeading>
 
-            <ModalField label="AI Agent">
-              <input type="text" value={aiAgent} onChange={e => setAiAgent(e.target.value)}
-                placeholder="e.g. Donor Insights Agent" className={inputCls} />
-            </ModalField>
-
             <ModalField label="Purpose">
               <textarea value={purpose} onChange={e => setPurpose(e.target.value)}
                 rows={2} placeholder="What is the goal of this process?" className={cn(inputCls, "resize-y")} />
@@ -2534,11 +2323,6 @@ function AddProcessModal({
               </ModalField>
             </div>
 
-            <ModalField label="Human in the Loop">
-              <textarea value={humanInTheLoop} onChange={e => setHumanInTheLoop(e.target.value)}
-                rows={2} placeholder="Who reviews or approves?" className={cn(inputCls, "resize-y")} />
-            </ModalField>
-
             <SectionHeading>Performance</SectionHeading>
 
             <div className="grid grid-cols-2 gap-4">
@@ -2550,7 +2334,7 @@ function AddProcessModal({
                 <input type="text" value={target} onChange={e => setTarget(e.target.value)}
                   placeholder="e.g. 80%" className={inputCls} />
               </ModalField>
-              <ModalField label="Achievement">
+              <ModalField label="Actual KPI Result">
                 <input type="text" value={achievement} onChange={e => setAchievement(e.target.value)}
                   placeholder="e.g. 74%" className={inputCls} />
               </ModalField>

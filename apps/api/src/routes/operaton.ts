@@ -1,6 +1,10 @@
 import { Router } from "express";
+import multer from "multer";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router = Router();
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const OPERATON_REST_BASE = process.env.OPERATON_REST_BASE ?? "http://localhost:8080/engine-rest";
 const OPERATON_USER = process.env.OPERATON_USER ?? "demo";
@@ -304,6 +308,50 @@ router.post("/operaton/processes/:processKey/stop", async (req, res) => {
     return res.status(500).json({
       error: err instanceof Error ? err.message : "Failed to stop process",
     });
+  }
+});
+
+router.post("/operaton/bpmn-from-doc", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const fileText = req.file.buffer.toString("utf-8");
+    const processId = req.body?.processId as string | undefined;
+
+    const prompt = `You are a BPMN 2.0 expert. Analyse the following document and generate a valid BPMN 2.0 XML diagram that models the business process described.
+
+Rules:
+- Output ONLY the raw BPMN XML — no markdown fences, no explanation.
+- Use the bpmn.io / Camunda / Operaton namespace conventions.
+- Include at least: one start event, meaningful tasks/gateways, and one end event.
+- Keep IDs short (e.g. StartEvent_1, Task_approve, Gateway_decision).
+- Do NOT include operaton:historyTimeToLive; the server will inject it.
+
+${processId ? `Process reference ID: ${processId}\n` : ""}Document content:
+"""
+${fileText.slice(0, 12000)}
+"""
+
+Respond with the complete BPMN 2.0 XML only.`;
+
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
+    const bpmn = raw.trim().replace(/^```[a-z]*\n?/, "").replace(/\n?```$/, "");
+
+    if (!bpmn.includes("<bpmn:definitions") && !bpmn.includes("<definitions")) {
+      return res.status(502).json({ error: "AI did not return valid BPMN XML" });
+    }
+
+    return res.json({ bpmn });
+  } catch (err) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : "Failed to generate BPMN from document" });
   }
 });
 

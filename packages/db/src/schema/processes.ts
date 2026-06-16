@@ -13,7 +13,6 @@ export const processesTable = pgTable("processes", {
   purpose: text("purpose").notNull().default(""),
   inputs: text("inputs").notNull().default(""),
   outputs: text("outputs").notNull().default(""),
-  humanInTheLoop: text("human_in_the_loop").notNull().default(""),
   kpi: text("kpi").notNull().default(""),
   estimatedValueImpact: text("estimated_value_impact").notNull().default(""),
   industryBenchmark: text("industry_benchmark").notNull().default(""),
